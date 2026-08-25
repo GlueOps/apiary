@@ -246,7 +246,7 @@ describe('EstatesPage — the identifying half is asked for the same way everywh
 
     // aws is the default provider in this form.
     const identity = screen.getByLabelText(/access key id/i);
-    expect(identity.getAttribute('placeholder')).toBe('AKIAIOSFODNN7EXAMPLE');
+    expect(identity).toHaveAttribute('placeholder', 'AKIAIOSFODNN7EXAMPLE');
   });
 
   it('explains why the field is required, not only what is done with it', async () => {
@@ -255,7 +255,9 @@ describe('EstatesPage — the identifying half is asked for the same way everywh
 
     // The old copy said only that the value is fingerprinted. A field whose
     // stated purpose is bookkeeping is one people leave empty.
-    expect(screen.getByText(/cannot authenticate at all, whatever the secret is/i)).toBeTruthy();
+    expect(
+      screen.getByText(/cannot authenticate at all, whatever the secret is/i),
+    ).toBeInTheDocument();
   });
 
   it('offers the provider-specific example when the provider changes', async () => {
@@ -270,6 +272,6 @@ describe('EstatesPage — the identifying half is asked for the same way everywh
     // The label changes with the provider, and so must the example: a Proxmox
     // token id looks nothing like an AWS access key.
     const identity = await screen.findByLabelText(/token id/i);
-    expect(identity.getAttribute('placeholder')).toBe('root@pam!apiary');
+    expect(identity).toHaveAttribute('placeholder', 'root@pam!apiary');
   });
 });
