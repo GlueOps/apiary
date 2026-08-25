@@ -132,3 +132,24 @@ setup-postgres:
 
 seed:
   go run . seed
+
+# Scan the committed history for secrets.
+#
+# `gitleaks git`, not `gitleaks dir`, and the difference matters: dir scans the
+# working tree including files git ignores, so it reports .env — which holds real
+# credentials and is supposed to. What this must answer is "has anything secret
+# left this machine", and that is exactly what git mode looks at.
+#
+# .env is deliberately NOT allowlisted in .gitleaks.toml, so if it is ever
+# force-added past the ignore rule this trips immediately.
+secrets:
+  gitleaks git . --config .gitleaks.toml --redact --verbose
+
+# Scan what is staged, before it becomes a commit.
+#
+# The cheap one to run by hand before a push, and what a pre-commit hook would
+# call. Nothing installs a hook here on purpose: core.hooksPath is commonly set
+# globally, so writing one would either be ignored or apply to every repository
+# on the machine.
+secrets-staged:
+  gitleaks git . --config .gitleaks.toml --redact --verbose --staged

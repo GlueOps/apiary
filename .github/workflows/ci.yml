@@ -137,6 +137,39 @@ jobs:
             exit 1
           fi
 
+  secrets:
+    name: no secrets in the history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history. The default shallow clone gives gitleaks one commit to
+          # look at, so a credential added and then removed in a later commit —
+          # which is the whole reason to scan history rather than the tree —
+          # would not be there to find.
+          fetch-depth: 0
+
+      # The pinned binary, not gitleaks-action. That action requires a paid
+      # licence for organization repositories and fails without GITLEAKS_LICENSE;
+      # the scanner itself is MIT and has no such condition. Pinned to the same
+      # version as mise.toml so a rule change upstream cannot turn this red on an
+      # unrelated commit, and so `just secrets` and CI agree on what counts.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL "$url" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # --redact so a real finding does not print the credential into a public
+      # build log, which would leak it a second time on the way to reporting it.
+      - name: Scan the history
+        run: gitleaks git . --config .gitleaks.toml --redact --verbose
+
   lint:
     runs-on: ubuntu-latest
     steps:
