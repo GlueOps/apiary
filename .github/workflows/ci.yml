@@ -263,7 +263,7 @@ jobs:
       # for, that no page scrolls sideways at desktop or phone width, and that
       # nothing logs a console error.
       - run: yarn test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: failure()
         with:
           name: playwright-report
