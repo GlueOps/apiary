@@ -3,6 +3,7 @@ package fleet
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -29,7 +30,11 @@ var platformSchema = testsupport.SchemaName("apiary_fleet_platform_http")
 // opens no tenant database at all, so it completes with 201 and proves that a
 // token can be minted with no cluster — and, before this change, with no cluster
 // even being possible to name.
-func platformAPI(t *testing.T) (humatest.TestAPI, *gorm.DB, *apimiddleware.Principal) {
+//
+// Variadic options adjust Deps before registration, so a test that cares about
+// configuration — the enrolment command's base URL, so far — can set it without
+// every other caller having to name one.
+func platformAPI(t *testing.T, opts ...func(*app.Deps)) (humatest.TestAPI, *gorm.DB, *apimiddleware.Principal) {
 	t.Helper()
 
 	db := testsupport.OpenSchema(t, platformSchema,
@@ -66,6 +71,9 @@ func platformAPI(t *testing.T) (humatest.TestAPI, *gorm.DB, *apimiddleware.Princ
 		Tenants:   tenants,
 		Jobs:      &workflow.MockEnqueuer{},
 		Config:    &config.Config{},
+	}
+	for _, o := range opts {
+		o(deps)
 	}
 	if err := RegisterUserProtected(api, deps); err != nil {
 		t.Fatalf("register: %v", err)
@@ -265,5 +273,66 @@ func TestPlatformResolvesTheOrganizationFromThePrincipalOnly(t *testing.T) {
 					"pass: got %d", got)
 			}
 		})
+	}
+}
+
+// TestMintedCommandCarriesTheAddressTheAgentShouldDial pins the field the UI
+// builds the enrolment command from.
+//
+// The agent defaults to http://localhost:8080. On a hypervisor that is the
+// hypervisor, so a command minted without an address fails as a connection
+// refused with nothing in it that mentions enrolment. The operator cannot supply
+// the value either — which address the control plane answers on is not something
+// visible from the host being enrolled.
+func TestMintedCommandCarriesTheAddressTheAgentShouldDial(t *testing.T) {
+	api, db, p := platformAPI(t, func(d *app.Deps) {
+		d.Config.BaseURL = "https://apiary.example.com"
+	})
+	grant(t, db, p, control.MemberRoleAdmin)
+
+	res := api.Post("/fleet/enrolment-tokens", map[string]any{"ttl_minutes": 60})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("mint: got %d, body %s", res.Code, res.Body)
+	}
+
+	var body struct {
+		Token   string `json:"token"`
+		BaseURL string `json:"base_url"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.BaseURL != "https://apiary.example.com" {
+		t.Fatalf("base_url = %q, want the configured address", body.BaseURL)
+	}
+	if body.Token == "" {
+		t.Fatal("no token returned, so the address alone proves nothing")
+	}
+}
+
+// TestMintedCommandOmitsAnAddressThatOnlyWorksLocally is the case that produced
+// the bug: BASE_URL is correct for a browser on the control plane's own machine
+// and useless to every hypervisor that is not that machine. Returning it would
+// look like an answer and behave exactly like the default.
+func TestMintedCommandOmitsAnAddressThatOnlyWorksLocally(t *testing.T) {
+	api, db, p := platformAPI(t, func(d *app.Deps) {
+		d.Config.BaseURL = "http://localhost:8282"
+	})
+	grant(t, db, p, control.MemberRoleAdmin)
+
+	res := api.Post("/fleet/enrolment-tokens", map[string]any{"ttl_minutes": 60})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("mint: got %d, body %s", res.Code, res.Body)
+	}
+
+	var body struct {
+		BaseURL string `json:"base_url"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.BaseURL != "" {
+		t.Fatalf("base_url = %q, want empty: a loopback address hands the operator "+
+			"the same failure the missing flag causes", body.BaseURL)
 	}
 }

@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
+**BaseUrl** | **string** | The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand. | 
 **ExpiresAt** | **time.Time** |  | 
 **Token** | **string** | Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet. | 
 
@@ -12,7 +13,7 @@ Name | Type | Description | Notes
 
 ### NewMintTokenResponseBody
 
-`func NewMintTokenResponseBody(expiresAt time.Time, token string, ) *MintTokenResponseBody`
+`func NewMintTokenResponseBody(baseUrl string, expiresAt time.Time, token string, ) *MintTokenResponseBody`
 
 NewMintTokenResponseBody instantiates a new MintTokenResponseBody object
 This constructor will assign default values to properties that have it defined,
@@ -51,6 +52,26 @@ SetSchema sets Schema field to given value.
 `func (o *MintTokenResponseBody) HasSchema() bool`
 
 HasSchema returns a boolean if a field has been set.
+
+### GetBaseUrl
+
+`func (o *MintTokenResponseBody) GetBaseUrl() string`
+
+GetBaseUrl returns the BaseUrl field if non-nil, zero value otherwise.
+
+### GetBaseUrlOk
+
+`func (o *MintTokenResponseBody) GetBaseUrlOk() (*string, bool)`
+
+GetBaseUrlOk returns a tuple with the BaseUrl field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetBaseUrl
+
+`func (o *MintTokenResponseBody) SetBaseUrl(v string)`
+
+SetBaseUrl sets BaseUrl field to given value.
+
 
 ### GetExpiresAt
 

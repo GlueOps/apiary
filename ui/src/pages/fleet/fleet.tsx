@@ -525,7 +525,7 @@ export const Fleet = () => {
         </DialogContent>
       </Dialog>
 
-      <EnrolmentDialog open={enrolOpen} onOpenChange={setEnrolOpen} clusters={clusterGroups} />
+      <EnrolmentDialog open={enrolOpen} onOpenChange={setEnrolOpen} />
     </div>
   );
 };

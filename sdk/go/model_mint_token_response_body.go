@@ -24,6 +24,8 @@ var _ MappedNullable = &MintTokenResponseBody{}
 type MintTokenResponseBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
+	// The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand.
+	BaseUrl string `json:"base_url"`
 	ExpiresAt time.Time `json:"expires_at"`
 	// Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet.
 	Token string `json:"token"`
@@ -35,8 +37,9 @@ type _MintTokenResponseBody MintTokenResponseBody
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewMintTokenResponseBody(expiresAt time.Time, token string) *MintTokenResponseBody {
+func NewMintTokenResponseBody(baseUrl string, expiresAt time.Time, token string) *MintTokenResponseBody {
 	this := MintTokenResponseBody{}
+	this.BaseUrl = baseUrl
 	this.ExpiresAt = expiresAt
 	this.Token = token
 	return &this
@@ -80,6 +83,30 @@ func (o *MintTokenResponseBody) HasSchema() bool {
 // SetSchema gets a reference to the given string and assigns it to the Schema field.
 func (o *MintTokenResponseBody) SetSchema(v string) {
 	o.Schema = &v
+}
+
+// GetBaseUrl returns the BaseUrl field value
+func (o *MintTokenResponseBody) GetBaseUrl() string {
+	if o == nil {
+		var ret string
+		return ret
+	}
+
+	return o.BaseUrl
+}
+
+// GetBaseUrlOk returns a tuple with the BaseUrl field value
+// and a boolean to check if the value has been set.
+func (o *MintTokenResponseBody) GetBaseUrlOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.BaseUrl, true
+}
+
+// SetBaseUrl sets field value
+func (o *MintTokenResponseBody) SetBaseUrl(v string) {
+	o.BaseUrl = v
 }
 
 // GetExpiresAt returns the ExpiresAt field value
@@ -143,6 +170,7 @@ func (o MintTokenResponseBody) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
 	}
+	toSerialize["base_url"] = o.BaseUrl
 	toSerialize["expires_at"] = o.ExpiresAt
 	toSerialize["token"] = o.Token
 	return toSerialize, nil
@@ -153,6 +181,7 @@ func (o *MintTokenResponseBody) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
+		"base_url",
 		"expires_at",
 		"token",
 	}

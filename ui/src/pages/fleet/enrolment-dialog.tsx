@@ -13,14 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { fleetEnrolmentTokensMintMutation } from '@/sdk/@tanstack/react-query.gen';
 
 const TTL_MINUTES = 60;
@@ -28,33 +20,46 @@ const TTL_MINUTES = 60;
 export type EnrolmentDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  clusters: { id: string; name: string }[];
 };
 
+type Minted = { token: string; expires_at: string; base_url: string };
+
 /**
- * Mints an enrolment token and shows it once.
+ * Mints an enrolment token and shows the command to run, once.
  *
- * The token admits a hypervisor into the ORGANIZATION. It does not carry a cluster, and
- * a hypervisor that has just enrolled belongs to none — the same state a hypervisor passes
- * through mid-migration. The cluster field below is not a target: the endpoint
- * still requires one to exist before it will mint, and nothing about it reaches
- * the token or the hypervisor.
+ * The token admits a hypervisor into the ORGANIZATION. It does not carry a cluster, and a
+ * hypervisor that has just enrolled belongs to none — the same state a hypervisor passes
+ * through mid-migration. There is deliberately no cluster field: this dialog used to
+ * require one and disable minting until a cluster existed, which locked a fresh
+ * installation out of the only path that produces a hypervisor able to bootstrap one.
+ *
+ * The command carries --base-url because the agent defaults to http://localhost:8080,
+ * which on a hypervisor is the hypervisor. The server supplies the value; an operator
+ * reading a token off a screen has no way to know which address the control plane
+ * answers on, and a command that omits it fails as a connection refused nowhere near
+ * anything that mentions enrolment.
  */
-export function EnrolmentDialog({ open, onOpenChange, clusters }: EnrolmentDialogProps) {
-  const [hiveId, setHiveId] = useState<string>('');
-  const [minted, setMinted] = useState<{ token: string; expires_at: string } | null>(null);
+export function EnrolmentDialog({ open, onOpenChange }: EnrolmentDialogProps) {
+  const [minted, setMinted] = useState<Minted | null>(null);
 
   const mint = useMutation({
     ...fleetEnrolmentTokensMintMutation(),
     // Held in state rather than toasted: it is shown once and the operator has
     // to copy it. A toast that disappears after four seconds would mean minting
     // another, and every mint is a credential that can admit a machine.
-    onSuccess: (res) => setMinted({ token: res.token, expires_at: res.expires_at }),
+    onSuccess: (res) =>
+      setMinted({ token: res.token, expires_at: res.expires_at, base_url: res.base_url ?? '' }),
     onError: (e) => toast.error((e as { detail?: string })?.detail ?? 'Could not mint a token'),
   });
 
-  const selected = hiveId || clusters[0]?.id || '';
-  const command = minted ? `apiary-agent enrol --token ${minted.token}` : '';
+  // Empty base_url means the control plane has no address worth handing out —
+  // unset, relative, or loopback. Rendering the command without the flag would
+  // silently reintroduce the localhost default, so the placeholder is left in
+  // deliberately: it does not run, which is the point.
+  const knowsItsAddress = Boolean(minted?.base_url);
+  const command = minted
+    ? `apiary-agent enrol --token ${minted.token} --base-url ${minted.base_url || '<control-plane-url>'}`
+    : '';
 
   const close = (next: boolean) => {
     if (!next) {
@@ -62,7 +67,6 @@ export function EnrolmentDialog({ open, onOpenChange, clusters }: EnrolmentDialo
       // hash, so a token left rendered in a closed dialog is a live credential
       // sitting in the DOM of a tab nobody is watching.
       setMinted(null);
-      setHiveId('');
     }
     onOpenChange(next);
   };
@@ -75,7 +79,8 @@ export function EnrolmentDialog({ open, onOpenChange, clusters }: EnrolmentDialo
           <DialogDescription>
             A token admits a hypervisor into this organization, not into a cluster. The hypervisor
             arrives belonging to no cluster and joins one afterwards, as a task — the same path a
-            hypervisor migrating between clusters takes.
+            hypervisor migrating between clusters takes, and the reason this works before any
+            cluster exists.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,6 +108,16 @@ export function EnrolmentDialog({ open, onOpenChange, clusters }: EnrolmentDialo
                   Expires {new Date(minted.expires_at).toLocaleString()}
                 </span>
               </div>
+              {knowsItsAddress ? null : (
+                <p className="text-xs text-amber-600 dark:text-amber-500">
+                  This control plane has no external address configured, so the command above has a
+                  placeholder in it. Replace <code>&lt;control-plane-url&gt;</code> with the address
+                  the hypervisor can reach, and set <code>BASE_URL</code> to that address so the
+                  next token comes out ready to paste. Leaving the flag off entirely makes the agent
+                  call <code>http://localhost:8080</code>, which from a hypervisor means the
+                  hypervisor.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Only a hash of the token is stored. Any hypervisor can redeem it until it expires,
                 which is what lets a rack be enrolled in one batch.
@@ -122,47 +137,18 @@ export function EnrolmentDialog({ open, onOpenChange, clusters }: EnrolmentDialo
               </p>
             </div>
           </div>
-        ) : clusters.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            The mint endpoint requires a cluster to exist before it will issue a token, even though
-            the token does not carry one. Create a cluster first, then come back here.
-          </p>
         ) : (
-          <div className="space-y-2">
-            <Label htmlFor="enrol-cluster">Cluster</Label>
-            <Select
-              value={selected}
-              onValueChange={(v) => {
-                if (typeof v === 'string') setHiveId(v);
-              }}
-            >
-              <SelectTrigger id="enrol-cluster" className="w-full">
-                <SelectValue>
-                  {(v: string | null) =>
-                    clusters.find((c) => c.id === v)?.name ?? 'Select a cluster'
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {clusters.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Not a destination. The endpoint checks a cluster exists before minting; the token
-              carries only the organization, and the enrolled hypervisor lands in no cluster.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            The token is shown once, as a command to run on the hypervisor. It stays valid for{' '}
+            {TTL_MINUTES} minutes and any number of hypervisors can redeem it in that window.
+          </p>
         )}
 
         {minted ? null : (
           <DialogFooter>
             <Button
-              disabled={mint.isPending || !selected}
-              onClick={() => mint.mutate({ body: { hive_id: selected, ttl_minutes: TTL_MINUTES } })}
+              disabled={mint.isPending}
+              onClick={() => mint.mutate({ body: { ttl_minutes: TTL_MINUTES } })}
             >
               {mint.isPending ? 'Minting…' : `Mint a token (${TTL_MINUTES} min)`}
             </Button>

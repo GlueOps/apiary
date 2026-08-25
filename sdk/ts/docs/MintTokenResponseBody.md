@@ -7,6 +7,7 @@
 Name | Type
 ------------ | -------------
 `$schema` | string
+`baseUrl` | string
 `expiresAt` | Date
 `token` | string
 
@@ -18,6 +19,7 @@ import type { MintTokenResponseBody } from '@glueops/apiary-sdk'
 // TODO: Update the object below with actual values
 const example = {
   "$schema": null,
+  "baseUrl": null,
   "expiresAt": null,
   "token": null,
 } satisfies MintTokenResponseBody

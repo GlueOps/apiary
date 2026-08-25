@@ -26,6 +26,12 @@ export interface MintTokenResponseBody {
      */
     readonly $schema?: string;
     /**
+     * The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand.
+     * @type {string}
+     * @memberof MintTokenResponseBody
+     */
+    baseUrl: string;
+    /**
      * 
      * @type {Date}
      * @memberof MintTokenResponseBody
@@ -43,6 +49,7 @@ export interface MintTokenResponseBody {
  * Check if a given object implements the MintTokenResponseBody interface.
  */
 export function instanceOfMintTokenResponseBody(value: object): value is MintTokenResponseBody {
+    if ((!('baseUrl' in (value as Record<string, any>)) && !('base_url' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseUrl'] === undefined && (value as Record<string, any>)['base_url'] === undefined)) return false;
     if ((!('expiresAt' in (value as Record<string, any>)) && !('expires_at' in (value as Record<string, any>))) || ((value as Record<string, any>)['expiresAt'] === undefined && (value as Record<string, any>)['expires_at'] === undefined)) return false;
     if (!('token' in value) || value['token'] === undefined) return false;
     return true;
@@ -59,6 +66,7 @@ export function MintTokenResponseBodyFromJSONTyped(json: any, ignoreDiscriminato
     return {
         
         '$schema': json['$schema'] == null ? undefined : json['$schema'],
+        'baseUrl': json['base_url'],
         'expiresAt': (new Date(json['expires_at'])),
         'token': json['token'],
     };
@@ -75,6 +83,7 @@ export function MintTokenResponseBodyToJSONTyped(value?: Omit<MintTokenResponseB
 
     return {
         
+        'base_url': value['baseUrl'],
         'expires_at': value['expiresAt'].toISOString(),
         'token': value['token'],
     };

@@ -102,6 +102,13 @@ type MintTokenResponse struct {
 	Body struct {
 		Token     string `json:"token" doc:"Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet."`
 		ExpiresAt string `json:"expires_at" format:"date-time"`
+		// BaseURL is the control plane address the agent should call, so the
+		// enrolment command can be pasted rather than assembled. The agent
+		// defaults to http://localhost:8080, which on a hypervisor is the
+		// hypervisor — the one address that is always wrong. Empty when the
+		// control plane does not know its own external address, and the caller
+		// then has to supply --base-url by hand.
+		BaseURL string `json:"base_url" doc:"The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand."`
 	}
 }
 
@@ -376,6 +383,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		out := &MintTokenResponse{}
 		out.Body.Token = raw
 		out.Body.ExpiresAt = expires.Format(time.RFC3339)
+		out.Body.BaseURL = agentBaseURL(deps.Config)
 		return out, nil
 	})
 

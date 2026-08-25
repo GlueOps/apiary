@@ -6092,6 +6092,7 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
+        base_url: base_url
         expires_at: 2000-01-23T04:56:07.000+00:00
         token: token
       properties:
@@ -6099,6 +6100,11 @@ components:
           description: A URL to the JSON Schema for this object.
           format: uri
           readOnly: true
+          type: string
+        base_url:
+          description: "The address the agent should enrol against. Empty if the control\
+            \ plane has no absolute BASE_URL configured, in which case --base-url\
+            \ must be supplied by hand."
           type: string
         expires_at:
           format: date-time
@@ -6108,6 +6114,7 @@ components:
             must not yield a token that can enrol a machine into the fleet.
           type: string
       required:
+      - base_url
       - expires_at
       - token
     MyOrganizationView:
