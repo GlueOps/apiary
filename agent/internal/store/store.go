@@ -17,6 +17,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -83,6 +85,25 @@ type Store struct{ db *sql.DB }
 // them returning SQLITE_BUSY to each other during exactly the long task this
 // design exists to survive.
 func Open(ctx context.Context, path string) (*Store, error) {
+	// THE AGENT OWNS ITS STATE DIRECTORY. Creating it here rather than expecting
+	// the installer to, because the two install paths do not agree: the
+	// onboarding job creates /var/lib/apiary-agent before it uploads anything,
+	// while a hand install — copy the binary, run `apiary-agent enrol` — creates
+	// nothing, and that is the path the packaging README documents.
+	//
+	// Without this the failure is SQLITE_CANTOPEN surfacing from the first query
+	// as "store: apply schema: unable to open database file (14)", which names
+	// neither the path nor the directory. sql.Open is lazy and cannot report it,
+	// so the error arrives far from its cause.
+	//
+	// 0700: this database holds the agent's enrolment credential. The directory
+	// is created for root and nobody else needs to traverse it.
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("store: create the state directory %s: %w", dir, err)
+		}
+	}
+
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
@@ -93,7 +114,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("store: apply schema: %w", err)
+		// The path is named because this is where an unopenable database first
+		// reports itself: sql.Open only records the DSN, so the bare driver error
+		// is "unable to open database file (14)" with nothing to act on.
+		return nil, fmt.Errorf("store: apply schema to %s: %w", path, err)
 	}
 	return &Store{db: db}, nil
 }
