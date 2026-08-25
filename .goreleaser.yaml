@@ -54,6 +54,41 @@ builds:
       - amd64
       - arm64
 
+  # The agent, built here rather than in a before-hook.
+  #
+  # A hook would work, but a build entry is what makes the agent a RELEASED
+  # ARTIFACT: it gets the same GOOS/GOARCH matrix, the same reproducible
+  # mod_timestamp, an archive, and a line in checksums.txt. An operator
+  # onboarding a hypervisor by hand can then download exactly the binary the
+  # control plane would have installed, and check it against the checksum.
+  #
+  # `dir` because the agent is its own module (github.com/glueops/apiary-agent).
+  # It is separate so that an agent wanting to call a hypervisor does not have to
+  # require the whole control plane — see go.work.
+  - id: apiary-agent
+    dir: agent
+    main: .
+    binary: apiary-agent
+    env:
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    # main.*, not internal/buildinfo. The agent is a different module and stamps
+    # its own package-level vars in agent/main.go, which it copies into
+    # agent.Version. Pointing these at the control plane's buildinfo path would
+    # be silently ignored — `go build -X` on a symbol that is not in the binary
+    # is not an error — and every agent would report itself as "dev".
+    ldflags:
+      - "-s -w -X main.version=v{{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}"
+    # Linux only. The agent is a systemd service that runs as root on a
+    # hypervisor; there is no darwin host for it to run on.
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
 archives:
   - id: apiary
     ids:
@@ -69,8 +104,64 @@ archives:
       {{- .Os }}_
       {{- .Arch }}
 
+  - id: apiary-agent
+    ids:
+      - apiary-agent
+    formats:
+      - tar.gz
+    name_template: >-
+      apiary-agent_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
 checksum:
   name_template: checksums.txt
+
+# ---- Container images -------------------------------------------------------
+#
+# The image is assembled from binaries goreleaser has ALREADY built, rather than
+# compiled again inside a Dockerfile. That removes the second definition of how
+# this project builds: the Dockerfile used to carry its own ldflags, and they had
+# drifted — it stamped `main.version`, which does not exist in the control plane,
+# so `go build -X` silently ignored it and every image reported itself as "dev"
+# however carefully the build args were set. One place now decides flags,
+# trimpath, mod_timestamp and the version stamp, for archives and images alike.
+#
+# It is also how multi-arch stops being expensive: each platform's binary is
+# cross-compiled by Go on the runner's own architecture, so nothing is emulated
+# under QEMU the way a multi-stage `docker buildx build` would be.
+#
+# dockers_v2, not dockers + docker_manifests. Those are deprecated as of
+# goreleaser 2.18 and warn on every run; v2 also expresses this as ONE entry
+# covering both platforms with the manifest implied, rather than two
+# near-identical blocks and a third joining them by tag name — which is three
+# places to keep a tag string in step.
+dockers_v2:
+  - id: apiary
+    # BOTH binaries. The agent ships inside the control-plane image because the
+    # onboarding job uploads it to a hypervisor over SSH — see the Dockerfile.
+    ids:
+      - apiary
+      - apiary-agent
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/glueops/apiary
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    # So `docker inspect` on a running image answers which commit it came from.
+    # These and the version stamped into the binary come from the same template
+    # and cannot disagree.
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.version: "v{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
 
 changelog:
   sort: asc
