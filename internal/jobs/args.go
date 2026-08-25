@@ -27,6 +27,16 @@ type OnboardHypervisorArgs struct {
 	Address        string `json:"address"`
 	User           string `json:"user,omitempty"`
 	MachineID      string `json:"machine_id"`
+
+	// HypervisorID names the machine record whose provisioning state this job
+	// concludes, and is what the ticker claimed before enqueuing.
+	//
+	// Optional, because it is the ROW being driven rather than the HOST being
+	// onboarded: without one the job still onboards the host and simply records
+	// no outcome. Identifying the row by address instead would be wrong in the
+	// case that matters — a machine whose address was corrected mid-flight would
+	// have its outcome written to whichever row currently holds the old value.
+	HypervisorID string `json:"hypervisor_id,omitempty"`
 }
 
 func (OnboardHypervisorArgs) Kind() string { return "fleet.onboard_hypervisor" }
@@ -117,6 +127,41 @@ func (SyncAllHivesArgs) InsertOpts() river.InsertOpts {
 				rivertype.JobStatePending,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
+// ClaimPendingOnboardsArgs is the periodic tick that drives onboarding forward.
+//
+// Nothing else moves a machine off `pending`. The state column, the lease, the
+// attempt counter and the redrive endpoint all landed before this did, which
+// meant a row pushed to pending sat there permanently while the API told the
+// operator it "will be claimed on the next tick".
+type ClaimPendingOnboardsArgs struct{}
+
+func (ClaimPendingOnboardsArgs) Kind() string { return "fleet.claim_pending_onboards" }
+
+func (ClaimPendingOnboardsArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		// One tick at a time, fleet-wide. Two overlapping ticks would both scan for
+		// claimable rows; the claim is atomic so they could not take the same row,
+		// but the second would find nothing and exist only to hold a connection.
+		//
+		// All four of River's REQUIRED states, not just the two this rule cares
+		// about. UniqueOpts.validate rejects a ByState missing any of available,
+		// pending, running or scheduled — and the rejection surfaces at insert
+		// time, which for a periodic job means the tick simply never appears.
+		// Listing only available and running produced exactly that: a registered
+		// periodic job, a registered worker, correct config, and no job ever
+		// inserted.
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
 				rivertype.JobStateScheduled,
 			},
 		},

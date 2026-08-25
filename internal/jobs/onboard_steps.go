@@ -151,3 +151,39 @@ func sshdDropInContent(withJoin bool) string {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
+
+// ReadMachineID asks the host for its own /etc/machine-id.
+//
+// The caller cannot always supply one. A node discovered by the capacity sync is
+// identified by (hive, name) and its machine_id column is NULL — the digest is
+// only learned at enrolment, which is downstream of this job. So the ticker has
+// nothing to pass, and the host is the authority on its own identity anyway.
+//
+// Read rather than generated, and never defaulted. The value decides which
+// machine record a heartbeat belongs to: inventing one would make onboarding
+// wait for a heartbeat that can never arrive under that id, and reusing another
+// host's would silently merge two machines into one row.
+//
+// /etc/machine-id first, /var/lib/dbus/machine-id second. The second is where
+// the value lives on hosts where /etc is read-only or the file was seeded by
+// dbus, and systemd keeps them identical when both exist.
+func ReadMachineID(ctx context.Context, r Runner) (string, error) {
+	out, err := r.Run(ctx, "cat /etc/machine-id 2>/dev/null || cat /var/lib/dbus/machine-id 2>/dev/null")
+	if err != nil {
+		return "", fmt.Errorf("onboard: read machine id: %w", err)
+	}
+	id := strings.TrimSpace(out)
+	if id == "" {
+		return "", fmt.Errorf("onboard: this host reports no machine id: neither /etc/machine-id " +
+			"nor /var/lib/dbus/machine-id has a value, so there is nothing to identify it by and " +
+			"a heartbeat from it could not be matched to any machine record")
+	}
+	// Rejected rather than trimmed to the first line. A file holding more than one
+	// value is a host in a state nobody intended, and picking one of them quietly
+	// is how the wrong machine gets identified.
+	if strings.ContainsAny(id, " \t\r\n") {
+		return "", fmt.Errorf("onboard: this host's machine id is not a single value (%q); "+
+			"refusing to guess which part identifies it", id)
+	}
+	return id, nil
+}

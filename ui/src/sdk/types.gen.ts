@@ -1091,6 +1091,10 @@ export type MintTokenResponseBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand.
+     */
+    base_url: string;
     expires_at: string;
     /**
      * Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet.
@@ -2399,6 +2403,10 @@ export type MintTokenRequestBodyWritable = {
 };
 
 export type MintTokenResponseBodyWritable = {
+    /**
+     * The address the agent should enrol against. Empty if the control plane has no absolute BASE_URL configured, in which case --base-url must be supplied by hand.
+     */
+    base_url: string;
     expires_at: string;
     /**
      * Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet.

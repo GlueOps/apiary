@@ -51,6 +51,7 @@ import {
   fleetHypervisorsDepartMutation,
   fleetHypervisorsListOptions,
   fleetHypervisorsListQueryKey,
+  fleetHypervisorsReprovisionMutation,
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { StatusBadge, relative } from './bee-table';
@@ -68,6 +69,48 @@ function refusalMessage(error: unknown, fallback: string): string {
   const details = e?.errors?.map((d) => d.message).filter(Boolean) as string[] | undefined;
   if (details?.length) return details.join(' — ');
   return e?.detail ?? fallback;
+}
+
+/**
+ * The onboarding state of one machine, which is a DIFFERENT axis from whether
+ * its agent is reachable and from whether it is cordoned.
+ *
+ * Rendered only when there is something to say. `provisioned` is the ordinary
+ * resting state of every working machine, and a badge on every row saying so
+ * would bury the two rows that actually need attention.
+ *
+ * The attempt count appears on a failure because it is what distinguishes "this
+ * failed once and will be retried" from "this has hit the cap and no further
+ * tick will touch it" — and the second needs an operator, not patience.
+ */
+function ProvisioningBadge({ hv }: { hv: HypervisorView }) {
+  switch (hv.provisioning_state) {
+    case 'pending':
+      return (
+        <Badge className="bg-sky-500/15 text-sky-600 dark:text-sky-400">queued to onboard</Badge>
+      );
+    case 'provisioning':
+      return <Badge className="bg-sky-500/15 text-sky-600 dark:text-sky-400">onboarding…</Badge>;
+    case 'failed':
+      return (
+        <span className="block space-y-1">
+          <Badge variant="destructive">
+            onboarding failed
+            {hv.provisioning_attempt ? ` (attempt ${hv.provisioning_attempt})` : ''}
+          </Badge>
+          {hv.provisioning_error ? (
+            <span
+              className="block max-w-[18rem] truncate text-xs text-muted-foreground"
+              title={hv.provisioning_error}
+            >
+              {hv.provisioning_error}
+            </span>
+          ) : null}
+        </span>
+      );
+    default:
+      return null;
+  }
 }
 
 export const Hypervisors = () => {
@@ -95,6 +138,18 @@ export const Hypervisors = () => {
       invalidate();
     },
     onError: (e) => toast.error(refusalMessage(e, 'Could not change scheduling')),
+  });
+
+  const reprovision = useMutation({
+    ...fleetHypervisorsReprovisionMutation(),
+    onSuccess: () => {
+      toast.success('Queued for onboarding — a worker claims it on the next tick');
+      invalidate();
+    },
+    // The endpoint refuses with reason codes rather than a bare conflict: no
+    // address to connect to, already queued, or a worker inside it right now.
+    // Those are the three things an operator can act on, so they are shown.
+    onError: (e) => toast.error(refusalMessage(e, 'This machine cannot be reprovisioned yet')),
   });
 
   const depart = useMutation({
@@ -265,12 +320,15 @@ export const Hypervisors = () => {
                             synced {relative(n.last_synced_at)}
                           </span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="space-y-1">
                           {n.bee_status ? (
                             <StatusBadge status={n.bee_status} />
                           ) : (
-                            <span className="text-xs text-muted-foreground">not enrolled</span>
+                            <span className="block text-xs text-muted-foreground">
+                              not enrolled
+                            </span>
                           )}
+                          <ProvisioningBadge hv={n} />
                         </TableCell>
                         <TableCell className="space-y-2 text-right">
                           <div className="flex justify-end gap-2">
@@ -296,6 +354,20 @@ export const Hypervisors = () => {
                                   Uncordon
                                 </>
                               )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={reprovision.isPending || n.address === ''}
+                              onClick={() => reprovision.mutate({ path: { id: n.id } })}
+                              title={
+                                n.address === ''
+                                  ? 'No address recorded, so there is nothing to connect to'
+                                  : 'Install or reinstall the agent over SSH'
+                              }
+                            >
+                              <IconRefresh className="size-4" />
+                              {n.provisioning_state === 'provisioned' ? 'Reinstall' : 'Onboard'}
                             </Button>
                             <Button
                               variant="outline"

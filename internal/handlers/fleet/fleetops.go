@@ -975,17 +975,11 @@ const (
 // Postgres now(), not a Go timestamp: the lease is written by a worker and read
 // by an API replica, and the database is the one clock both agree on.
 //
-// DUPLICATED WITH THE TICKER'S CLAIM QUERY, which does not exist yet. The two
-// must agree, and a second definition of one rule is how they stop agreeing —
-// this belongs beside ProvisionedPredicate in internal/models/tenant so both
-// read the same literal.
-const redrivablePredicate = `(
-	provisioning_state IN ('failed', 'provisioned')
-	OR (
-		provisioning_state = 'provisioning'
-		AND (provisioning_lease_expires_at IS NULL OR provisioning_lease_expires_at <= now())
-	)
-)`
+// ONE DEFINITION, in internal/models/tenant, shared with the ticker's claim
+// query. The two rules are not the same set — see RedrivablePredicate — but they
+// read the same lease and the same clock, and a second copy of either is how
+// they stop agreeing.
+const redrivablePredicate = tenant.RedrivablePredicate
 
 // redriveOnboarding pushes one machine's onboarding back to `pending`, and
 // reports whether it moved.
