@@ -1,0 +1,75 @@
+# Path-based PR labels for actions/labeler@v5.
+#
+# The org's PR workflow runs this against .github/configs/labeler.yml and fails
+# the check when the file is absent, which is how this repository arrived: the
+# workflow is managed centrally, the config it reads is per-repository, and a
+# repository created from a template has the first without the second.
+#
+# Labels describe WHERE a change lands, not what kind of change it is. The kind
+# comes from the conventional-commit prefix, which the next step in that workflow
+# assigns from the commit messages — duplicating it here would produce two
+# sources for one answer that disagree as soon as a PR does two things.
+#
+# v5 schema: each label maps to match rules, and `any-glob-to-any-file` labels
+# the PR when ANY changed file matches ANY listed glob.
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+
+ui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "ui/**"
+
+agent:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "agent/**"
+
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/api/**"
+          - "internal/handlers/**"
+          - "internal/apimiddleware/**"
+
+database:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/migrations/**"
+          - "internal/models/**"
+          - "internal/database/**"
+
+fleet:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/jobs/**"
+          - "pkg/proxmox/**"
+          - "internal/service/fleet*"
+          - "internal/repo/fleet*"
+
+sdk:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "sdk/**"
+          - "ui/src/sdk/**"
+          - "docs/openapi.json"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "Makefile"
+          - "Justfile"
+          - "docker-compose.yml"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/go.mod"
+          - "**/go.sum"
+          - "**/package.json"
+          - "**/yarn.lock"

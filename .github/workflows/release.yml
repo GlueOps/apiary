@@ -1,0 +1,84 @@
+# Cuts a release when a v* tag is pushed.
+#
+# Ordering matters and is not obvious: the tag is the distribution channel, and
+# merges to main are squash or rebase, so a tag cut BEFORE the merge points at a
+# commit that never lands on main. The guard job below refuses that case rather
+# than publishing from an orphaned commit — undoing a published release is far
+# more work than failing here.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # Refuses a tag that is not an ancestor of main. This repo releases from tags
+  # and squash-merges pull requests, so it is genuinely easy to tag a branch
+  # commit whose SHA is rewritten by the merge; the tag then points at history
+  # that main does not contain, and everything downstream looks fine.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse a tag that is not on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not an ancestor of main."
+            echo "Squash and rebase merges rewrite the SHA, so a tag cut before the merge names a"
+            echo "commit that never landed. Delete this tag, pull main, and re-tag the merge commit."
+            exit 1
+          fi
+          echo "${GITHUB_REF_NAME} is on main."
+
+  goreleaser:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the GitHub release and uploading its assets.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser builds the changelog from git history and refuses a
+          # shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The release builds the SPA and embeds it, so the runner needs Node as
+      # well as Go. It does NOT need Java: SDK generation was deliberately moved
+      # out of goreleaser's before-hooks (see .goreleaser.yaml) and is verified
+      # on pull requests instead.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable corepack
+        run: corepack enable
+
+      # goreleaser's before-hook runs `yarn --cwd ui/ build`, which needs the ui
+      # dependency tree present. --immutable so a lockfile that does not match
+      # package.json fails here rather than silently resolving something else
+      # into a released artifact.
+      - name: Install UI dependencies
+        run: yarn --cwd ui/ install --immutable
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

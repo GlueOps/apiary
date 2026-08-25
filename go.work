@@ -1,0 +1,26 @@
+// Multi-module workspace.
+//
+// Four modules live in this repository, and they are separate on purpose:
+//
+//   .                the control plane
+//   ./pkg/proxmox    the Proxmox client — consumed by BOTH the API and the agent
+//   ./sdk/go         the generated API client — consumed by the agent
+//   ./agent          the fleet agent (Bees), which runs as root on every hypervisor
+//
+// The agent is why pkg/proxmox is its own module. Left inside the control plane's
+// module, an agent that wanted to call a hypervisor would have to require the
+// whole control plane — huma, gorm, river, webauthn — to do it. Its dependency
+// graph from this repository is now exactly two lean things.
+//
+// The workspace is what keeps that from costing anything day to day: local
+// builds resolve the sibling modules from disk, so a change to pkg/proxmox is
+// visible to the API and the agent immediately, with no replace directives to
+// remember and no version to bump between commits.
+go 1.26.6
+
+use (
+	.
+	./agent
+	./pkg/proxmox
+	./sdk/go
+)

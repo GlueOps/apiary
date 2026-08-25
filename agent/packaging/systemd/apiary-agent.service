@@ -1,0 +1,79 @@
+[Unit]
+Description=APIary fleet agent (bee)
+Documentation=https://github.com/glueops/apiary
+# Wants, not Requires: the agent's job includes reporting that this host is back
+# after a reboot, and a hard dependency on the network being "online" would
+# delay exactly the heartbeat the control plane is waiting for. It retries.
+Wants=network-online.target
+After=network-online.target
+
+# StartLimitIntervalSec belongs to [Unit], NOT [Service]. systemd parses it only
+# here and merely warns about it elsewhere — "Unknown key ... ignoring" — so a
+# copy in [Service] reads as configured and does nothing. This was in the wrong
+# section until a real install surfaced the warning in the journal.
+#
+# Zero disables the rate limit: a hypervisor that keeps failing to start its
+# agent should keep trying, because the alternative is a host that quietly stops
+# attempting and looks identical to one nobody onboarded.
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/bin/apiary-agent start
+
+# The supervision this replaces: run as a bare process and nothing notices when
+# it dies. A fleet agent that has silently exited looks identical to a host that
+# is quietly healthy — the control plane sees no heartbeat and, past any declared
+# window, calls it offline, which is a page for a machine that is fine.
+Restart=always
+RestartSec=5s
+
+# Watchdog. Type=notify plus this means systemd restarts the agent if it stops
+# checking in — which catches the case Restart=always cannot: a process that is
+# still running but has wedged. Both loops feed it, so a hung report loop is
+# caught even while the execute loop is healthy.
+WatchdogSec=60s
+
+# Shutdown has to be gentle. A dist-upgrade may be mid-flight, and the agent
+# leaves its task RUNNING locally so the restarted process resumes it — but only
+# if it is allowed to finish writing.
+KillSignal=SIGTERM
+TimeoutStopSec=90s
+
+# The agent runs as root because its work is upgrading and rebooting the host.
+# Everything below narrows what that means in practice.
+User=root
+StateDirectory=apiary-agent
+ConfigurationDirectory=apiary-agent
+Environment=AGENT_STATE_PATH=/var/lib/apiary-agent/state.db
+
+# Written by onboarding, and the ONLY place the control plane's address lives.
+#
+# The agent reads a config FILE only when --config is passed, which the unit does
+# not do; everything else comes from AGENT_-prefixed environment. So without this
+# the agent falls back to its compiled default of localhost:8080 and talks to the
+# hypervisor itself — which fails as "connection refused" and looks like the
+# control plane is down.
+#
+# The leading '-' means a missing file is not a startup failure: an agent with no
+# env file is misconfigured, but it should say so in its own logs rather than
+# refusing to start where nothing reads the reason.
+EnvironmentFile=-/etc/apiary-agent/agent.env
+
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# NOT ProtectSystem=strict or ProtectKernelModules: the agent runs apt
+# dist-upgrade, which writes across /usr and /boot and installs kernel modules.
+# Sandboxing that away would make the unit look hardened while quietly breaking
+# the one task it exists to perform.
+
+[Install]
+WantedBy=multi-user.target

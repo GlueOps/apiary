@@ -1,0 +1,10 @@
+procs:
+  api:
+    cmd: [ "go", "run", ".", "serve" ]
+    env:
+      FRONTEND_MODE: "proxy"
+  worker:
+    cmd: [ "go", "run", ".", "worker" ]
+  ui:
+    cmd: [ "yarn", "dev" ]
+    cwd: "ui"

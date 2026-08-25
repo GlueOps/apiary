@@ -1,0 +1,9 @@
+h1:mGbErL7NzLxbxECsrV6baLmnPTRuYEI4ogrVXz3vUik=
+20260822091259_control_schema.sql h1:FBGHva3RN5XplrE4uTyQpeJZzQXS2mCVyFQqpLi8o6o=
+20260822222338_add_email_verification.sql h1:WmV6rm/Awdg9GbMoiCGx+n/KADhFJqy6auk848RE1fA=
+20260822223529_add_invitations.sql h1:Yu6RFGHJeWRs9p7TTs0tZh5eS0Gu6xlLmgHjFkhQfbg=
+20260823041145_add_fleet.sql h1:2kUDMEor+Wn6+ZIhQIyve1oaZwGsl+eLezVhwTqSfLE=
+20260823132300_fleet_tenant_scope.sql h1:4sZPhWV9jHZmphg7RfNpnwPH3WGM9zhfZF/wPK3yB6w=
+20260823133642_api_keys.sql h1:RkAhHlfmLIOpMNOB1srW13QfS2Tp8FTBQWhkOXyd3Yo=
+20260823161835_fleet_to_tenant.sql h1:mflM00jn+Zrj5HivkYNUO971lwpCY9DoEqJosyp1qHQ=
+20260823201201_soft_delete.sql h1:U5JnpqhYM/M+PRngNxnGGEqSxFZh9rHek1qtatm9p9w=

@@ -1,0 +1,82 @@
+# ---- Secrets & local environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Go build output ----
+/bin/
+
+# Go binaries built into the repo ROOT. `go build ./tools/tenant` writes ./tenant
+# with no extension, so no glob catches it and `git add -A` happily commits 60MB.
+# It has happened. Build to ./bin instead — `make build` does.
+/control
+/tenant
+/e2eonboard
+/apiary
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+
+# GoReleaser / build artifacts (root only; ui/dist is handled separately)
+/dist/
+
+# ---- Node / frontend tooling (root workspace) ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Yarn 4 (berry) local state. The cache lives outside the project
+# (enableGlobalCache: true in .yarnrc.yml), so only install-state is left here.
+# .yarnrc.yml and yarn.lock ARE tracked — they pin the toolchain.
+**/.yarn/*
+!**/.yarn/patches
+!**/.yarn/releases
+
+# ---- Code-gen / tooling scratch ----
+repomix-readme.md
+repomix-output.*
+
+# ---- Editor / IDE ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# ---- OS noise ----
+.DS_Store
+Thumbs.db
+
+# ---- Claude Code local overrides ----
+.claude/settings.local.json
+
+terraform/
+.dragon-buddy/
+docs/security
+
+# The UI build output. Ignored so CI can build it fresh, but .gitkeep is tracked
+# on purpose: internal/api/fronend.go embeds this directory, and `//go:embed`
+# fails the BUILD when its pattern matches nothing ("no matching files found").
+# Without a tracked file here, `go build ./...` is broken on a fresh clone until
+# someone runs the UI build. The directive uses the `all:` prefix so that a
+# directory holding only .gitkeep still satisfies it — plain `//go:embed webdist`
+# skips dot-prefixed files and fails with "contains no embeddable files".
+# ui/public/.gitkeep restores this file after vite's emptyOutDir wipes the tree.
+internal/api/webdist/*
+!internal/api/webdist/.gitkeep
+
+# Playwright. The report and traces are large build artefacts, and the captured
+# screenshots are a review aid regenerated on every run — not committed fixtures,
+# because a checked-in screenshot becomes a thing to update rather than a thing
+# to look at.
+ui/playwright-report/
+ui/test-results/
+ui/e2e/__screenshots__/

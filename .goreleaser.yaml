@@ -1,0 +1,87 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: apiary
+
+before:
+  hooks:
+    # ONLY the UI build belongs here. Its output (internal/api/webdist) is
+    # gitignored and embedded at compile time, so it has to be produced fresh and
+    # it cannot dirty the tree.
+    #
+    # `go run . generate sdk` and `go mod tidy` used to run here and were removed
+    # deliberately. Both rewrite TRACKED files — docs/openapi.json, ui/src/sdk,
+    # sdk/go, sdk/ts, terraform-provider-apiary, go.mod, go.sum — and goreleaser's
+    # validate step refuses to release from a dirty working tree. That only ever
+    # worked because the generators are version-pinned and reproduce byte-identical
+    # output; the first time they did not, the release would fail AFTER the tag was
+    # pushed, and the version guards in this repo refuse to re-cut a tagged version.
+    #
+    # Generated output is now verified on pull requests instead (see
+    # .github/workflows/ci.yml), so drift fails a PR rather than a release.
+    - yarn --cwd ui/ build
+
+builds:
+  - id: apiary
+    main: ./main.go
+    binary: apiary
+    env:
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    ldflags:
+      # v{{ .Version }}, not {{ .Tag }}. .Tag is ALWAYS populated — on an untagged
+      # commit it holds the most recent tag — so the old
+      # `{{ if .Tag }}{{ .Tag }}{{ else }}dev{{ end }}` never reached its `dev`
+      # branch, and a snapshot build reported itself as the last release. Since
+      # `apiary version` is what you read off a running server to find out what is
+      # deployed, that was a lie in the one place it matters. .Version resolves to
+      # 1.2.3 on a tag and 1.2.4-SNAPSHOT-<commit> otherwise; the literal "v" keeps
+      # the v-prefixed format this project releases under.
+      - "-s -w -X github.com/glueops/apiary/internal/buildinfo.Version=v{{ .Version }} -X github.com/glueops/apiary/internal/buildinfo.Commit={{ .ShortCommit }} -X github.com/glueops/apiary/internal/buildinfo.Date={{ .Date }}"
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: apiary
+    ids:
+      - apiary
+    formats:
+      - tar.gz
+    # The version is in the name on purpose: without it every release produces
+    # apiary_linux_amd64.tar.gz, so two different builds land as byte-different
+    # files with identical names in caches, mirrors and downloads folders.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
