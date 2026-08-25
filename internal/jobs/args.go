@@ -148,9 +148,22 @@ func (ClaimPendingOnboardsArgs) InsertOpts() river.InsertOpts {
 		// One tick at a time, fleet-wide. Two overlapping ticks would both scan for
 		// claimable rows; the claim is atomic so they could not take the same row,
 		// but the second would find nothing and exist only to hold a connection.
+		//
+		// All four of River's REQUIRED states, not just the two this rule cares
+		// about. UniqueOpts.validate rejects a ByState missing any of available,
+		// pending, running or scheduled — and the rejection surfaces at insert
+		// time, which for a periodic job means the tick simply never appears.
+		// Listing only available and running produced exactly that: a registered
+		// periodic job, a registered worker, correct config, and no job ever
+		// inserted.
 		UniqueOpts: river.UniqueOpts{
-			ByArgs:  true,
-			ByState: []rivertype.JobState{rivertype.JobStateAvailable, rivertype.JobStateRunning},
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateScheduled,
+			},
 		},
 	}
 }
