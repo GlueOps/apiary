@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -62,6 +63,12 @@ type CreateHiveRequest struct {
 		Description string `json:"description,omitempty" maxLength:"1000"`
 	}
 }
+
+type DeleteHiveRequest struct {
+	ID string `path:"id" format:"uuid"`
+}
+
+type DeleteHiveResponse struct{}
 
 type CreateHiveResponse struct{ Body HiveView }
 
@@ -253,6 +260,76 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			return nil, mapErr(ctx, err)
 		}
 		return &CreateHiveResponse{Body: HiveView{ID: hive.ID.String(), Name: hive.Name, Provider: hive.Provider}}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-hives-delete",
+		Method:      http.MethodDelete,
+		Path:        "/fleet/hives/{id}",
+		Summary:     "Delete a hive",
+		Description: "Refuses while the cluster still holds hypervisors. A hypervisor row is the " +
+			"durable record of a physical machine — its machine id, its onboarding history, the " +
+			"agent bound to it — so deleting the cluster out from under one would either destroy " +
+			"that or leave it pointing at a cluster that no longer exists.\n\n" +
+			"Depart the nodes first; each one becomes fleetless and keeps its identity, and the " +
+			"cluster can then be removed.",
+		DefaultStatus: http.StatusNoContent,
+		Tags:          []string{"Fleet"},
+		Security:      apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *DeleteHiveRequest) (*DeleteHiveResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid hive id")
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Counted and deleted in ONE transaction. Checked outside it, a node could
+		// be adopted into this cluster by a capacity sync between the count and the
+		// delete, and the delete would then take the cluster out from under a live
+		// machine record.
+		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var hive tenant.Hive
+			if err := tx.First(&hive, "id = ?", id).Error; err != nil {
+				return err
+			}
+			var members int64
+			if err := tx.Model(&tenant.Hypervisor{}).
+				Where("hive_id = ?", id).Count(&members).Error; err != nil {
+				return err
+			}
+			if members > 0 {
+				return huma.Error409Conflict(fmt.Sprintf(
+					"this cluster still holds %d hypervisor(s); depart them first, which leaves "+
+						"each machine record intact and fleetless", members))
+			}
+			// Swarms are scoped to the hive and mean nothing without it, so they go
+			// with it. Hypervisors reference them by a composite key, and that is
+			// exactly why the count above has to come first: with a member still
+			// present this delete would be refused by the foreign key rather than by
+			// a message anyone can act on.
+			if err := tx.Where("hive_id = ?", id).Delete(&tenant.Swarm{}).Error; err != nil {
+				return err
+			}
+			return tx.Delete(&tenant.Hive{}, "id = ?", id).Error
+		})
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, huma.Error404NotFound("no such cluster")
+			}
+			var se huma.StatusError
+			if errors.As(err, &se) {
+				return nil, err
+			}
+			return nil, mapErr(ctx, err)
+		}
+		return &DeleteHiveResponse{}, nil
 	})
 
 	huma.Register(hapi, huma.Operation{

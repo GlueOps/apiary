@@ -1881,6 +1881,38 @@ paths:
       tags:
       - Fleet
   /api/v1/fleet/hives/{id}:
+    delete:
+      description: |-
+        Refuses while the cluster still holds hypervisors. A hypervisor row is the durable record of a physical machine — its machine id, its onboarding history, the agent bound to it — so deleting the cluster out from under one would either destroy that or leave it pointing at a cluster that no longer exists.
+
+        Depart the nodes first; each one becomes fleetless and keeps its identity, and the cluster can then be removed.
+      operationId: fleet-hives-delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Delete a hive
+      tags:
+      - Fleet
     patch:
       description: Only the fields present are changed. Setting an API URL and a credential
         is what makes a hive syncable.
@@ -7581,7 +7613,7 @@ components:
         $schema: https://openapi-generator.tech
         api_url: api_url
         cpu_overcommit_ratio: 1.0800828190461012
-        credential_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        credential_id: credential_id
         description: description
         insecure_skip_verify: true
         minimum_nodes: 1
@@ -7599,7 +7631,8 @@ components:
           minimum: 1
           type: number
         credential_id:
-          format: uuid
+          description: "A credential id to bind, or \"\" to unbind. Omit the field\
+            \ to leave the binding unchanged."
           type: string
         description:
           type: string

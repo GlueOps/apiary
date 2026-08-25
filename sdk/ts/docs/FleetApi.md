@@ -12,6 +12,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**fleetBeesList**](FleetApi.md#fleetbeeslist) | **GET** /api/v1/fleet/bees | List fleet agents |
 | [**fleetEnrolmentTokensMint**](FleetApi.md#fleetenrolmenttokensmint) | **POST** /api/v1/fleet/enrolment-tokens | Mint an enrolment token |
 | [**fleetHivesCreate**](FleetApi.md#fleethivescreate) | **POST** /api/v1/fleet/hives | Create a hive |
+| [**fleetHivesDelete**](FleetApi.md#fleethivesdelete) | **DELETE** /api/v1/fleet/hives/{id} | Delete a hive |
 | [**fleetHivesList**](FleetApi.md#fleethiveslist) | **GET** /api/v1/fleet/hives | List hives |
 | [**fleetHivesSync**](FleetApi.md#fleethivessync) | **POST** /api/v1/fleet/hives/{id}/sync | Refresh a hive\&#39;s capacity observations now |
 | [**fleetHivesUpdate**](FleetApi.md#fleethivesupdate) | **PATCH** /api/v1/fleet/hives/{id} | Update a hive\&#39;s configuration |
@@ -629,6 +630,84 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **201** | Created |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## fleetHivesDelete
+
+> fleetHivesDelete(id)
+
+Delete a hive
+
+Refuses while the cluster still holds hypervisors. A hypervisor row is the durable record of a physical machine — its machine id, its onboarding history, the agent bound to it — so deleting the cluster out from under one would either destroy that or leave it pointing at a cluster that no longer exists.  Depart the nodes first; each one becomes fleetless and keeps its identity, and the cluster can then be removed.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetHivesDeleteRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FleetApi(config);
+
+  const body = {
+    // string
+    id: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies FleetHivesDeleteRequest;
+
+  try {
+    const data = await api.fleetHivesDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **id** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | No Content |  -  |
 | **0** | Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

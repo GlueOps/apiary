@@ -24,6 +24,7 @@ type UpdateHiveRequestBody struct {
 	// e.g. https://10.0.0.1:8006/api2/json
 	ApiUrl *string `json:"api_url,omitempty"`
 	CpuOvercommitRatio *float64 `json:"cpu_overcommit_ratio,omitempty"`
+	// A credential id to bind, or \"\" to unbind. Omit the field to leave the binding unchanged.
 	CredentialId *string `json:"credential_id,omitempty"`
 	Description *string `json:"description,omitempty"`
 	// Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive.

@@ -456,6 +456,70 @@ func ensureTenantSchemaGrant(ctx context.Context, tenantDSN string) error {
 		`GRANT CREATE ON SCHEMA public TO `+pq.QuoteIdentifier(role)); err != nil {
 		return fmt.Errorf("grant create on %s: %w", dbName, err)
 	}
+
+	// OWNERSHIP, NOT PRIVILEGES — and they are not the same thing.
+	//
+	// The provisioner grants ALL PRIVILEGES on every table to the tenant role,
+	// which is enough to read and write them. It is NOT enough to ALTER one:
+	// Postgres requires OWNERSHIP for DDL, so a migration adding a column to a
+	// table the role does not own fails with "must be owner of table"
+	// (SQLSTATE 42501) no matter how many privileges it holds.
+	//
+	// That is not hypothetical. Tenant databases provisioned before goose ran as
+	// the tenant role have their earliest tables owned by the admin role and the
+	// rest owned by the tenant role, so every tenant migration after the one that
+	// first touched `credentials` failed — leaving live tenant schemas five
+	// migrations behind their models, with the API returning 500 on any query
+	// naming a column that had never been added.
+	//
+	// Run on the ADMIN connection, which owns the stragglers and can therefore
+	// give them away; a role cannot take ownership of a table for itself.
+	//
+	// Enumerated in Go and issued one statement at a time rather than as a
+	// plpgsql DO block. Identifiers cannot be bind parameters, so either shape
+	// interpolates — but this one interpolates a single quoted identifier per
+	// statement, the same way the GRANT above does, instead of assembling a
+	// procedural body out of string fragments.
+	// The statements are built BY POSTGRES, with format('%I'), and the role
+	// arrives as a bind parameter. Nothing is concatenated in Go.
+	//
+	// Identifiers cannot be bind parameters in DDL, so something has to quote
+	// them; %I is the server's own identifier quoting, applied to names read from
+	// its own catalogue. The cast on $1 is required: format() is variadic over
+	// "any", so the parameter has no inferable type and Postgres refuses the
+	// statement with "could not determine data type of parameter $1". That removes the hand-assembled SQL a reader would
+	// otherwise have to audit, and it is why this is a query returning statements
+	// rather than a loop concatenating them.
+	rows, err := db.QueryContext(ctx, `
+		SELECT format('ALTER TABLE public.%I OWNER TO %I', tablename, $1::text)
+		FROM pg_tables WHERE schemaname = 'public'
+		UNION ALL
+		SELECT format('ALTER SEQUENCE public.%I OWNER TO %I', sequencename, $1::text)
+		FROM pg_sequences WHERE schemaname = 'public'`, role)
+	if err != nil {
+		return fmt.Errorf("list objects in %s: %w", dbName, err)
+	}
+	var statements []string
+	for rows.Next() {
+		var stmt string
+		if err := rows.Scan(&stmt); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan objects in %s: %w", dbName, err)
+		}
+		statements = append(statements, stmt)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("list objects in %s: %w", dbName, err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("list objects in %s: %w", dbName, err)
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("transfer ownership in %s to %s: %w", dbName, role, err)
+		}
+	}
 	return nil
 }
 

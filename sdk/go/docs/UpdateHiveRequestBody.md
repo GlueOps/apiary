@@ -7,7 +7,7 @@ Name | Type | Description | Notes
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
 **ApiUrl** | Pointer to **string** | e.g. https://10.0.0.1:8006/api2/json | [optional] 
 **CpuOvercommitRatio** | Pointer to **float64** |  | [optional] 
-**CredentialId** | Pointer to **string** |  | [optional] 
+**CredentialId** | Pointer to **string** | A credential id to bind, or \&quot;\&quot; to unbind. Omit the field to leave the binding unchanged. | [optional] 
 **Description** | Pointer to **string** |  | [optional] 
 **InsecureSkipVerify** | Pointer to **bool** | Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive. | [optional] 
 **MinimumNodes** | Pointer to **int64** | Lower this only for a test fleet. Below three, a departure strands the nodes that remain. | [optional] 

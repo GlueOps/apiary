@@ -122,6 +122,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetBeesList**](docs/FleetAPI.md#fleetbeeslist) | **Get** /api/v1/fleet/bees | List fleet agents
 *FleetAPI* | [**FleetEnrolmentTokensMint**](docs/FleetAPI.md#fleetenrolmenttokensmint) | **Post** /api/v1/fleet/enrolment-tokens | Mint an enrolment token
 *FleetAPI* | [**FleetHivesCreate**](docs/FleetAPI.md#fleethivescreate) | **Post** /api/v1/fleet/hives | Create a hive
+*FleetAPI* | [**FleetHivesDelete**](docs/FleetAPI.md#fleethivesdelete) | **Delete** /api/v1/fleet/hives/{id} | Delete a hive
 *FleetAPI* | [**FleetHivesList**](docs/FleetAPI.md#fleethiveslist) | **Get** /api/v1/fleet/hives | List hives
 *FleetAPI* | [**FleetHivesSync**](docs/FleetAPI.md#fleethivessync) | **Post** /api/v1/fleet/hives/{id}/sync | Refresh a hive&#39;s capacity observations now
 *FleetAPI* | [**FleetHivesUpdate**](docs/FleetAPI.md#fleethivesupdate) | **Patch** /api/v1/fleet/hives/{id} | Update a hive&#39;s configuration

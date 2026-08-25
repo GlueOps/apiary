@@ -1637,6 +1637,9 @@ export type UpdateHiveRequestBody = {
      */
     api_url?: string;
     cpu_overcommit_ratio?: number;
+    /**
+     * A credential id to bind, or "" to unbind. Omit the field to leave the binding unchanged.
+     */
     credential_id?: string;
     description?: string;
     /**
@@ -2682,6 +2685,9 @@ export type UpdateHiveRequestBodyWritable = {
      */
     api_url?: string;
     cpu_overcommit_ratio?: number;
+    /**
+     * A credential id to bind, or "" to unbind. Omit the field to leave the binding unchanged.
+     */
     credential_id?: string;
     description?: string;
     /**
@@ -4185,6 +4191,33 @@ export type FleetHivesCreateResponses = {
 };
 
 export type FleetHivesCreateResponse = FleetHivesCreateResponses[keyof FleetHivesCreateResponses];
+
+export type FleetHivesDeleteData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/hives/{id}';
+};
+
+export type FleetHivesDeleteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetHivesDeleteError = FleetHivesDeleteErrors[keyof FleetHivesDeleteErrors];
+
+export type FleetHivesDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type FleetHivesDeleteResponse = FleetHivesDeleteResponses[keyof FleetHivesDeleteResponses];
 
 export type FleetHivesUpdateData = {
     body: UpdateHiveRequestBodyWritable;
