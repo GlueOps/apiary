@@ -136,9 +136,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      # v8 and an EXPLICIT version, not v6 with `latest`.
+      #
+      # golangci-lint refuses to run when the Go it was built with is older than
+      # the `go` directive it is analysing, and this module targets 1.26.6. The v6
+      # action resolves `latest` within the golangci-lint v1.x line, whose
+      # releases are built with go1.24 — so every run failed on config load
+      # without ever looking at the code. Pinned rather than floating so a new
+      # upstream release cannot reintroduce the same mismatch silently.
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.12.2
       # golangci-lint analyses one module at a time; the root run does not
       # descend into the nested ones.
       - name: Lint the nested modules
