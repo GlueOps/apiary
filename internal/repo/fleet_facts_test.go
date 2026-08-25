@@ -173,6 +173,57 @@ func TestMarkFleetlessClearsMembershipNameAndSwarm(t *testing.T) {
 // a row the capacity sync cannot match against anything Proxmox reports, so the
 // sync treats the node as new and the cluster ends up with two rows for one
 // machine — and no write must happen on the way to that refusal.
+// A node that has just joined must NOT be schedulable.
+//
+// Its capacity has not been observed in the new cluster — Proxmox reports zero
+// cores for a node the instant it joins — its firewall has not converged, and
+// the agent may not have checked in. An operator makes it schedulable
+// deliberately, having seen what the sync eventually reported.
+//
+// The trap this guards is GORM's: Schedulable carries a `default:true` tag, and
+// a struct-based write omits the zero value and lets the column default apply,
+// so "set it to false" silently stores TRUE. This asserts the stored row, not
+// the call.
+func TestMarkJoinedLeavesTheNodeUnschedulable(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+	to := fleetSeedHiveIn(t, db)
+
+	seen := time.Now().UTC()
+	_, hv := seedOnboardedHost(t, db, to.ID, &seen)
+	// Explicitly schedulable first, so the test cannot pass because the row
+	// happened to be false already.
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
+		Update("schedulable", true).Error; err != nil {
+		t.Fatalf("make schedulable: %v", err)
+	}
+	if err := MarkFleetless(ctx, db, hv.ID); err != nil {
+		t.Fatalf("MarkFleetless: %v", err)
+	}
+
+	if err := MarkJoined(ctx, db, hv.ID, to.ID, "pve9"); err != nil {
+		t.Fatalf("MarkJoined: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got.Schedulable {
+		t.Fatal("a freshly joined node is schedulable — the placement oracle can land " +
+			"guests on a host whose capacity has not been observed in this cluster, whose " +
+			"firewall has not converged, and whose agent may not have checked in")
+	}
+	// And membership was still recorded: cordoning must not come at the cost of
+	// the thing this function exists to do.
+	if got.HiveID == nil || *got.HiveID != to.ID {
+		t.Fatalf("hive membership was not recorded: %v", got.HiveID)
+	}
+	if got.Name == nil || *got.Name != "pve9" {
+		t.Fatalf("the node name was not recorded: %v", got.Name)
+	}
+}
+
 func TestMarkJoinedRefusesAnEmptyNodeName(t *testing.T) {
 	db := factsDB(t)
 	ctx := context.Background()

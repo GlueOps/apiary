@@ -60,7 +60,22 @@ func MarkFleetless(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) err
 		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil}).Error
 }
 
-// MarkJoined records that a hypervisor has joined a hive under a node name.
+// MarkJoined records that a hypervisor has joined a hive under a node name, and
+// leaves it UNSCHEDULABLE.
+//
+// A node that has just joined has not been validated in its new home. Its
+// capacity has not been observed there — Proxmox does not populate
+// /cluster/resources stats for a node the instant it joins, so the first sync
+// after an arrival legitimately reports zero cores and zero memory — its
+// firewall rules have not converged, and the agent may not yet have checked in.
+// Landing a guest on it in that window is not something the control plane should
+// decide on its own, so an operator makes it schedulable deliberately, having
+// looked at what the sync eventually reported.
+//
+// Explicit false in a map, which is what makes it work. Schedulable carries a
+// `default:true` tag, and GORM omits a zero value from an INSERT for any field
+// that has one — so a struct with Schedulable:false stores TRUE. Updates() with
+// an explicit map is not subject to that.
 //
 // The empty-name guard is the point. Membership without a node name leaves a row
 // the next capacity sync cannot match to anything the Proxmox API reports, so
@@ -75,5 +90,9 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 	}
 	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("id = ?", hypervisorID).
-		Updates(map[string]any{"hive_id": hiveID, "name": nodeName}).Error
+		Updates(map[string]any{
+			"hive_id":     hiveID,
+			"name":        nodeName,
+			"schedulable": false,
+		}).Error
 }

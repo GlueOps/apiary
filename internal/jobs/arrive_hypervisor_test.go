@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/google/uuid"
@@ -93,15 +94,16 @@ func (a *arriveRunner) Upload(context.Context, string, uint32, []byte) error { r
 func (a *arriveRunner) Reconnect(context.Context) error                      { return a.reconnectErr }
 
 type arriveHarness struct {
-	log         []string
-	joiner      *arriveRunner
-	target      *arriveRunner
-	snapshot    ArrivalSnapshot
-	joined      []uuid.UUID
-	joinedNames []string
-	syncs       []syncRequest
-	syncErr     error
-	orgID       uuid.UUID
+	log          []string
+	joiner       *arriveRunner
+	target       *arriveRunner
+	snapshot     ArrivalSnapshot
+	joined       []uuid.UUID
+	joinedNames  []string
+	syncs        []syncRequest
+	delayedSyncs []delayedSync
+	syncErr      error
+	orgID        uuid.UUID
 }
 
 func newArriveHarness() *arriveHarness {
@@ -161,12 +163,81 @@ func (h *arriveHarness) deps() ArriveDeps {
 			h.syncs = append(h.syncs, syncRequest{orgID: orgID, hiveID: hiveID})
 			return h.syncErr
 		},
+		EnqueueCapacitySyncAfter: func(_ context.Context, orgID, hiveID uuid.UUID,
+			after time.Duration) error {
+			h.delayedSyncs = append(h.delayedSyncs, delayedSync{
+				req: syncRequest{orgID: orgID, hiveID: hiveID}, after: after})
+			return h.syncErr
+		},
 	}
 }
 
 func (h *arriveHarness) run() error {
 	return Arrive(context.Background(), h.deps(),
 		ArriveInput{OrganizationID: h.orgID, HypervisorID: uuid.New(), TargetHiveID: h.snapshot.TargetHive.ID})
+}
+
+// delayedSync is one recorded call to EnqueueCapacitySyncAfter. The delay is
+// kept because it is the whole point of the call.
+type delayedSync struct {
+	req   syncRequest
+	after time.Duration
+}
+
+// Arrival must ask for the hive to be re-observed LATER, and must not also ask
+// for it immediately.
+//
+// Proxmox does not populate /cluster/resources stats for a node at the instant
+// it joins, so an immediate sync records zero cores and zero memory and stamps
+// last_synced_at — the figures then read as observed rather than missing, which
+// is worse than having none. Measured on real clusters: cpu=0 at the moment of
+// the join, cpu=4 moments later.
+//
+// The "and not also immediately" half is not tidiness. SyncHiveCapacityArgs is
+// unique ByArgs across five states INCLUDING scheduled, and River reports a
+// unique collision as a successful insert rather than an error — so enqueuing
+// both would drop one silently, with nothing in a log to say which.
+func TestArriveAsksForADelayedResyncAndOnlyThat(t *testing.T) {
+	h := newArriveHarness()
+	if err := h.run(); err != nil {
+		t.Fatalf("arrive: %v", err)
+	}
+	if len(h.delayedSyncs) != 1 {
+		t.Fatalf("want exactly one delayed sync, got %d", len(h.delayedSyncs))
+	}
+	got := h.delayedSyncs[0]
+	if got.req.hiveID != h.snapshot.TargetHive.ID {
+		t.Fatalf("the sync must be for the hive that gained the node (%s), got %s",
+			h.snapshot.TargetHive.ID, got.req.hiveID)
+	}
+	if got.after != ArrivalResyncDelay {
+		t.Fatalf("delay = %s, want ArrivalResyncDelay (%s)", got.after, ArrivalResyncDelay)
+	}
+	if got.after <= 0 {
+		t.Fatal("a non-positive delay is an immediate sync wearing a delay's clothes, " +
+			"which is the exact thing that recorded zero capacity")
+	}
+	if len(h.syncs) != 0 {
+		t.Fatalf("arrival also enqueued %d immediate sync(s); one of the two would be "+
+			"silently dropped as a unique duplicate", len(h.syncs))
+	}
+}
+
+// The immediate variant is still honoured when the delayed one is not wired, so
+// a caller that has not been updated degrades to the old behaviour rather than
+// silently never syncing at all.
+func TestArriveFallsBackToTheImmediateSyncWhenNoDelayedOneIsWired(t *testing.T) {
+	h := newArriveHarness()
+	d := h.deps()
+	d.EnqueueCapacitySyncAfter = nil
+	if err := Arrive(context.Background(), d, ArriveInput{
+		OrganizationID: h.orgID, HypervisorID: uuid.New(),
+		TargetHiveID: h.snapshot.TargetHive.ID}); err != nil {
+		t.Fatalf("arrive: %v", err)
+	}
+	if len(h.syncs) != 1 {
+		t.Fatalf("want one immediate sync as the fallback, got %d", len(h.syncs))
+	}
 }
 
 func TestArriveHappyPath(t *testing.T) {
@@ -601,23 +672,27 @@ func TestArriveTriggersACapacitySyncForTheHiveItJoined(t *testing.T) {
 	// Until the sync runs, this machine has membership recorded and no capacity
 	// figures — and a row with zero observed capacity reads to the placement
 	// oracle as a FULL host rather than a new one.
+	//
+	// DELAYED, because Proxmox has not populated stats for a node at the instant
+	// it joins: a sync run immediately writes those zeros AND stamps
+	// last_synced_at, so they read as observed rather than absent.
 	h := newArriveHarness()
 	if err := h.run(); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if len(h.syncs) != 1 {
-		t.Fatalf("an arrival must trigger exactly one capacity sync, got %v", h.syncs)
+	if len(h.delayedSyncs) != 1 {
+		t.Fatalf("an arrival must trigger exactly one capacity sync, got %v", h.delayedSyncs)
 	}
 	// The hive that GAINED the node. There is no second hive: CheckArrival refuses
 	// with already_in_hive whenever the joining machine still claims one, so a
 	// host reaching this point was fleetless.
-	if h.syncs[0].hiveID != h.snapshot.TargetHive.ID {
+	if h.delayedSyncs[0].req.hiveID != h.snapshot.TargetHive.ID {
 		t.Errorf("the sync must name the hive the node joined (%s), got %s",
-			h.snapshot.TargetHive.ID, h.syncs[0].hiveID)
+			h.snapshot.TargetHive.ID, h.delayedSyncs[0].req.hiveID)
 	}
-	if h.syncs[0].orgID != h.orgID {
+	if h.delayedSyncs[0].req.orgID != h.orgID {
 		t.Errorf("the sync must be enqueued for the arriving organization (%s), got %s",
-			h.orgID, h.syncs[0].orgID)
+			h.orgID, h.delayedSyncs[0].req.orgID)
 	}
 }
 
@@ -631,8 +706,9 @@ func TestArriveTriggersNoCapacitySyncWhenTheJoinFailed(t *testing.T) {
 	if err := h.run(); err == nil {
 		t.Fatal("a failed pvecm add must fail the arrival")
 	}
-	if len(h.syncs) != 0 {
-		t.Fatalf("an arrival that did not complete must not trigger a sync, got %v", h.syncs)
+	if len(h.syncs)+len(h.delayedSyncs) != 0 {
+		t.Fatalf("an arrival that did not complete must not trigger a sync, got %v / %v",
+			h.syncs, h.delayedSyncs)
 	}
 }
 
@@ -643,8 +719,8 @@ func TestArriveRefusalTriggersNoCapacitySync(t *testing.T) {
 	if err := h.run(); !errors.Is(err, ErrArrivalRefused) {
 		t.Fatalf("want ErrArrivalRefused, got %v", err)
 	}
-	if len(h.syncs) != 0 {
-		t.Fatalf("a refused arrival must trigger no sync, got %v", h.syncs)
+	if len(h.syncs)+len(h.delayedSyncs) != 0 {
+		t.Fatalf("a refused arrival must trigger no sync, got %v / %v", h.syncs, h.delayedSyncs)
 	}
 }
 
@@ -662,8 +738,8 @@ func TestArriveSucceedsEvenWhenTheSyncCannotBeEnqueued(t *testing.T) {
 	if len(h.joined) != 1 {
 		t.Errorf("membership must still be recorded, got %v", h.joined)
 	}
-	if len(h.syncs) != 1 {
-		t.Errorf("the enqueue must have been attempted, got %v", h.syncs)
+	if len(h.delayedSyncs) != 1 {
+		t.Errorf("the enqueue must have been attempted, got %v", h.delayedSyncs)
 	}
 }
 
@@ -682,8 +758,9 @@ func TestArriveTriggersNoSyncForAHiveThatCannotBeSynced(t *testing.T) {
 			if err := h.run(); err != nil {
 				t.Fatalf("an unconfigured hive must not stop an arrival: %v", err)
 			}
-			if len(h.syncs) != 0 {
-				t.Fatalf("no sync may be enqueued for a hive that cannot be synced, got %v", h.syncs)
+			if len(h.syncs)+len(h.delayedSyncs) != 0 {
+				t.Fatalf("no sync may be enqueued for a hive that cannot be synced, got %v / %v",
+					h.syncs, h.delayedSyncs)
 			}
 		})
 	}

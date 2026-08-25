@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/google/uuid"
@@ -42,6 +43,24 @@ type ArriveDeps struct {
 	// counterpart, and a dependency for the same reason: the fleet-cycle test in
 	// internal/service calls Arrive directly, with no River client to reach.
 	EnqueueCapacitySync func(ctx context.Context, orgID, hiveID uuid.UUID) error
+
+	// EnqueueCapacitySyncAfter asks for a fresh observation of one hive, LATER.
+	//
+	// Arrival uses this instead of the immediate variant, and the delay is the
+	// entire point: Proxmox does not populate /cluster/resources stats for a node
+	// the moment it joins, so a sync run immediately after a join reports zero
+	// cores and zero memory for it — and writes them with last_synced_at set, so
+	// the figures look freshly observed rather than absent. Measured on real
+	// clusters: the sync that ran at the instant of the join recorded cpu=0
+	// ram=0GiB, and the same node reported cpu=4 ram=3GiB moments later.
+	//
+	// It replaces the immediate sync rather than joining it. SyncHiveCapacityArgs
+	// is unique ByArgs across five states INCLUDING scheduled, so enqueuing both
+	// would silently drop the delayed one as a duplicate — the trap being that
+	// River reports a unique collision as a successful insert, so nothing would
+	// look wrong. Leaving the hive briefly without capacity figures is safe
+	// because MarkJoined leaves the node unschedulable anyway.
+	EnqueueCapacitySyncAfter func(ctx context.Context, orgID, hiveID uuid.UUID, after time.Duration) error
 }
 
 // ArrivalSnapshot is one consistent read of everything the arrival gate needs.
@@ -268,12 +287,20 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 		}
 	}
 
-	// The hive that just gained a node is re-observed NOW rather than at the next
-	// tick, for the mirror of departure's reason: the sync is the only writer of
-	// the observed columns and it runs on a timer, so until it does this machine
-	// has membership recorded but no capacity figures — and a row with zero
-	// observed capacity reads to the placement oracle as a FULL host, not a new
-	// one.
+	// The hive that just gained a node is re-observed SHORTLY, not at the next
+	// tick and not this instant.
+	//
+	// Not at the next tick, for the mirror of departure's reason: the sync is the
+	// only writer of the observed columns and it runs on a timer, so until it does
+	// this machine has membership recorded but no capacity figures — and a row
+	// with zero observed capacity reads to the placement oracle as a FULL host,
+	// not a new one.
+	//
+	// Not this instant either, which is what this used to do and what measuring it
+	// disproved: Proxmox has not populated stats for a node at the moment it
+	// joins, so the immediate sync recorded exactly the zeros the paragraph above
+	// is worried about — and stamped last_synced_at, making them read as observed
+	// rather than missing. A short delay is what makes the observation true.
 	//
 	// One hive, and the gate is what guarantees it: tenant.CheckArrival refuses
 	// with already_in_hive whenever CurrentHiveID is set, so a host that reaches
@@ -286,8 +313,18 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 	// re-creating a root grant on the target and revoking it again, and it shows
 	// the operator a failed job for a migration that worked. Real side effects for
 	// a bookkeeping miss the scheduled sync repairs on its own.
-	if d.EnqueueCapacitySync != nil && hiveIsSyncable(snap.TargetHive) {
-		if err := d.EnqueueCapacitySync(ctx, in.OrganizationID, snap.TargetHive.ID); err != nil {
+	if hiveIsSyncable(snap.TargetHive) {
+		enqueue := func(ctx context.Context) error {
+			if d.EnqueueCapacitySyncAfter != nil {
+				return d.EnqueueCapacitySyncAfter(ctx, in.OrganizationID, snap.TargetHive.ID,
+					ArrivalResyncDelay)
+			}
+			if d.EnqueueCapacitySync != nil {
+				return d.EnqueueCapacitySync(ctx, in.OrganizationID, snap.TargetHive.ID)
+			}
+			return nil
+		}
+		if err := enqueue(ctx); err != nil {
 			slog.WarnContext(ctx, "arrive: the host joined its hive but a capacity sync could not "+
 				"be triggered; the fleet view of that hive may be up to one sync interval out of "+
 				"date until the scheduled sync runs, and a manual sync clears it immediately",
@@ -296,6 +333,16 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 	}
 	return nil
 }
+
+// ArrivalResyncDelay is how long arrival waits before asking for the hive to be
+// re-observed.
+//
+// Long enough for pvestatd to have reported the new node — it runs on a ~10s
+// cycle — and short enough that an operator watching a migration does not think
+// it stalled. It is not a correctness boundary: if the observation is still
+// missing when this fires, the scheduled sync repairs it on its own, and the node
+// is unschedulable until an operator says otherwise either way.
+const ArrivalResyncDelay = 30 * time.Second
 
 // ArriveRunnerDeps adapts ArriveDeps to the shape `connect` takes, so both
 // workers share one implementation of the optional Connect/Close dance.

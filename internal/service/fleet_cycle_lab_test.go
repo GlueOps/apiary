@@ -9,6 +9,7 @@ import (
 
 	"github.com/glueops/apiary/internal/jobs"
 	"github.com/glueops/apiary/internal/models/tenant"
+	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/testsupport"
 	"github.com/glueops/apiary/pkg/proxmox"
 	"github.com/google/uuid"
@@ -193,6 +194,32 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	// these enqueue a River job; here there is no client, so the test runs the
 	// syncs the operation asked for — and only those.
 	var triggered []uuid.UUID
+	// The DELAYED recorder, which actually waits.
+	//
+	// Arrival asks for the hive to be re-observed after a delay because Proxmox
+	// has not populated /cluster/resources stats for a node at the instant it
+	// joins. A harness that recorded the request and synced immediately would
+	// reproduce exactly the bug the delay exists to fix — and did: this test
+	// reported `cpu=0 ram=0GiB` for a host with four cores until it honoured the
+	// wait. Sleeping here is the difference between demonstrating the fix and
+	// demonstrating the defect.
+	recordDelayedTrigger := func(stage string) func(context.Context, uuid.UUID, uuid.UUID, time.Duration) error {
+		return func(_ context.Context, gotOrg, hiveID uuid.UUID, after time.Duration) error {
+			if gotOrg != orgID {
+				t.Errorf("[%s] the sync must be enqueued for this organization (%s), got %s",
+					stage, orgID, gotOrg)
+			}
+			if after <= 0 {
+				t.Errorf("[%s] arrival asked for an immediate sync (%s); Proxmox reports zero "+
+					"capacity for a node at the moment it joins", stage, after)
+			}
+			t.Logf("[%s] ok  re-sync requested in %s", stage, after)
+			time.Sleep(after)
+			triggered = append(triggered, hiveID)
+			return nil
+		}
+	}
+
 	recordTrigger := func(stage string) func(context.Context, uuid.UUID, uuid.UUID) error {
 		return func(_ context.Context, gotOrg, hiveID uuid.UUID) error {
 			if gotOrg != orgID {
@@ -273,12 +300,18 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 		Snapshot: func(ctx context.Context, _, hypervisorID, hiveID uuid.UUID) (jobs.ArrivalSnapshot, error) {
 			return jobs.ArrivalSnapshotFromDB(ctx, db, hypervisorID, hiveID)
 		},
+		// repo.MarkJoined itself, not a copy of its body.
+		//
+		// This used to inline the same three-column update, and that copy drifted
+		// the moment production started leaving an arriving node unschedulable:
+		// the assertion below would have kept passing on the strength of the
+		// cordon applied before departure, while the real function's new
+		// behaviour went unexercised against live clusters. The point of this test
+		// is that the pieces compose, so it has to run the pieces.
 		MarkJoined: func(ctx context.Context, _, hypervisorID, hiveID uuid.UUID, nodeName string) error {
-			return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-				Where("id = ?", hypervisorID).
-				Updates(map[string]any{"hive_id": hiveID, "name": nodeName}).Error
+			return repo.MarkJoined(ctx, db.WithContext(ctx), hypervisorID, hiveID, nodeName)
 		},
-		EnqueueCapacitySync: recordTrigger("arrive"),
+		EnqueueCapacitySyncAfter: recordDelayedTrigger("arrive"),
 	}, jobs.ArriveInput{
 		OrganizationID: orgID,
 		HypervisorID:   moved.ID,
