@@ -46,6 +46,15 @@ type OnboardDeps struct {
 	// the two sides were free to choose the comparison could never match: every
 	// onboard would have ended in ErrNoHeartbeat however healthy the host.
 	Heartbeated func(ctx context.Context, orgID uuid.UUID, machineID string, since time.Time) (bool, error)
+
+	// RecordOutcome concludes the machine record the ticker claimed, writing
+	// `provisioned` or `failed` and releasing the lease. It reports whether the
+	// lease was still held; false means a later tick already took the row.
+	//
+	// A dependency rather than a direct write so this package keeps needing no
+	// tenant database handle of its own, which is what lets the whole sequence be
+	// driven by a test with no Postgres.
+	RecordOutcome func(ctx context.Context, orgID, hypervisorID uuid.UUID, err error) (bool, error)
 }
 
 // OnboardInput identifies one host to bring into a fleet.
@@ -133,6 +142,25 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 		return err
 	}
 
+	// The machine id may not have been known before we connected, and the host is
+	// the authority on it either way. A node discovered by the capacity sync is
+	// identified by (hive, name) with machine_id NULL, so the ticker that claimed
+	// this row had nothing to pass; an operator naming a host by address has no
+	// reason to know the value at all.
+	//
+	// Read here rather than at the top so it sits after InstallManagedKey, which
+	// is the one step that must come first. A failure to read is fatal rather
+	// than tolerated: every later check — is this host already live, has it
+	// heartbeated since we enrolled it — is asked ABOUT this id, and asking them
+	// about the empty string returns a confident, wrong answer.
+	machineID := in.MachineID
+	if machineID == "" {
+		machineID, err = ReadMachineID(ctx, runner)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Skip enrolment entirely if this host is ALREADY a working agent.
 	//
 	// Enrolling mints a new credential and repoints the bee at it, which
@@ -141,7 +169,7 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 	// A retry of this job would therefore take a healthy host and break it
 	// permanently, which is the worst shape an idempotency bug can have: the
 	// operation that is supposed to be safe to repeat is the one that does damage.
-	alreadyLive, err := d.Heartbeated(ctx, in.OrganizationID, in.MachineID, time.Now().Add(-2*time.Minute))
+	alreadyLive, err := d.Heartbeated(ctx, in.OrganizationID, machineID, time.Now().Add(-2*time.Minute))
 	if err != nil {
 		return fmt.Errorf("onboard: check for an existing agent: %w", err)
 	}
@@ -177,7 +205,7 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 	// accepted commands; only a heartbeat proves the agent is running, reachable
 	// and authenticated.
 	since := time.Now().UTC()
-	ok, err := waitForHeartbeat(ctx, d, in, since)
+	ok, err := waitForHeartbeat(ctx, d, in.OrganizationID, machineID, since)
 	if err != nil {
 		return err
 	}
@@ -295,10 +323,16 @@ func redactToken(out, token string) string {
 // question is not "is a process running" but "has this agent successfully
 // reached us and authenticated", and only one of those is evidence that
 // onboarding worked. A process can be up and unable to talk to anything.
-func waitForHeartbeat(ctx context.Context, d OnboardDeps, in OnboardInput, since time.Time) (bool, error) {
+// Takes the machine id rather than the whole input, because the id it must poll
+// on is the one READ FROM THE HOST when the caller supplied none — passing the
+// input would poll on the empty string and never see a heartbeat however healthy
+// the agent.
+func waitForHeartbeat(
+	ctx context.Context, d OnboardDeps, orgID uuid.UUID, machineID string, since time.Time,
+) (bool, error) {
 	const interval = 5 * time.Second
 	for {
-		ok, err := d.Heartbeated(ctx, in.OrganizationID, in.MachineID, since)
+		ok, err := d.Heartbeated(ctx, orgID, machineID, since)
 		if err != nil {
 			return false, fmt.Errorf("onboard: check heartbeat: %w", err)
 		}

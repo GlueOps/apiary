@@ -200,6 +200,13 @@ func runWorker() error {
 				}
 				return repo.Heartbeated(ctx, db, machineID, since)
 			},
+			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID, onboardErr error) (bool, error) {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return false, err
+				}
+				return repo.RecordOnboardOutcome(ctx, db, hvID, onboardErr)
+			},
 		}))
 
 		// Hypervisor departure: removing a host from its hive and leaving it
@@ -295,6 +302,19 @@ func runWorker() error {
 				_, err := riverClient.Insert(ctx, args, nil)
 				return err
 			}))
+
+		// The onboarding tick. Registered beside the capacity sync fan-out
+		// because it is the same shape — enumerate tenants, enqueue per row, do
+		// no remote work here — and shares its insert closure's reason for
+		// existing.
+		river.AddWorker(workers, jobs.NewClaimPendingOnboardsWorker(controlDB, fleetRepoFor,
+			func(ctx context.Context, args river.JobArgs) error {
+				if riverClient == nil {
+					return fmt.Errorf("onboarding tick: the river client is not ready")
+				}
+				_, err := riverClient.Insert(ctx, args, nil)
+				return err
+			}))
 	}
 
 	river.AddWorker(workers, jobs.NewDomainCohortAuditWorker(controlDB, jobs.CohortAuditOptions{
@@ -353,6 +373,21 @@ func runWorker() error {
 				},
 				&river.PeriodicJobOpts{
 					ID:         "fleet-capacity-sync",
+					RunOnStart: true,
+				},
+			),
+
+			// Onboarding tick. RunOnStart because a worker restarting during an
+			// onboard leaves rows in `provisioning` with leases that outlive the
+			// process; waiting a full interval before looking would add that
+			// interval to every machine already waiting.
+			river.NewPeriodicJob(
+				river.PeriodicInterval(cfg.FleetOnboardingTickInterval),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return &jobs.ClaimPendingOnboardsArgs{}, &river.InsertOpts{}
+				},
+				&river.PeriodicJobOpts{
+					ID:         "fleet-onboarding-tick",
 					RunOnStart: true,
 				},
 			),

@@ -164,6 +164,15 @@ type Config struct {
 	// most of the time — the gate working exactly as designed against a fleet
 	// nobody is observing often enough.
 	FleetCapacitySyncInterval time.Duration
+
+	// FleetOnboardingTickInterval is how often pending machines are claimed and
+	// handed to an onboarding worker.
+	//
+	// It is the LATENCY an operator sees between asking for a machine to be
+	// onboarded and anything happening, so it is short. It costs one query per
+	// organization per tick and nothing else when there is no work — the tick
+	// claims and enqueues, and does no SSH of its own.
+	FleetOnboardingTickInterval time.Duration
 }
 
 func (c *Config) Redacted() map[string]any {
@@ -266,6 +275,7 @@ func Load() (*Config, error) {
 		v.SetDefault("admission.cohort_min_sample", 5)
 		v.SetDefault("fleet.observation_max_age", "10m")
 		v.SetDefault("fleet.capacity_sync_interval", "3m")
+		v.SetDefault("fleet.onboarding_tick_interval", "30s")
 		v.SetDefault("admission.cohort_proven_ratio", 0.25)
 
 		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -321,6 +331,7 @@ func Load() (*Config, error) {
 			"admission.cohort_min_sample",
 			"fleet.observation_max_age",
 			"fleet.capacity_sync_interval",
+			"fleet.onboarding_tick_interval",
 			"admission.cohort_proven_ratio",
 		}
 		for _, key := range keys {
@@ -382,6 +393,7 @@ func Load() (*Config, error) {
 			AdmissionCohortMinSample:       v.GetInt("admission.cohort_min_sample"),
 			FleetObservationMaxAge:         v.GetDuration("fleet.observation_max_age"),
 			FleetCapacitySyncInterval:      v.GetDuration("fleet.capacity_sync_interval"),
+			FleetOnboardingTickInterval:    v.GetDuration("fleet.onboarding_tick_interval"),
 			AdmissionCohortProvenRatio:     v.GetFloat64("admission.cohort_proven_ratio"),
 		}
 
