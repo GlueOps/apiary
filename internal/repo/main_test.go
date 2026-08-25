@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 		firewallTestSchema,
 		enrolmentTestSchema,
 		fleetTestSchema,
+		factsTestSchema,
 		sshKeyTestSchema,
 		socialTestSchema,
 	)
