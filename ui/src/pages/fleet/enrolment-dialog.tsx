@@ -57,8 +57,13 @@ export function EnrolmentDialog({ open, onOpenChange }: EnrolmentDialogProps) {
   // silently reintroduce the localhost default, so the placeholder is left in
   // deliberately: it does not run, which is the point.
   const knowsItsAddress = Boolean(minted?.base_url);
+  // --install, because enrolment alone leaves the host UNSUPERVISED. It obtains
+  // a credential and nothing else: no systemd unit, nothing restarting the agent
+  // if it dies, no watchdog for one that wedges, and nothing bringing it back
+  // after a reboot. Such a host heartbeats once, from the operator's shell, and
+  // afterwards is indistinguishable from one nobody onboarded.
   const command = minted
-    ? `apiary-agent enrol --token ${minted.token} --base-url ${minted.base_url || '<control-plane-url>'}`
+    ? `apiary-agent enrol --token ${minted.token} --base-url ${minted.base_url || '<control-plane-url>'} --install`
     : '';
 
   const close = (next: boolean) => {
@@ -120,7 +125,10 @@ export function EnrolmentDialog({ open, onOpenChange }: EnrolmentDialogProps) {
               )}
               <p className="text-xs text-muted-foreground">
                 Only a hash of the token is stored. Any hypervisor can redeem it until it expires,
-                which is what lets a rack be enrolled in one batch.
+                which is what lets a rack be enrolled in one batch.{' '}
+                <code className="rounded bg-muted px-1 py-0.5">--install</code> also writes the
+                systemd unit and starts the service; without it the host is credentialled but
+                nothing supervises the agent or brings it back after a reboot.
               </p>
             </div>
 

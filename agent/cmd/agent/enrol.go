@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/glueops/apiary-agent/internal/bee"
+	"github.com/glueops/apiary-agent/internal/hostinstall"
 	"github.com/glueops/apiary-agent/internal/store"
 	apiary "github.com/glueops/apiary/sdk/go"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ import (
 var (
 	enrolToken     string
 	enrolMachineID string
+	enrolInstall   bool
 )
 
 var enrolCmd = &cobra.Command{
@@ -87,12 +89,39 @@ var enrolCmd = &cobra.Command{
 		// to an organization, and joining a fleet is a later task.
 		cmd.Printf("enrolled as bee %s in organization %s; not yet in a fleet\n",
 			res.GetBeeId(), res.GetOrganizationId())
+
+		// Enrolment obtains a credential. It does not make the agent a service,
+		// and a host that stops here has an identity and no supervision: nothing
+		// restarts the agent if it dies, nothing catches it if it wedges, and
+		// nothing brings it back after a reboot. It heartbeats once, from this
+		// shell, and then looks identical to a host nobody onboarded.
+		if !enrolInstall {
+			cmd.Printf("\nnot yet running as a service: run `apiary-agent install` to write the " +
+				"unit and start it\n")
+			return nil
+		}
+		if err := hostinstall.Install(ctx, hostinstall.Plan{
+			Unit:    hostinstall.Unit,
+			BaseURL: cfg.BaseURL,
+		}); err != nil {
+			// Deliberately not fatal to the enrolment, which SUCCEEDED and cannot
+			// be repeated with the same token. Reporting the install failure as an
+			// enrolment failure would send an operator to mint another token for a
+			// host that is already enrolled.
+			cmd.Printf("\nenrolled, but the service could not be installed: %v\n", err)
+			cmd.Printf("the credential is stored; run `apiary-agent install` once that is fixed\n")
+			return nil
+		}
+		cmd.Printf("installed %s and started %s\n", hostinstall.UnitPath, hostinstall.UnitName)
 		return nil
 	},
 }
 
 func init() {
 	enrolCmd.Flags().StringVar(&enrolToken, "token", "", "Enrolment token minted by platform staff")
+	enrolCmd.Flags().BoolVar(&enrolInstall, "install", false,
+		"Also write the systemd unit and start the service, so the host ends up supervised "+
+			"rather than merely credentialled.")
 	enrolCmd.Flags().StringVar(&enrolMachineID, "machine-id", "",
 		"Override the host identifier. For development on a machine with no /etc/machine-id; "+
 			"on a real hypervisor let it be read, so a rebuild rejoins as the same bee.")
