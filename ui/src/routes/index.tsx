@@ -23,6 +23,7 @@ import { OrgPolicies } from '@/pages/settings/org-policies.tsx';
 import { PlatformPolicies } from '@/pages/settings/platform-policies.tsx';
 import { ProfileSettings } from '@/pages/settings/profile.tsx';
 import { Security } from '@/pages/settings/security.tsx';
+import { SshKeys } from '@/pages/settings/ssh-keys.tsx';
 import { Team } from '@/pages/settings/team.tsx';
 import { LoginRoute } from '@/routes/login-route.tsx';
 
@@ -144,6 +145,11 @@ export const router = createBrowserRouter([
                 path: 'settings/api-keys',
                 element: <ApiKeys />,
                 handle: { title: 'API keys' },
+              },
+              {
+                path: 'settings/ssh-keys',
+                element: <SshKeys />,
+                handle: { title: 'Fleet SSH keys' },
               },
               {
                 path: 'settings/danger-zone',

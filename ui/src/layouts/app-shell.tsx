@@ -138,6 +138,7 @@ const settingsItems = [
   { title: 'Team', href: '/settings/team', icon: IconUsers },
   { title: 'Security policy', href: '/settings/policies', icon: IconLock },
   { title: 'API keys', href: '/settings/api-keys', icon: IconKey },
+  { title: 'Fleet SSH keys', href: '/settings/ssh-keys', icon: IconKey },
   { title: 'Danger zone', href: '/settings/danger-zone', icon: IconAlertTriangle },
 ];
 
