@@ -1,0 +1,43 @@
+// Repository overrides for Renovate. Two settings, both fixing something that
+// was observed rather than anticipated.
+//
+// DELIBERATELY MINIMAL, and with no `extends`. GlueOps applies its Renovate
+// configuration org-wide from outside this repository — which is why pull
+// requests here already arrive with the org's conventional-commit subjects and
+// `#patch` / `#minor` suffixes despite there being no config file until now.
+// Renovate merges a repository config over that global one, so listing only the
+// keys being changed keeps every org convention intact. An `extends` naming a
+// preset, or a fuller config copied from elsewhere, would silently replace
+// policy nobody in this repository decided to change.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // ONE PULL REQUEST PER PACKAGE, NOT ONE PER MAJOR VERSION IN BETWEEN.
+  //
+  // The org config enables separateMultipleMajor, which opens a pull request for
+  // every intermediate major: actions/checkout arrived as three separate PRs
+  // moving v4 to v5, to v6 and to v7 — three ways to reach one destination, of
+  // which only the last is wanted.
+  //
+  // Closing the intermediate ones by hand does not work. Nine were closed on
+  // 2026-08-25 and Renovate recreated all nine under new numbers within the
+  // hour, because a closed pull request is not a decision it can read. This
+  // setting is the decision. Five packages were affected — checkout, setup-go,
+  // setup-node, upload-artifact and typescript — turning what should have been
+  // five updates into fourteen open pull requests.
+  //
+  // The cost is real and accepted: a jump straight from v4 to v7 crosses three
+  // sets of breaking changes at once, so the release notes have to be read
+  // rather than skimmed. That is a better trade than a queue nobody reads.
+  separateMultipleMajor: false,
+
+  // RUN `go mod tidy` AFTER A GO UPDATE.
+  //
+  // Renovate edits go.mod and appends to go.sum, but it does not prune: the
+  // lines for the version being replaced stay behind. This repository's CI runs
+  // `go mod tidy` across all four modules and fails on any diff, so every Go
+  // dependency pull request failed the tidy check — four of them at once, none
+  // for a reason a rebase could fix. Confirmed by running tidy on one of the
+  // branches, which removed exactly the four stale go.sum lines Renovate left.
+  postUpdateOptions: ["gomodTidy"],
+}
