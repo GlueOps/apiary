@@ -1,0 +1,89 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - gosec
+    - unconvert
+    - misspell
+    # Enforces errors.Is / errors.As over == and type assertions on errors.
+    # A direct comparison silently stops matching the moment anything in the
+    # call chain wraps the error with %w, and in this codebase those
+    # comparisons decide control flow on auth paths — a sentinel that quietly
+    # stops matching turns "not found" into an unhandled 500, or worse, skips
+    # a branch that was meant to reject.
+    - errorlint
+
+  settings:
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        # These are noisy for a template repo — value-receiver patterns
+        # are idiomatic for small-to-medium structs in handler/service code.
+        - hugeParam
+        - rangeValCopy
+        - ifElseChain
+        - singleCaseSwitch
+    gosec:
+      excludes:
+        - G101 # false positives on OAuth endpoint URLs and dummy config
+        - G104 # unhandled errors (covered by errcheck)
+        - G117 # false positives on JSON fields named "access_token"
+        - G204 # subprocess with variable args is expected in CLI tools
+        - G301 # directory permissions 0755 are fine for generated docs
+        - G304 # file inclusion via variable is expected in codegen
+        - G306 # file permissions 0644 are fine for generated code
+        - G703 # path traversal false positives in codegen tooling
+
+  exclusions:
+    paths:
+      - sdk
+      - ui
+      - vendor
+      - tools
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # pkg/proxmox is an adapted upstream Proxmox client — 14k lines this
+      # project did not author, with no test coverage, since exercising it needs
+      # a live hypervisor.
+      #
+      # evalOrder and sloppyReassign are style, not correctness. `return v,
+      # c.Get(&v)` with a NAMED result is safe: the assignment is v = v, so what
+      # the callee wrote into the result variable survives whatever the
+      # evaluation order. Verified empirically before excluding, not assumed.
+      #
+      # The rewrite was attempted anyway, and the attempt is the argument for
+      # this exclusion: a mechanical pass over the 50 sites broke nodes.go on a
+      # multi-line return a single-line pattern mangled. Fifty hand edits across
+      # untested code, to satisfy a stylistic check, is a worse trade than the
+      # finding.
+      #
+      # gosec is deliberately NOT excluded for the library. Its findings here
+      # were real — seven integer conversions where a negative size wrapped to
+      # about eighteen exabytes instead of erroring — and they are fixed in
+      # pkg/proxmox/safeconv.go.
+      - path: 'pkg/proxmox/'
+        linters:
+          - gocritic
+
+      # The mage tooling walks this repository's own source to regenerate an
+      # endpoint list. G122 warns about symlink TOCTOU inside a WalkDir
+      # callback; restructuring a 300-line generator for a developer running
+      # mage over their own checkout is not worth it. Library code in
+      # pkg/proxmox keeps gosec.
+      - path: 'pkg/proxmox/mage/'
+        linters:
+          - gosec

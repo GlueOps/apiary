@@ -1,0 +1,123 @@
+services:
+  postgres:
+    build:
+      context: postgres
+    env_file: .env
+    environment:
+      POSTGRES_USER: $DB_USER
+      POSTGRES_PASSWORD: $DB_PASSWORD
+      POSTGRES_DB: $DB_NAME
+      # Scratch databases created on a FRESH volume by
+      # postgres/initdb/10-create-extra-db.sh. apiary_test is the suite's
+      # database: a separate DATABASE on this server, never a separate schema in
+      # $DB_NAME. Tests create and drop schemas wholesale, so sharing the
+      # application database means the suite migrates and truncates real data —
+      # which has happened here.
+      #
+      # It is deliberately NOT atlas_dev: Atlas rewrites and drops everything in
+      # its dev database on every `just generate`, which would delete test
+      # schemas mid-run.
+      POSTGRES_EXTRA_DATABASES: atlas_dev,apiary_test,keycloak
+    expose:
+      - 5432
+    ports:
+      - "${LOCAL_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$DB_USER -d $$DB_NAME" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pgweb:
+    image: sosedoff/pgweb@sha256:a5256d416e2e8b92d69a4459058e3eca33a9f075d8325491644411d0bc3bd70b
+    restart: always
+    ports:
+      - "${LOCAL_PGWEB_PORT}:8081"
+    links:
+      - postgres:postgres
+    env_file: .env
+    environment:
+      PGWEB_DATABASE_URL: postgres://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  pgbouncer:
+    build:
+      context: ./pgbouncer
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${LOCAL_BOUNCER_PORT}:6432"
+    environment:
+      - DATABASE_URL=postgres://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt
+
+  mailpit:
+    image: axllent/mailpit@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    restart: always
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.3
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: $DB_USER
+      KC_DB_PASSWORD: $DB_PASSWORD
+      KC_DB_SCHEMA: public
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      # Same two variables feed keycloak-seed below. Hardcoding them here is how
+      # the server and the seeder drift apart the moment anyone changes one.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASS:-admin}
+    ports:
+      - "${LOCAL_KEYCLOAK_PORT}:8080"
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/9000 &&
+          echo -e 'GET /health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          cat <&3 | grep -q ' 200 '
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  keycloak-seed:
+    image: quay.io/keycloak/keycloak:26.6.3
+    restart: "no"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASS:-admin}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-apiary}
+    volumes:
+      - ./keycloak/seed.sh:/seed/seed.sh:ro
+      - ./keycloak/realm.json:/seed/realm.json:ro
+    entrypoint:
+      - /bin/bash
+      - /seed/seed.sh
+
+volumes:
+  postgres_data:

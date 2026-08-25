@@ -1,0 +1,77 @@
+# ResendVerificationResponseBody
+
+## Properties
+
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
+**Message** | **string** |  | 
+
+## Methods
+
+### NewResendVerificationResponseBody
+
+`func NewResendVerificationResponseBody(message string, ) *ResendVerificationResponseBody`
+
+NewResendVerificationResponseBody instantiates a new ResendVerificationResponseBody object
+This constructor will assign default values to properties that have it defined,
+and makes sure properties required by API are set, but the set of arguments
+will change when the set of required properties is changed
+
+### NewResendVerificationResponseBodyWithDefaults
+
+`func NewResendVerificationResponseBodyWithDefaults() *ResendVerificationResponseBody`
+
+NewResendVerificationResponseBodyWithDefaults instantiates a new ResendVerificationResponseBody object
+This constructor will only assign default values to properties that have it defined,
+but it doesn't guarantee that properties required by API are set
+
+### GetSchema
+
+`func (o *ResendVerificationResponseBody) GetSchema() string`
+
+GetSchema returns the Schema field if non-nil, zero value otherwise.
+
+### GetSchemaOk
+
+`func (o *ResendVerificationResponseBody) GetSchemaOk() (*string, bool)`
+
+GetSchemaOk returns a tuple with the Schema field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSchema
+
+`func (o *ResendVerificationResponseBody) SetSchema(v string)`
+
+SetSchema sets Schema field to given value.
+
+### HasSchema
+
+`func (o *ResendVerificationResponseBody) HasSchema() bool`
+
+HasSchema returns a boolean if a field has been set.
+
+### GetMessage
+
+`func (o *ResendVerificationResponseBody) GetMessage() string`
+
+GetMessage returns the Message field if non-nil, zero value otherwise.
+
+### GetMessageOk
+
+`func (o *ResendVerificationResponseBody) GetMessageOk() (*string, bool)`
+
+GetMessageOk returns a tuple with the Message field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMessage
+
+`func (o *ResendVerificationResponseBody) SetMessage(v string)`
+
+SetMessage sets Message field to given value.
+
+
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+

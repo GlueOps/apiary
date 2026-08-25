@@ -1,0 +1,65 @@
+//go:build mage
+// +build mage
+
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/glueops/apiary/pkg/proxmox/mage/endpoints"
+	"github.com/glueops/apiary/pkg/proxmox/mage/install"
+	"github.com/glueops/apiary/pkg/proxmox/mage/test"
+	"github.com/magefile/mage/mg"
+	"github.com/magefile/mage/sh"
+)
+
+var (
+	envConfig = map[string]struct{}{
+		"PROXMOX_URL":              {},
+		"PROXMOX_USERNAME":         {},
+		"PROXMOX_PASSWORD":         {},
+		"PROXMOX_OTP":              {},
+		"PROXMOX_TOKENID":          {},
+		"PROXMOX_SECRET":           {},
+		"PROXMOX_NODE_NAME":        {},
+		"PROXMOX_NODE_STORAGE":     {},
+		"PROXMOX_APPLIANCE_PREFIX": {},
+		"PROXMOX_ISO_URL":          {},
+	}
+)
+
+var Aliases = map[string]interface{}{
+	"test":      test.Unit,
+	"install":   install.Dependencies,
+	"endpoints": endpoints.Sync,
+}
+
+func Ci() error {
+	fmt.Println("Running Continuous Integration...")
+	mg.Deps(
+		install.Dependencies,
+		Lint,
+		test.Coverage,
+		test.Build)
+	return nil
+}
+
+func Lint() error {
+	mg.Deps(install.Golangcilint)
+	fmt.Println("Running Linter...")
+	return sh.RunV("golangci-lint", "run")
+}
+
+func Env() error {
+	for k := range envConfig {
+		if strings.Contains(strings.ToLower(k), "password") || strings.Contains(strings.ToLower(k), "secret") {
+			fmt.Printf("%s: %s\n", k, strings.Repeat("*", len(os.Getenv(k))))
+		} else {
+			fmt.Printf("%s: %s\n", k, os.Getenv(k))
+		}
+	}
+
+	return nil
+}

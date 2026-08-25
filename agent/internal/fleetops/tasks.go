@@ -1,0 +1,345 @@
+package fleetops
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/glueops/apiary/pkg/proxmox"
+)
+
+// Task kinds. They are strings on the wire, so they are constants here and the
+// control plane's fleet handler documents the same values.
+const (
+	KindDistUpgrade = "fleet.host.dist-upgrade"
+	KindJoin        = "fleet.datacenter.join"
+	KindEvict       = "fleet.datacenter.evict"
+)
+
+// Phases. They are recorded before the step they name, and survive a reboot, so
+// a resumed task can tell what it has already done.
+const (
+	phasePreflight = "preflight"
+	phaseUpgrading = "upgrading"
+	phaseRebooting = "rebooting"
+	phaseVerifying = "verifying"
+	phaseJoining   = "joining"
+	phaseEvicting  = "evicting"
+)
+
+// Env is what fleetops needs from the agent runtime. It mirrors bee.Env, and is
+// redeclared here so this package does not import the runtime that calls it.
+type Env struct {
+	Logf    func(stream, format string, args ...any)
+	Phase   func(phase string)
+	Declare func(ctx context.Context, d time.Duration, reason string) error
+}
+
+// Deps are the collaborators an executor needs.
+type Deps struct {
+	Cluster  Cluster
+	Runner   Runner
+	Node     string // this host's Proxmox node name
+	Reboot   func(ctx context.Context) error
+	JoinPass func() (string, error)
+}
+
+// ---------------------------------------------------------------- dist-upgrade
+
+type DistUpgradeSpec struct {
+	// AllowGuestDowntime permits the upgrade when guests are still running here.
+	// Default false: an operator who has not said otherwise expects a rotation to
+	// refuse rather than to drop VMs.
+	AllowGuestDowntime bool `json:"allow_guest_downtime"`
+
+	// Reboot: "if-needed" (default), "always", or "never".
+	Reboot string `json:"reboot"`
+
+	// ExpectedDownSeconds is what the host declares before rebooting. It should
+	// be generous — a declaration that expires while the host is still coming up
+	// turns a normal reboot into an alert.
+	ExpectedDownSeconds int `json:"expected_down_seconds"`
+}
+
+// DistUpgrade upgrades the host and, if the distribution asks for it, reboots.
+//
+// Resumable across its own reboot. The phase is written BEFORE the reboot and
+// preserved by the store, so the agent that comes back up re-enters this
+// function, sees phaseRebooting, and finishes rather than upgrading again. Get
+// that wrong and a rotation loops forever on every host in the datacenter.
+func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec string) error {
+	var spec DistUpgradeSpec
+	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
+		return fmt.Errorf("invalid spec: %w", err)
+	}
+	if spec.Reboot == "" {
+		spec.Reboot = "if-needed"
+	}
+
+	// We are back from the reboot we caused.
+	if phase == phaseRebooting {
+		e.Phase(phaseVerifying)
+		e.Logf("agent", "back after the reboot this task requested")
+		return verifyAfterReboot(ctx, d, e)
+	}
+
+	e.Phase(phasePreflight)
+	report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
+	if err != nil {
+		return err
+	}
+	for _, n := range report.Notes {
+		e.Logf("agent", "%s", n)
+	}
+	if err := report.err("dist-upgrade"); err != nil {
+		return err
+	}
+
+	e.Phase(phaseUpgrading)
+	e.Logf("agent", "updating package lists")
+	if err := d.Runner.Run(ctx, e.Logf, "apt-get", "update"); err != nil {
+		return err
+	}
+	e.Logf("agent", "running dist-upgrade")
+	if err := d.Runner.Run(ctx, e.Logf, "apt-get",
+		"-o", "Dpkg::Options::=--force-confdef",
+		"-o", "Dpkg::Options::=--force-confold",
+		"-y", "dist-upgrade"); err != nil {
+		return err
+	}
+
+	needs := rebootRequired()
+	switch {
+	case spec.Reboot == "never":
+		if needs {
+			e.Logf("agent", "a reboot is required but reboot=never; this host is running an old kernel")
+		}
+		return nil
+	case spec.Reboot == "if-needed" && !needs:
+		e.Logf("agent", "no reboot required")
+		return nil
+	}
+
+	down := time.Duration(spec.ExpectedDownSeconds) * time.Second
+	if down <= 0 {
+		down = 15 * time.Minute
+	}
+
+	// DECLARE, THEN ACT — and refuse to act if the declaration did not land.
+	//
+	// Without this the control plane sees a hypervisor stop answering and cannot
+	// tell that from a failure, because nothing distinguishes them. The whole
+	// unavailability model rests on the announcement arriving BEFORE the
+	// silence, so a failure to announce has to stop the reboot.
+	e.Phase(phaseRebooting)
+	if err := e.Declare(ctx, down, "rebooting after dist-upgrade"); err != nil {
+		return fmt.Errorf("could not tell the control plane this host is about to reboot, so it "+
+			"would read the reboot as an outage; refusing to reboot: %w", err)
+	}
+	e.Logf("agent", "declared up to %s of expected downtime; rebooting now", down)
+
+	return d.Reboot(ctx)
+}
+
+func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
+	if err := d.Cluster.Status(ctx); err != nil {
+		if isNotClustered(err) {
+			e.Logf("agent", "host is up; not a cluster member")
+			return nil
+		}
+		return fmt.Errorf("host is back but the cluster cannot be read: %w", err)
+	}
+	if !d.Cluster.Quorate() {
+		// Reported as a failure, not a note. A node that returns to a cluster
+		// that has lost quorum is the moment a rotation must stop, before the
+		// next host is taken down.
+		return fmt.Errorf("host is back but the cluster is NOT quorate; stop the rotation before " +
+			"taking another node down")
+	}
+	e.Logf("agent", "host is back and the cluster is quorate")
+	return nil
+}
+
+// ------------------------------------------------------------------------ join
+
+type JoinSpec struct {
+	// Peer is an existing member to join through.
+	Peer string `json:"peer"`
+	// Fingerprint of that peer's certificate. Proxmox requires it, and it is
+	// what stops a join being pointed at an impostor.
+	Fingerprint string `json:"fingerprint"`
+	Force       bool   `json:"force"`
+}
+
+// Join adds this host to a cluster.
+//
+// The password is NOT in the spec, deliberately. Task specs are stored as jsonb
+// in the control database and retained after the task completes; a cluster root
+// password there would be a standing credential in a table many people can read,
+// which is the same mistake the queued-email design exists to avoid. The bee
+// reads it from local configuration placed on the host at provisioning time.
+func Join(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	var spec JoinSpec
+	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
+		return fmt.Errorf("invalid spec: %w", err)
+	}
+	if spec.Peer == "" {
+		return fmt.Errorf("a peer to join through is required")
+	}
+	if spec.Fingerprint == "" {
+		return fmt.Errorf("the peer's certificate fingerprint is required; without it the join " +
+			"cannot tell the intended cluster from anything else answering on that address")
+	}
+
+	e.Phase(phasePreflight)
+	// A host with guests must not join: Proxmox refuses, and the failure mode if
+	// it did not is that the joining node's guest configuration is replaced by
+	// the cluster's.
+	guests, err := d.Cluster.GuestsOn(ctx, d.Node)
+	if err == nil && len(guests) > 0 {
+		return fmt.Errorf("this host has %d guest(s); joining a cluster discards local guest "+
+			"configuration, so they must be moved or removed first", len(guests))
+	}
+
+	pass, err := d.JoinPass()
+	if err != nil {
+		return fmt.Errorf("no cluster join password available on this host: %w", err)
+	}
+
+	e.Phase(phaseJoining)
+	e.Logf("agent", "joining the cluster through %s", spec.Peer)
+	force := spec.Force
+	status, err := d.Cluster.JoinCluster(ctx, &proxmox.ClusterJoinOptions{
+		Hostname:    spec.Peer,
+		Password:    pass,
+		Fingerprint: spec.Fingerprint,
+		Force:       &force,
+	})
+	if err != nil {
+		return fmt.Errorf("join: %w", err)
+	}
+	e.Logf("agent", "join accepted: %s", strings.TrimSpace(status))
+	return nil
+}
+
+// ----------------------------------------------------------------------- evict
+
+type EvictSpec struct {
+	// Node to remove. NOT this one — see below.
+	Node string `json:"node"`
+}
+
+// Evict removes another node from the cluster.
+//
+// This task is issued to a node that will REMAIN, never to the one being
+// removed: `pvecm delnode` is executed by a surviving member, and a node cannot
+// delete itself from a cluster it is about to stop being part of.
+//
+// The removed host must then never be powered back on with its old
+// configuration — it will try to rejoin a cluster that no longer expects it.
+// That warning is logged into the task output because it is the part operators
+// forget, and the consequence lands on the cluster rather than the host.
+func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	var spec EvictSpec
+	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
+		return fmt.Errorf("invalid spec: %w", err)
+	}
+	if spec.Node == "" {
+		return fmt.Errorf("the node to remove is required")
+	}
+	if strings.EqualFold(spec.Node, d.Node) {
+		return fmt.Errorf("this task removes %q, which is the host running it; a node cannot "+
+			"remove itself from the cluster — issue this to a node that will remain", spec.Node)
+	}
+
+	e.Phase(phasePreflight)
+	r := &PreflightReport{}
+
+	if err := d.Cluster.Status(ctx); err != nil {
+		return fmt.Errorf("read cluster status: %w", err)
+	}
+	if !d.Cluster.Quorate() {
+		r.blocked("the cluster is not quorate; removing a node now cannot be agreed on and may " +
+			"not converge")
+	}
+	members := d.Cluster.MemberCount()
+	if !quorumSurvivesLosing(members, 1) {
+		r.blocked("removing a node leaves %d of %d, which is not a majority", members-1, members)
+	}
+
+	known := false
+	for _, n := range d.Cluster.NodeNames() {
+		if strings.EqualFold(n, spec.Node) {
+			known = true
+			break
+		}
+	}
+	if !known {
+		r.blocked("%q is not a member of this cluster (members: %s)",
+			spec.Node, strings.Join(d.Cluster.NodeNames(), ", "))
+	}
+
+	if guests, err := d.Cluster.GuestsOn(ctx, spec.Node); err != nil {
+		r.blocked("could not list guests on %q, so it is not known whether removing it strands "+
+			"anything: %v", spec.Node, err)
+	} else if len(guests) > 0 {
+		names := make([]string, 0, len(guests))
+		for _, g := range guests {
+			names = append(names, fmt.Sprintf("%s/%s", g.Type, g.ID))
+		}
+		// No override, deliberately. There used to be an allow_guest_loss flag
+		// and it was wrong, because what it caused is not downtime — it is
+		// ORPHANED GUESTS that nothing can adopt.
+		//
+		// Removing a node drops its guest configuration from this cluster's
+		// view. If that node then joins another datacenter, the join DISCARDS
+		// its local guest configuration. So the disks survive on storage while
+		// both clusters believe the guest is somebody else's problem: the one it
+		// left has forgotten it, and the one it joined never learned about it.
+		// There is no supported path back — recovery means hand-editing config
+		// under /etc/pve, which is precisely the position a fleet tool exists to
+		// keep operators out of.
+		//
+		// The alternative is always available, including for hardware that is
+		// already dead: reassign the guests to a surviving node FIRST, then
+		// evict. Adoption before eviction is recoverable at every step;
+		// eviction before adoption is recoverable at none.
+		r.blocked("%q still has %d guest(s) registered (%s).\n"+
+			"    Removing it now would orphan them: this cluster drops their configuration when the "+
+			"node leaves, and if that node later joins another datacenter the join discards its "+
+			"local guest configuration too. The disks would remain on storage with no cluster "+
+			"owning them, and no supported way to adopt them back.\n"+
+			"    Reassign them to a node that is staying first — by live migration if the host is "+
+			"up, or by moving their configuration to a surviving node if it is already dead — and "+
+			"then evict.",
+			spec.Node, len(guests), strings.Join(names, ", "))
+	}
+
+	for _, n := range r.Notes {
+		e.Logf("agent", "%s", n)
+	}
+	if err := r.err("evict"); err != nil {
+		return err
+	}
+
+	e.Phase(phaseEvicting)
+	e.Logf("agent", "removing %s from the cluster", spec.Node)
+	if err := d.Cluster.DeleteConfigNode(ctx, spec.Node); err != nil {
+		return fmt.Errorf("remove %s: %w", spec.Node, err)
+	}
+
+	e.Logf("agent", "%s removed.", spec.Node)
+	e.Logf("agent", "IMPORTANT: do not power %s back on with its existing configuration. A removed "+
+		"node still believes it is a member and will try to rejoin, which can corrupt the "+
+		"cluster's state. Reinstall it before it is used again.", spec.Node)
+	return nil
+}
+
+func orEmptyJSON(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "{}"
+	}
+	return s
+}

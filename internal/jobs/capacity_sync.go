@@ -1,0 +1,358 @@
+package jobs
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/glueops/apiary/internal/models/tenant"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+// CapacitySyncDeps is what the sync needs, declared consumer-side so the upsert
+// can be tested against a database without a Proxmox cluster.
+type CapacitySyncDeps struct {
+	// Inventory returns the hive's flat resource list, already mapped out of the
+	// provider's wire format. Only this function knows what a provider is.
+	Inventory func(ctx context.Context, orgID, hiveID uuid.UUID) ([]tenant.ResourceRow, error)
+
+	// TenantDB opens the organization's database.
+	TenantDB func(ctx context.Context, orgID uuid.UUID) (*gorm.DB, error)
+}
+
+// SyncHiveCapacity refreshes the Hypervisor rows for one hive.
+//
+// What it writes, and what it deliberately does not:
+//
+//   - OBSERVED columns are overwritten wholesale, including ObservedGuests. They
+//     describe the world, and the sync is the only writer.
+//   - RESERVED capacity, the per-host overcommit override, Schedulable, SWARM
+//     MEMBERSHIP and the whole ONBOARDING LIFECYCLE are PRESERVED on existing
+//     rows. The first four are operator intent, and a sync that reset them would
+//     un-cordon a host somebody drained — silently re-admitting it to the
+//     placement query mid-departure — or drop a hypervisor out of the swarm it
+//     was assigned to, which reads to the oracle as capacity vanishing for no
+//     reason. provisioning_state is worse still: resetting a working host to
+//     'pending' would put the onboarding ticker back onto metal that is already
+//     running guests. Every update below names the columns it writes, so all of
+//     this survives by construction rather than by remembering to exclude it.
+//   - Rows for nodes the cluster stopped reporting are CLEARED, NOT DELETED. See
+//     below; this is the change that made Hypervisor the durable machine record.
+//
+// The fold runs INSIDE the transaction rather than before it, which is a change
+// from when this only counted guests. It now needs the hive's placement ledger
+// to tell our guests from everybody else's, and reading that ledger apart from
+// the write would leave a window in which a placement acquires its VMID and is
+// then recorded as foreign — subtracted once as foreign and again as intended.
+//
+// ObservedGuests is not optional. The departure and arrival gates read it, and a
+// sync that wrote LastSyncedAt while leaving it at its zero default would turn
+// every gate from "refuses because the observation is stale" into "passes
+// because the node looks empty" — a fail-open on the check that decides whether
+// to dismantle a host's cluster membership. That is why the fold produces it and
+// the upsert below writes it in the same statement as LastSyncedAt: the two
+// cannot come apart.
+func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uuid.UUID) (int, error) {
+	rows, err := d.Inventory(ctx, orgID, hiveID)
+	if err != nil {
+		return 0, fmt.Errorf("capacity sync: read inventory: %w", err)
+	}
+
+	db, err := d.TenantDB(ctx, orgID)
+	if err != nil {
+		return 0, fmt.Errorf("capacity sync: open tenant database: %w", err)
+	}
+
+	now := time.Now().UTC()
+	var written int
+
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var members []tenant.Hypervisor
+		if err := tx.Where("hive_id = ?", hiveID).Find(&members).Error; err != nil {
+			return fmt.Errorf("load current hypervisors: %w", err)
+		}
+		byName := make(map[string]tenant.Hypervisor, len(members))
+		for _, h := range members {
+			// A member with no node name cannot be matched by one. It should not
+			// exist — the CHECK and the partial unique index both assume a
+			// clustered row is named — but indexing a map on "" would quietly make
+			// every such row the same row.
+			if h.Name != nil && *h.Name != "" {
+				byName[*h.Name] = h
+			}
+		}
+
+		// Machines belonging to no hive: onboarded but never joined, or departed
+		// and cleared. These are the candidates for ADOPTION — see the merge
+		// comment below.
+		var unclustered []tenant.Hypervisor
+		if err := tx.Where("hive_id IS NULL").Find(&unclustered).Error; err != nil {
+			return fmt.Errorf("load unclustered machines: %w", err)
+		}
+
+		// THE LEDGER, READ IN THE SAME TRANSACTION AS THE WRITE, and the fold
+		// happens here rather than before the database is opened because of it.
+		//
+		// These are the VMIDs of guests this system placed. Everything else the
+		// cluster reports is somebody's hand-created VM, and the whole point of
+		// the fold's Foreign* totals is that a placement decision subtracts it.
+		// Reading the ledger and writing the observation apart from one another
+		// would leave a window in which a placement lands, gets a VMID, and is
+		// then recorded as foreign — counted twice, once as foreign and once as
+		// intended.
+		managed, err := managedVMIDs(tx, hiveID)
+		if err != nil {
+			return err
+		}
+		observations := tenant.FoldClusterResources(rows, managed)
+
+		for name, obs := range observations {
+			cur, known := byName[name]
+
+			// THE MERGE. A machine onboarded through this system has a machine id
+			// and an address but no hive and no node name, because a node name does
+			// not exist until it joins a cluster. When it appears in one, the sync
+			// knows only (hive, name) — /cluster/resources reports no machine id —
+			// so matching on (hive_id, name) alone finds nothing and creates a
+			// SECOND record for a machine already in the table, carrying none of its
+			// onboarding history. Adopting the unclustered record instead is what
+			// makes onboarded-then-discovered end as one row.
+			//
+			// Adoption is by named-column UPDATE and touches only the two columns
+			// that ARE cluster membership. In particular machine_id, address,
+			// bee_id and the whole provisioning lifecycle stay exactly as the
+			// onboarding left them, which is the entire point of adopting rather
+			// than creating.
+			if !known {
+				if m := tenant.MatchMachineByNodeName(unclustered, name); m != nil {
+					if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", m.ID).
+						Updates(map[string]any{
+							"hive_id": hiveID,
+							"name":    name,
+						}).Error; err != nil {
+						return fmt.Errorf("adopt machine %q into this hive: %w", name, err)
+					}
+					cur, known = *m, true
+					// Withdraw it from the candidate pool: two node names must not
+					// both adopt one machine record within a single sync.
+					unclustered = withoutMachine(unclustered, m.ID)
+				}
+			}
+
+			// A guest row naming a node with no node row still produces an
+			// observation, and folding it in is the point — but it must not create
+			// a Hypervisor row for a node the cluster never described, because that
+			// row would then carry zero capacity and read as a full host.
+			if !obs.Online && !known {
+				continue
+			}
+
+			fields := map[string]any{
+				"observed_cpu_total":     obs.CPUTotal,
+				"observed_ram_gb_total":  obs.RAMGBTotal,
+				"observed_disk_gb_total": obs.DiskGBTotal,
+				"observed_cpu_used":      obs.CPUUsed,
+				"observed_ram_gb_used":   obs.RAMGBUsed,
+				"observed_disk_gb_used":  obs.DiskGBUsed,
+				// Written in the SAME statement as last_synced_at. A freshness
+				// stamp without a guest count is what makes the gates fail open,
+				// and the foreign columns are here for exactly the same reason:
+				// left at zero behind a fresh timestamp they say "no guests but
+				// ours on this node", which is what lets the oracle keep filling a
+				// host somebody hand-loaded.
+				"observed_guests":               obs.Guests,
+				"observed_foreign_cpu_used":     obs.ForeignCPUUsed,
+				"observed_foreign_ram_gb_used":  obs.ForeignRAMGBUsed,
+				"observed_foreign_disk_gb_used": obs.ForeignDiskGBUsed,
+				"last_synced_at":                now,
+			}
+
+			if known {
+				if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", cur.ID).
+					Updates(fields).Error; err != nil {
+					return fmt.Errorf("update hypervisor %q: %w", name, err)
+				}
+			} else {
+				// A node in this cluster that nobody onboarded through this system.
+				// Schedulable defaults true and reserved capacity zero, which is
+				// correct for a host nobody has expressed intent about yet.
+				//
+				// machine_id is left NULL: we have never read this machine's own
+				// identity, and there is no honest value to invent. That is what
+				// tenant.MatchMachineByAddress exists to resolve if an agent is
+				// later enrolled on it.
+				nodeName := name
+				h := tenant.Hypervisor{
+					HiveID:              &hiveID,
+					Name:                &nodeName,
+					ObservedCPUTotal:    obs.CPUTotal,
+					ObservedRAMGBTotal:  obs.RAMGBTotal,
+					ObservedDiskGBTotal: obs.DiskGBTotal,
+					ObservedCPUUsed:     obs.CPUUsed,
+					ObservedRAMGBUsed:   obs.RAMGBUsed,
+					ObservedDiskGBUsed:  obs.DiskGBUsed,
+					ObservedGuests:      obs.Guests,
+					// A node discovered rather than onboarded is the case most
+					// likely to be carrying guests nobody here placed, so omitting
+					// these on the create path would leave the newly found host
+					// reading as empty until some later sync happened to update it.
+					ObservedForeignCPUUsed:    obs.ForeignCPUUsed,
+					ObservedForeignRAMGBUsed:  obs.ForeignRAMGBUsed,
+					ObservedForeignDiskGBUsed: obs.ForeignDiskGBUsed,
+					LastSyncedAt:              &now,
+					Schedulable:               true,
+				}
+				if err := tx.Create(&h).Error; err != nil {
+					return fmt.Errorf("create hypervisor %q: %w", name, err)
+				}
+			}
+			written++
+		}
+
+		// Nodes the cluster stopped reporting.
+		//
+		// CLEARED, NOT DELETED, and that reversal is the reason this whole model
+		// exists. Deleting was what made membership self-healing, but it also
+		// destroyed the machine record — its identity, its address, its onboarding
+		// history — every time a host left a cluster, which left onboarding with
+		// nowhere to live and made a departed machine simply vanish. Clearing the
+		// cluster-derived columns achieves the same visible result: the row is no
+		// longer in any hive, no longer named, carries no capacity, and so cannot
+		// be a placement candidate — it just stays visible as ours-but-unclustered.
+		//
+		// ZEROING THE OBSERVATIONS IS NOT OPTIONAL. Leaving stale totals on a
+		// machine in no cluster is what would make DrainStateAt report real
+		// capacity for a host nothing can schedule onto. last_synced_at goes to
+		// NULL for the same reason: there is no current observation of a node the
+		// cluster is not reporting, and a fresh timestamp over stale numbers is the
+		// exact fail-open the gates are written to avoid.
+		//
+		// swarm_id goes with hive_id. A swarm is a subdivision of a cluster the
+		// machine has left, so keeping it would be meaningless — and
+		// ck_hypervisors_swarm_needs_hive rejects the row outright, since a
+		// composite foreign key on (hive_id, swarm_id) stops being checked at all
+		// once hive_id is NULL.
+		//
+		// What this gives up, said plainly: the delete used to fail against
+		// fk_placements_hypervisor's RESTRICT when the ledger still held
+		// placements on a node that had disappeared, which was a loud signal that
+		// this system believed guests were running on a host the cluster had
+		// forgotten. Clearing cannot fail that way. The discrepancy is still
+		// visible — the row now reads as unclustered with zero capacity while
+		// placements name it — but nothing raises it, and surfacing it is
+		// deliberately left to the drift report rather than to a sync that would
+		// otherwise stop syncing the whole hive over one stale placement.
+		//
+		// A named-column update rather than a struct save: hive_id, swarm_id and
+		// name are exactly the nullable-to-NULL case GORM drops from a struct save,
+		// and the observation columns carry `default:` tags, which it also omits at
+		// zero. A struct save here would silently do nothing.
+		for name, cur := range byName {
+			if _, still := observations[name]; still {
+				continue
+			}
+			if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", cur.ID).
+				Updates(map[string]any{
+					"hive_id":                nil,
+					"swarm_id":               nil,
+					"name":                   nil,
+					"observed_cpu_total":     0,
+					"observed_ram_gb_total":  0,
+					"observed_disk_gb_total": 0,
+					"observed_cpu_used":      0,
+					"observed_ram_gb_used":   0,
+					"observed_disk_gb_used":  0,
+					"observed_guests":        0,
+					// Zeroed with the rest. A machine in no cluster that kept a
+					// foreign load would read as permanently oversubscribed, which
+					// is the opposite mistake but still a wrong answer about a host
+					// nothing can schedule onto.
+					"observed_foreign_cpu_used":     0,
+					"observed_foreign_ram_gb_used":  0,
+					"observed_foreign_disk_gb_used": 0,
+					"last_synced_at":                nil,
+				}).Error; err != nil {
+				return fmt.Errorf("the cluster no longer reports node %q, but clearing its "+
+					"cluster membership failed: %w", name, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("capacity sync: %w", err)
+	}
+	return written, nil
+}
+
+// managedVMIDs is the set of provider guest ids this hive's placement ledger
+// accounts for — the guests the fold must NOT count as foreign, because they are
+// already counted through intended usage.
+//
+// Flat, not per-node, and deliberately: a Proxmox VMID is unique across a
+// CLUSTER, so a guest Proxmox migrated to a different host is still recognised
+// as ours wherever the inventory finds it. Keying by node would make a migrated
+// guest foreign on its new home while still counting as intended there,
+// subtracting it twice.
+//
+// THE STATE FILTER IS THE PART THAT MUST NOT BE COPIED FROM waggle, which
+// excludes every placement row carrying a vmid. Here a released or failed
+// placement contributes nothing to intended usage, so if its VM is still on the
+// node — leaked, or a deletion that failed — excluding its VMID would count that
+// guest ZERO times and reproduce the exact bug the foreign accounting closes.
+// The set is therefore derived from PlacementHoldsCapacity rather than restating
+// the two state names, so the exclude set and intended usage cannot come to
+// disagree about which rows count.
+//
+// Pending placements normally have no vmid yet and so never appear, which is
+// right: nothing is on the node to discover, and the reservation is already
+// carried by intended.
+func managedVMIDs(tx *gorm.DB, hiveID uuid.UUID) (map[int]struct{}, error) {
+	var ids []int
+	if err := tx.Model(&tenant.Placement{}).
+		Where("hive_id = ?", hiveID).
+		Where("vmid IS NOT NULL").
+		Where("state IN ?", placementStatesHoldingCapacity()).
+		Distinct().Pluck("vmid", &ids).Error; err != nil {
+		return nil, fmt.Errorf("read the placement ledger for this hive: %w", err)
+	}
+	set := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
+// placementStatesHoldingCapacity filters every known placement state through
+// PlacementHoldsCapacity rather than naming the two that pass.
+//
+// Roundabout on purpose. This list becomes SQL, and SQL cannot call the Go
+// predicate that defines the rule; deriving it is what stops a future state — or
+// a change of mind about whether 'failed' still holds capacity — from being
+// applied to intended usage and silently not to the exclude set.
+func placementStatesHoldingCapacity() []string {
+	all := []string{
+		tenant.PlacementPending,
+		tenant.PlacementActive,
+		tenant.PlacementFailed,
+		tenant.PlacementReleased,
+	}
+	out := make([]string, 0, len(all))
+	for _, s := range all {
+		if tenant.PlacementHoldsCapacity(s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// withoutMachine drops one machine from the adoption pool.
+func withoutMachine(pool []tenant.Hypervisor, id uuid.UUID) []tenant.Hypervisor {
+	out := pool[:0]
+	for _, h := range pool {
+		if h.ID != id {
+			out = append(out, h)
+		}
+	}
+	return out
+}

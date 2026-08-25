@@ -1,0 +1,52 @@
+{
+  "realm": "apiary",
+  "enabled": true,
+  "displayName": "Apiary",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "clients": [
+    {
+      "clientId": "apiary",
+      "name": "APIary",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "secret": "local-dev-apiary-client-secret",
+      "redirectUris": [
+        "http://localhost:8282/api/v1/auth/keycloak/callback",
+        "http://127.0.0.1:8282/api/v1/auth/keycloak/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8282",
+        "http://127.0.0.1:8282",
+        "http://localhost:5174"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "dev",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "dev@apiary.test",
+      "firstName": "Dev",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
