@@ -1,0 +1,29 @@
+# A backstop, not the release path.
+#
+# Releases build images through goreleaser, which assembles its own context in a
+# temp directory holding just the Dockerfile and the cross-compiled binaries —
+# this file is not consulted there at all. It exists because the Dockerfile sits
+# at the repository root, so `docker build .` is the obvious thing to try, and
+# the previous Dockerfile did exactly that with `COPY . .` and no .dockerignore:
+# a 731MB context carrying .env — the real ENCRYPTION_MASTER_KEY, JWT_SECRET,
+# database password and Proxmox token — plus .dragon-buddy/ and docs/security/.
+# The final stage copied only the binary, but layers are extractable, so anything
+# pushed to a registry shipped those credentials.
+#
+# The current Dockerfile copies two named binaries and nothing else, so no
+# context can leak through it. This stays so that a future `COPY .` cannot
+# reintroduce the problem silently.
+
+# Credentials and local-only notes. Never in an image, under any Dockerfile.
+.env
+.env.*
+.dragon-buddy/
+docs/security/
+
+# Nothing here belongs in an image, and it is what made the context 731MB.
+.git/
+**/node_modules/
+**/.yarn/
+bin/
+dist/
+repomix-output.md
