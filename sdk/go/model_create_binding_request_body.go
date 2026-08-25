@@ -26,9 +26,11 @@ type CreateBindingRequestBody struct {
 	Enabled bool `json:"enabled"`
 	// Omit to bind ORG-WIDE: every host in the organization, whatever fleet it is in. That is what covers a host between fleets, which has no hive-scoped bindings at all.
 	HiveId *string `json:"hive_id,omitempty"`
-	// Lower renders first, and outranks rule positions inside the ruleset.
+	// Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first.
 	Priority *int64 `json:"priority,omitempty"`
 	RulesetId string `json:"ruleset_id"`
+	// Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope.
+	SwarmId *string `json:"swarm_id,omitempty"`
 }
 
 type _CreateBindingRequestBody CreateBindingRequestBody
@@ -202,6 +204,38 @@ func (o *CreateBindingRequestBody) SetRulesetId(v string) {
 	o.RulesetId = v
 }
 
+// GetSwarmId returns the SwarmId field value if set, zero value otherwise.
+func (o *CreateBindingRequestBody) GetSwarmId() string {
+	if o == nil || IsNil(o.SwarmId) {
+		var ret string
+		return ret
+	}
+	return *o.SwarmId
+}
+
+// GetSwarmIdOk returns a tuple with the SwarmId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *CreateBindingRequestBody) GetSwarmIdOk() (*string, bool) {
+	if o == nil || IsNil(o.SwarmId) {
+		return nil, false
+	}
+	return o.SwarmId, true
+}
+
+// HasSwarmId returns a boolean if a field has been set.
+func (o *CreateBindingRequestBody) HasSwarmId() bool {
+	if o != nil && !IsNil(o.SwarmId) {
+		return true
+	}
+
+	return false
+}
+
+// SetSwarmId gets a reference to the given string and assigns it to the SwarmId field.
+func (o *CreateBindingRequestBody) SetSwarmId(v string) {
+	o.SwarmId = &v
+}
+
 func (o CreateBindingRequestBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -223,6 +257,9 @@ func (o CreateBindingRequestBody) ToMap() (map[string]interface{}, error) {
 		toSerialize["priority"] = o.Priority
 	}
 	toSerialize["ruleset_id"] = o.RulesetId
+	if !IsNil(o.SwarmId) {
+		toSerialize["swarm_id"] = o.SwarmId
+	}
 	return toSerialize, nil
 }
 

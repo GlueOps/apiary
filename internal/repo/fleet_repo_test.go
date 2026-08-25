@@ -86,23 +86,25 @@ func TestEnrolIsIdempotentOnTheMachineID(t *testing.T) {
 	r := NewFleetRepoGorm(db)
 	machine := uuid.NewString()
 
-	first, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	firstRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: machine, Address: "hv-01", APIKeyID: uuid.New(),
 		Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("first enrol: %v", err)
 	}
+	first := firstRes.Bee
 	firstMachine := machineFor(t, db, first.ID)
 
 	newKey := uuid.New()
-	second, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	secondRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: machine, Address: "hv-01-renamed", APIKeyID: newKey,
 		Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("re-enrol: %v", err)
 	}
+	second := secondRes.Bee
 
 	if second.ID != first.ID {
 		t.Fatalf("re-enrolling the same machine created a second bee (%s then %s); the first is "+
@@ -143,13 +145,14 @@ func TestEnrolStartsFleetlessAndDoesNotResetMembership(t *testing.T) {
 	r := NewFleetRepoGorm(db)
 	machine := uuid.NewString()
 
-	first, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	firstRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: machine, Address: "hv-02", APIKeyID: uuid.New(),
 		Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("first enrol: %v", err)
 	}
+	first := firstRes.Bee
 	if m := machineFor(t, db, first.ID); m.HiveID != nil {
 		t.Fatalf("a freshly enrolled host was placed in fleet %s; joining one is a task, and "+
 			"enrolling straight into a fleet means the migration path is never exercised", *m.HiveID)
@@ -162,13 +165,14 @@ func TestEnrolStartsFleetlessAndDoesNotResetMembership(t *testing.T) {
 		t.Fatalf("join fleet: %v", err)
 	}
 
-	second, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	secondRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: machine, Address: "hv-02", APIKeyID: uuid.New(),
 		Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("re-enrol: %v", err)
 	}
+	second := secondRes.Bee
 	m := machineFor(t, db, second.ID)
 	if m.HiveID == nil || *m.HiveID != hive.ID {
 		t.Fatalf("re-enrolment cleared fleet membership; a running hypervisor whose agent " +
@@ -203,13 +207,14 @@ func TestDiscoveredFirstOnboardedSecondIsOneRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bee, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	beeRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: uuid.NewString(), Address: "hv-07.dc1.example.com",
 		APIKeyID: uuid.New(), Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("enrol: %v", err)
 	}
+	bee := beeRes.Bee
 
 	// Scoped to this test's own hive and agent: the fixture schema is shared
 	// across the suite, so an unqualified count would be reporting other tests.
@@ -259,13 +264,14 @@ func TestEnrolRefusesToAdoptAnAmbiguousNodeName(t *testing.T) {
 		}
 	}
 
-	bee, err := r.EnrolBee(context.Background(), EnrolBeeInput{
+	beeRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
 		MachineID: uuid.NewString(), Address: "hv-08.example.com",
 		APIKeyID: uuid.New(), Now: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("enrol: %v", err)
 	}
+	bee := beeRes.Bee
 	m := machineFor(t, db, bee.ID)
 	if m.HiveID != nil {
 		t.Fatalf("enrolment attached this agent to a machine in hive %s on the strength of a "+
@@ -436,5 +442,78 @@ func TestABeeCannotReportOrLogAgainstAnotherBeesTask(t *testing.T) {
 		{Seq: 1, Message: "injected", LoggedAt: time.Now().UTC()},
 	}); !errors.Is(err, ErrTaskNotFound) {
 		t.Fatalf("logging to another bee's task: err = %v, want ErrTaskNotFound", err)
+	}
+}
+
+// A re-enrolment mints a new credential and overwrites bees.api_key_id with it.
+// The key it displaces has to be reported, or it stays valid in the control
+// database for the life of the organization: nothing points at it, so the agent
+// surface refuses it once the bee lookup misses, but it is still a live
+// agent-scoped credential and it outlives the host it was minted for. A
+// decommissioned or rebuilt machine must not leave one behind.
+func TestReEnrolmentReportsTheCredentialItReplaces(t *testing.T) {
+	db := fleetDB(t)
+	r := NewFleetRepoGorm(db)
+	ctx := context.Background()
+	machine := uuid.NewString()
+
+	firstKey, secondKey := uuid.New(), uuid.New()
+	first, err := r.EnrolBee(ctx, EnrolBeeInput{
+		MachineID: machine, Address: "hv-11", APIKeyID: firstKey, Now: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("first enrol: %v", err)
+	}
+	if first.ReplacedKeyID != nil {
+		t.Fatalf("a first enrolment displaced key %s — there was nothing to displace, and "+
+			"revoking it would retire the credential just issued", *first.ReplacedKeyID)
+	}
+
+	second, err := r.EnrolBee(ctx, EnrolBeeInput{
+		MachineID: machine, Address: "hv-11", APIKeyID: secondKey, Now: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("re-enrol: %v", err)
+	}
+	if second.ReplacedKeyID == nil {
+		t.Fatal("the re-enrolment reported no displaced credential, so the previous agent " +
+			"key is never revoked and stays valid indefinitely with nothing pointing at it")
+	}
+	if *second.ReplacedKeyID != firstKey {
+		t.Fatalf("reported %s as displaced, want the first key %s — revoking the wrong id "+
+			"retires a credential some other host is using", *second.ReplacedKeyID, firstKey)
+	}
+	if second.Bee.APIKeyID != secondKey {
+		t.Fatalf("the agent kept credential %s instead of the new %s", second.Bee.APIKeyID, secondKey)
+	}
+
+	// Same agent row throughout: a re-enrolment replaces the credential, not the
+	// agent, or the fleet accumulates a ghost row per rotation.
+	if second.Bee.ID != first.Bee.ID {
+		t.Fatalf("re-enrolment minted a new agent row %s (was %s)", second.Bee.ID, first.Bee.ID)
+	}
+}
+
+// Re-presenting the SAME key must not report it as displaced. A retried
+// enrolment that reused its credential would otherwise revoke the very key it
+// just wrote, locking the host out on its own retry.
+func TestReEnrolmentWithTheSameKeyDisplacesNothing(t *testing.T) {
+	db := fleetDB(t)
+	r := NewFleetRepoGorm(db)
+	ctx := context.Background()
+	machine := uuid.NewString()
+	key := uuid.New()
+
+	for i := 0; i < 2; i++ {
+		res, err := r.EnrolBee(ctx, EnrolBeeInput{
+			MachineID: machine, Address: "hv-12", APIKeyID: key, Now: time.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("enrol %d: %v", i, err)
+		}
+		if res.ReplacedKeyID != nil {
+			t.Fatalf("enrol %d reported %s as displaced, but it is the key still in use — "+
+				"revoking it locks the host out on its own retry", i, *res.ReplacedKeyID)
+		}
 	}
 }

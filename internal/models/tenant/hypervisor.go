@@ -448,6 +448,17 @@ func (h Hypervisor) Bookable(hive Hive) Capacity {
 // caller is forced to supply a number it computed under the same lock as the
 // insert. A signature that could be satisfied from a stale row would be an
 // invitation to race.
+//
+// THE CORDON CHECK BELOW IS A BACKSTOP, NOT THE ENFORCEMENT POINT. That is
+// SchedulablePredicate, evaluated inside the placement query's SELECT ... FOR
+// UPDATE — see drain.go, which explains why eligibility has to be decided inside
+// that read and notes that CandidateFor deliberately does not re-check it. This
+// check is kept anyway because it can only ever refuse: a caller that forgot the
+// predicate gets nothing placed rather than a guest on a cordoned host, and a
+// row read before a cordon and used after it is refused on the value it carries.
+// It is not sufficient on its own — a filter applied to rows already read cannot
+// see a cordon set in between — so removing the predicate on the strength of
+// this would reopen exactly the race the predicate exists to close.
 func (h Hypervisor) Fits(hive Hive, intended Capacity, s Slot) bool {
 	if !h.Schedulable {
 		return false

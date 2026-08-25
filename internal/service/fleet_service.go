@@ -14,6 +14,7 @@ import (
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -57,6 +58,10 @@ type EnrolmentRedeemer interface {
 // Control-side, because that credential is what resolves the tenant.
 type AgentKeyMinter interface {
 	Mint(ctx context.Context, in MintInput) (*MintResult, error)
+	// Revoke retires a credential a re-enrolment has superseded. Without it the
+	// displaced key stays valid in the control database for the life of the
+	// organization, with nothing pointing at it and nothing able to find it.
+	Revoke(ctx context.Context, id uuid.UUID) error
 	Authenticate(ctx context.Context, public, secret string, wantScopes ...string) (*Authenticated, error)
 }
 
@@ -206,7 +211,7 @@ func (s *FleetService) Enrol(ctx context.Context, in EnrolInput) (*EnrolResult, 
 		return nil, err
 	}
 
-	bee, err := fleet.EnrolBee(ctx, repo.EnrolBeeInput{
+	enrolled, err := fleet.EnrolBee(ctx, repo.EnrolBeeInput{
 		// The machine id is hashed. It identifies a physical host, and a database
 		// is not the place to keep an inventory of them in clear.
 		//
@@ -224,12 +229,55 @@ func (s *FleetService) Enrol(ctx context.Context, in EnrolInput) (*EnrolResult, 
 	if err != nil {
 		return nil, err
 	}
+
+	// Revoke the credential this enrolment displaced.
+	//
+	// AFTER the enrolment, deliberately. The new key is already installed and the
+	// agent is already using it, so revoking the old one can only close access
+	// that nothing needs. Doing it before would leave a window where a crash
+	// between the two left the host with no working credential at all.
+	//
+	// A FAILURE HERE DOES NOT FAIL THE ENROLMENT. The host in front of us has
+	// been admitted and holds a working key; refusing now would strand it while
+	// leaving the stale credential live anyway — strictly worse on both counts.
+	// It is audited instead, because a credential that outlives its replacement
+	// is exactly the kind of thing that should be visible rather than silent.
+	if enrolled.ReplacedKeyID != nil {
+		if err := s.keys.Revoke(ctx, *enrolled.ReplacedKeyID); err != nil {
+			s.auditKeyRevokeFailed(ctx, orgID, *enrolled.ReplacedKeyID, err)
+		}
+	}
+
 	return &EnrolResult{
-		Bee:            bee,
+		Bee:            enrolled.Bee,
 		OrganizationID: orgID,
 		KeyPublic:      minted.Public,
 		KeySecret:      minted.Secret,
 	}, nil
+}
+
+// auditKeyRevokeFailed records a credential that outlived the enrolment which
+// replaced it.
+//
+// Best-effort on purpose, at both levels: the enrolment has already succeeded,
+// so neither the revocation nor this record may fail it. The error's text is
+// recorded but no key material is — the id identifies the row without being
+// usable, and a failed revocation is exactly the moment someone pastes a log
+// line into a ticket.
+func (s *FleetService) auditKeyRevokeFailed(ctx context.Context, orgID, keyID uuid.UUID, cause error) {
+	if s.audit == nil {
+		return
+	}
+	_ = s.audit.Create(ctx, &control.AuthAuditEvent{
+		SubjectID:      keyID,
+		SubjectKind:    "agent",
+		OrganizationID: orgID,
+		EventType:      "agent_key_revoke_failed",
+		Metadata: datatypes.NewJSONType(map[string]any{
+			"api_key_id": keyID.String(),
+			"error":      cause.Error(),
+		}),
+	})
 }
 
 // Authenticate resolves a bee from the agent credential it presents.

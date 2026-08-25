@@ -323,7 +323,7 @@ example().catch(console.error);
 
 ## firewallPreview
 
-> PreviewResponseBody1 firewallPreview(hiveId)
+> PreviewResponseBody1 firewallPreview(hiveId, swarmId)
 
 Preview the rules a fleet would receive
 
@@ -355,6 +355,8 @@ async function example() {
   const body = {
     // string | Omit to preview a host that belongs to NO fleet — the state every migration passes through. (optional)
     hiveId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // string | Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only. (optional)
+    swarmId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
   } satisfies FirewallPreviewRequest;
 
   try {
@@ -375,6 +377,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **hiveId** | `string` | Omit to preview a host that belongs to NO fleet — the state every migration passes through. | [Optional] [Defaults to `undefined`] |
+| **swarmId** | `string` | Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only. | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 

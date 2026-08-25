@@ -209,10 +209,14 @@ export type CreateBindingRequestBody = {
      */
     hive_id?: string;
     /**
-     * Lower renders first, and outranks rule positions inside the ruleset.
+     * Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first.
      */
     priority?: number;
     ruleset_id: string;
+    /**
+     * Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope.
+     */
+    swarm_id?: string;
 };
 
 export type CreateHiveRequestBody = {
@@ -1835,10 +1839,14 @@ export type CreateBindingRequestBodyWritable = {
      */
     hive_id?: string;
     /**
-     * Lower renders first, and outranks rule positions inside the ruleset.
+     * Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first.
      */
     priority?: number;
     ruleset_id: string;
+    /**
+     * Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope.
+     */
+    swarm_id?: string;
 };
 
 export type CreateHiveRequestBodyWritable = {
@@ -3759,6 +3767,10 @@ export type FirewallPreviewData = {
          * Omit to preview a host that belongs to NO fleet — the state every migration passes through.
          */
         hive_id?: string;
+        /**
+         * Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only.
+         */
+        swarm_id?: string;
     };
     url: '/api/v1/firewall/preview';
 };

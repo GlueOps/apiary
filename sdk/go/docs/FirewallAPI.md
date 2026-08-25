@@ -285,7 +285,7 @@ Name | Type | Description  | Notes
 
 ## FirewallPreview
 
-> PreviewResponseBody1 FirewallPreview(ctx).HiveId(hiveId).Execute()
+> PreviewResponseBody1 FirewallPreview(ctx).HiveId(hiveId).SwarmId(swarmId).Execute()
 
 Preview the rules a fleet would receive
 
@@ -305,10 +305,11 @@ import (
 
 func main() {
 	hiveId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | Omit to preview a host that belongs to NO fleet — the state every migration passes through. (optional)
+	swarmId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only. (optional)
 
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
-	resp, r, err := apiClient.FirewallAPI.FirewallPreview(context.Background()).HiveId(hiveId).Execute()
+	resp, r, err := apiClient.FirewallAPI.FirewallPreview(context.Background()).HiveId(hiveId).SwarmId(swarmId).Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallPreview``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -330,6 +331,7 @@ Other parameters are passed through a pointer to a apiFirewallPreviewRequest str
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **hiveId** | **string** | Omit to preview a host that belongs to NO fleet — the state every migration passes through. | 
+ **swarmId** | **string** | Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only. | 
 
 ### Return type
 

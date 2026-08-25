@@ -108,15 +108,6 @@ func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor 
 	if nodeName == "" {
 		return nil
 	}
-	// A fully qualified enrolling address carries a domain the candidate cannot
-	// corroborate — a discovered machine is known only by hive and node name,
-	// never by address.
-	fqdn := false
-	if host := strings.TrimSuffix(strings.TrimSpace(address), "."); strings.Contains(host, ".") &&
-		net.ParseIP(host) == nil {
-		fqdn = true
-	}
-
 	var found *Hypervisor
 	for i := range candidates {
 		c := &candidates[i]
@@ -138,20 +129,28 @@ func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor 
 			continue
 		}
 
-		// No recorded address, so the only evidence is the node name.
-		// `hv5.dc2.example.com` truncates to `hv5` and matches the `hv5` a sync
-		// discovered in dc1: unambiguous by the name rule, and wrong, because those
-		// are two machines in two clusters. The agent's credential and machine id
-		// would land on the record for the other one.
+		// No recorded address, so the node name is the only evidence there is —
+		// and adopting on it is the POINT of this fallback, not a concession. A
+		// node the capacity sync discovered has a hive and a name and nothing
+		// else; refusing here would mean every agent enrolling on a discovered
+		// node creates a second record, which is the exact duplicate this function
+		// exists to prevent.
 		//
-		// Refused only when the candidate is IN A CLUSTER, which is precisely the
-		// case where being wrong means crossing one. A candidate with no hive has
-		// no cluster for a domain to contradict, so the ordinary onboard-by-FQDN
-		// path keeps working. The cost of refusing is a duplicate row an operator
-		// can merge, which this package prefers to a wrong adoption.
-		if fqdn && c.HiveID != nil {
-			continue
-		}
+		// The residual risk is real and bounded: `hv5.dc2.example.com` truncates
+		// to `hv5` and would match an `hv5` the sync discovered in dc1. A domain
+		// cannot rule that out, because a discovered machine has no address to
+		// compare a domain against — nothing in the model maps a DNS domain to a
+		// hive. It is narrower than it first looks, though: if both clusters have
+		// an `hv5`, two candidates match and the ambiguity refusal below returns
+		// nil. It only bites when exactly one cluster holds that node name and the
+		// enrolling host is a different machine of the same name in a cluster this
+		// system has not discovered yet.
+		//
+		// Closing it properly needs evidence, not a heuristic — the machine id the
+		// sync cannot report, or a hive recorded against a domain. A guard on
+		// "the address looks qualified" was tried and reverted: it refused the
+		// ordinary discovered-node adoption, which is the common case, to narrow
+		// an uncommon one.
 		if found != nil {
 			return nil
 		}

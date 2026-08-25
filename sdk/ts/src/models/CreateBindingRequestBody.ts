@@ -38,7 +38,7 @@ export interface CreateBindingRequestBody {
      */
     hiveId?: string;
     /**
-     * Lower renders first, and outranks rule positions inside the ruleset.
+     * Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first.
      * @type {number}
      * @memberof CreateBindingRequestBody
      */
@@ -49,6 +49,12 @@ export interface CreateBindingRequestBody {
      * @memberof CreateBindingRequestBody
      */
     rulesetId: string;
+    /**
+     * Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope.
+     * @type {string}
+     * @memberof CreateBindingRequestBody
+     */
+    swarmId?: string;
 }
 
 /**
@@ -75,6 +81,7 @@ export function CreateBindingRequestBodyFromJSONTyped(json: any, ignoreDiscrimin
         'hiveId': json['hive_id'] == null ? undefined : json['hive_id'],
         'priority': json['priority'] == null ? undefined : json['priority'],
         'rulesetId': json['ruleset_id'],
+        'swarmId': json['swarm_id'] == null ? undefined : json['swarm_id'],
     };
 }
 
@@ -93,6 +100,7 @@ export function CreateBindingRequestBodyToJSONTyped(value?: Omit<CreateBindingRe
         'hive_id': value['hiveId'],
         'priority': value['priority'],
         'ruleset_id': value['rulesetId'],
+        'swarm_id': value['swarmId'],
     };
 }
 

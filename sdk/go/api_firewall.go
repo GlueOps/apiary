@@ -647,11 +647,18 @@ type ApiFirewallPreviewRequest struct {
 	ctx context.Context
 	ApiService *FirewallAPIService
 	hiveId *string
+	swarmId *string
 }
 
 // Omit to preview a host that belongs to NO fleet — the state every migration passes through.
 func (r ApiFirewallPreviewRequest) HiveId(hiveId string) ApiFirewallPreviewRequest {
 	r.hiveId = &hiveId
+	return r
+}
+
+// Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only.
+func (r ApiFirewallPreviewRequest) SwarmId(swarmId string) ApiFirewallPreviewRequest {
+	r.swarmId = &swarmId
 	return r
 }
 
@@ -697,6 +704,9 @@ func (a *FirewallAPIService) FirewallPreviewExecute(r ApiFirewallPreviewRequest)
 
 	if r.hiveId != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "hive_id", r.hiveId, "form", "")
+	}
+	if r.swarmId != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "swarm_id", r.swarmId, "form", "")
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}

@@ -99,6 +99,7 @@ export interface FirewallBindingsUpdateRequest {
 
 export interface FirewallPreviewRequest {
     hiveId?: string;
+    swarmId?: string;
 }
 
 export interface FirewallRulesCreateRequest {
@@ -411,6 +412,10 @@ export class FirewallApi extends runtime.BaseAPI {
 
         if (requestParameters['hiveId'] != null) {
             queryParameters['hive_id'] = requestParameters['hiveId'];
+        }
+
+        if (requestParameters['swarmId'] != null) {
+            queryParameters['swarm_id'] = requestParameters['swarmId'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};

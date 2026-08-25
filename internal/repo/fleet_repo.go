@@ -21,7 +21,7 @@ var (
 )
 
 type FleetRepo interface {
-	EnrolBee(ctx context.Context, in EnrolBeeInput) (*tenant.Bee, error)
+	EnrolBee(ctx context.Context, in EnrolBeeInput) (*EnrolBeeResult, error)
 	BeeByAPIKeyID(ctx context.Context, keyID uuid.UUID) (*tenant.Bee, error)
 	RecordHeartbeat(ctx context.Context, in HeartbeatInput) error
 	ClaimNextTask(ctx context.Context, beeID uuid.UUID, lease time.Duration) (*tenant.FleetTask, error)
@@ -88,8 +88,30 @@ type EnrolBeeInput struct {
 // still in whatever cluster the control plane last confirmed, and resetting
 // membership here would silently un-join a running hypervisor because its agent
 // restarted. Nothing below writes either column.
-func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*tenant.Bee, error) {
+// EnrolBeeResult carries the enrolled agent and the credential it displaced.
+//
+// ReplacedKeyID exists so the credential a re-enrolment supersedes can be
+// REVOKED rather than merely forgotten. Overwriting bees.api_key_id leaves the
+// old key active in the control database forever: nothing points at it, so the
+// agent surface refuses it once the bee lookup misses, but it still passes
+// authentication, still counts as a live agent-scoped credential for the
+// organization, and outlives the host it was minted for. A decommissioned or
+// rebuilt machine should not leave a valid credential behind.
+//
+// It has to come out of the enrolment transaction. Reading the previous key with
+// a separate SELECT beforehand races two enrolments of the same host against
+// each other and can revoke the key the other one just installed.
+//
+// Nil when nothing was replaced — a first enrolment, or a fall-through that
+// minted a new agent row.
+type EnrolBeeResult struct {
+	Bee           *tenant.Bee
+	ReplacedKeyID *uuid.UUID
+}
+
+func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*EnrolBeeResult, error) {
 	var out tenant.Bee
+	var replaced *uuid.UUID
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		machine, err := findOrCreateMachine(tx, in)
 		if err != nil {
@@ -109,6 +131,23 @@ func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*tenant
 		// unavailability: a host that has just come back and said hello is, by
 		// definition, no longer away.
 		if machine.BeeID != nil {
+			// Read the credential we are about to displace, inside the transaction,
+			// so the caller can revoke it. A key that is merely overwritten stays
+			// valid in the control database with nothing pointing at it.
+			var prev tenant.Bee
+			switch err := tx.Select("api_key_id").First(&prev, "id = ?", *machine.BeeID).Error; {
+			case err == nil:
+				if prev.APIKeyID != uuid.Nil && prev.APIKeyID != in.APIKeyID {
+					id := prev.APIKeyID
+					replaced = &id
+				}
+			case errors.Is(err, gorm.ErrRecordNotFound):
+				// The link points at a bee that is gone; the fall-through below mints
+				// a new one and there is no credential to revoke.
+			default:
+				return err
+			}
+
 			res := tx.Model(&tenant.Bee{}).Where("id = ?", *machine.BeeID).Updates(map[string]any{
 				"api_key_id":         in.APIKeyID,
 				"agent_version":      in.AgentVersion,
@@ -124,6 +163,8 @@ func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*tenant
 			if res.RowsAffected > 0 {
 				return tx.First(&out, "id = ?", *machine.BeeID).Error
 			}
+			// Nothing was updated, so nothing was displaced either.
+			replaced = nil
 			// The link pointed at a bee that is gone. Fall through and mint a new
 			// agent row rather than failing the enrolment: the machine is real and
 			// the host in front of us is asking to be admitted.
@@ -149,7 +190,7 @@ func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*tenant
 	if err != nil {
 		return nil, err
 	}
-	return &out, nil
+	return &EnrolBeeResult{Bee: &out, ReplacedKeyID: replaced}, nil
 }
 
 // findOrCreateMachine resolves the machine record an enrolling agent is running

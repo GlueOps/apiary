@@ -75,7 +75,8 @@ type CreateBindingRequest struct {
 	Body struct {
 		RulesetID string `json:"ruleset_id" required:"true" format:"uuid"`
 		HiveID    string `json:"hive_id,omitempty" format:"uuid" doc:"Omit to bind ORG-WIDE: every host in the organization, whatever fleet it is in. That is what covers a host between fleets, which has no hive-scoped bindings at all."`
-		Priority  int    `json:"priority,omitempty" minimum:"0" default:"100" doc:"Lower renders first, and outranks rule positions inside the ruleset."`
+		SwarmID   string `json:"swarm_id,omitempty" format:"uuid" doc:"Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope."`
+		Priority  int    `json:"priority,omitempty" minimum:"0" default:"100" doc:"Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first."`
 		Enabled   bool   `json:"enabled" default:"true"`
 	}
 }
@@ -90,7 +91,8 @@ type UpdateBindingRequest struct {
 }
 
 type PreviewRequest struct {
-	HiveID string `query:"hive_id" format:"uuid" doc:"Omit to preview a host that belongs to NO fleet — the state every migration passes through."`
+	HiveID  string `query:"hive_id" format:"uuid" doc:"Omit to preview a host that belongs to NO fleet — the state every migration passes through."`
+	SwarmID string `query:"swarm_id" format:"uuid" doc:"Preview a host in one group inside the fleet. Requires hive_id. Omit to preview a host in no group, which receives fleet and organization scope only."`
 }
 type PreviewResponse struct {
 	Body struct {
@@ -360,7 +362,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid ruleset id")
 		}
-		var hiveID *uuid.UUID
+		var hiveID, swarmID *uuid.UUID
 		if in.Body.HiveID != "" {
 			id, err := uuid.Parse(in.Body.HiveID)
 			if err != nil {
@@ -368,7 +370,18 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 			}
 			hiveID = &id
 		}
-		b, err := svc.Bind(ctx, p.OrganizationID, hiveID, rulesetID, in.Body.Priority, in.Body.Enabled)
+		if in.Body.SwarmID != "" {
+			id, err := uuid.Parse(in.Body.SwarmID)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid group id")
+			}
+			swarmID = &id
+		}
+		// The swarm-needs-hive refusal and the swarm-belongs-to-this-hive check
+		// both live in the service, not here: a second copy of a scope rule in the
+		// handler is a second thing to keep in step, and the service is what the
+		// UI and any future caller share.
+		b, err := svc.Bind(ctx, p.OrganizationID, hiveID, swarmID, rulesetID, in.Body.Priority, in.Body.Enabled)
 		if err != nil {
 			return nil, mapErr(ctx, err)
 		}
@@ -438,7 +451,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, err
 		}
-		var hiveID *uuid.UUID
+		var hiveID, swarmID *uuid.UUID
 		if in.HiveID != "" {
 			id, err := uuid.Parse(in.HiveID)
 			if err != nil {
@@ -446,7 +459,14 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 			}
 			hiveID = &id
 		}
-		rules, err := svc.Preview(ctx, p.OrganizationID, hiveID)
+		if in.SwarmID != "" {
+			id, err := uuid.Parse(in.SwarmID)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid group id")
+			}
+			swarmID = &id
+		}
+		rules, err := svc.Preview(ctx, p.OrganizationID, hiveID, swarmID)
 		if err != nil {
 			return nil, mapErr(ctx, err)
 		}

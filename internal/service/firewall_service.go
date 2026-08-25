@@ -246,13 +246,25 @@ func (s *FirewallService) ListBindings(ctx context.Context, orgID uuid.UUID) ([]
 // The org-wide case is what covers a host between fleets. It is also how a base
 // ruleset stops being copied per fleet, which is the duplication the whole
 // structure exists to avoid.
-func (s *FirewallService) Bind(ctx context.Context, orgID uuid.UUID, hiveID *uuid.UUID, rulesetID uuid.UUID, priority int, enabled bool) (*tenant.FirewallBinding, error) {
+func (s *FirewallService) Bind(
+	ctx context.Context, orgID uuid.UUID, hiveID, swarmID *uuid.UUID,
+	rulesetID uuid.UUID, priority int, enabled bool,
+) (*tenant.FirewallBinding, error) {
 	r, err := s.repoFor(ctx, orgID)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := r.GetRuleset(ctx, rulesetID); err != nil {
 		return nil, err
+	}
+	// A SWARM WITHOUT ITS HIVE IS NOT A SCOPE. Swarm names are unique only within
+	// a hive, so a binding carrying a bare swarm id names a group without saying
+	// whose — and BindingsForScope matches swarm bindings on the swarm id ALONE,
+	// which is safe precisely because the pair is validated here. Accepting the
+	// half would let a binding written for one cluster's "prod" swarm resolve
+	// against another cluster's.
+	if swarmID != nil && hiveID == nil {
+		return nil, repo.ErrFirewallSwarmNeedsHive
 	}
 	if hiveID != nil {
 		ok, err := r.HiveExists(ctx, *hiveID)
@@ -263,11 +275,24 @@ func (s *FirewallService) Bind(ctx context.Context, orgID uuid.UUID, hiveID *uui
 			return nil, repo.ErrFirewallHiveNotFound
 		}
 	}
+	if swarmID != nil {
+		// Checked as a PAIR, not as "does this swarm exist anywhere". A swarm from
+		// a different hive would otherwise bind happily and then apply to hosts
+		// the operator never named.
+		ok, err := r.SwarmExists(ctx, *hiveID, *swarmID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, repo.ErrFirewallSwarmNotFound
+		}
+	}
 	if priority == 0 {
 		priority = 100
 	}
 	b := &tenant.FirewallBinding{
-		HiveID: hiveID, RulesetID: rulesetID, Priority: priority, Enabled: enabled,
+		HiveID: hiveID, SwarmID: swarmID, RulesetID: rulesetID,
+		Priority: priority, Enabled: enabled,
 	}
 	if err := r.CreateBinding(ctx, b); err != nil {
 		return nil, err
@@ -315,8 +340,12 @@ func (s *FirewallService) ManagementSets(ctx context.Context, orgID uuid.UUID) (
 // "what does hv5 actually get" is the difference between authoring a policy and
 // hoping about one.
 //
-// A nil hiveID answers for a host that belongs to no fleet.
-func (s *FirewallService) Preview(ctx context.Context, orgID uuid.UUID, hiveID *uuid.UUID) ([]tenant.FirewallRule, error) {
+// A nil hiveID answers for a host that belongs to no fleet. A nil swarmID means
+// "not in a swarm, or we do not know which" — both answer with hive and org
+// scope, which is the same thing a real host in no swarm receives.
+func (s *FirewallService) Preview(
+	ctx context.Context, orgID uuid.UUID, hiveID, swarmID *uuid.UUID,
+) ([]tenant.FirewallRule, error) {
 	r, err := s.repoFor(ctx, orgID)
 	if err != nil {
 		return nil, err
@@ -330,7 +359,19 @@ func (s *FirewallService) Preview(ctx context.Context, orgID uuid.UUID, hiveID *
 			return nil, repo.ErrFirewallHiveNotFound
 		}
 	}
-	bindings, err := r.BindingsForHive(ctx, hiveID)
+	if swarmID != nil {
+		if hiveID == nil {
+			return nil, repo.ErrFirewallSwarmNeedsHive
+		}
+		ok, err := r.SwarmExists(ctx, *hiveID, *swarmID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, repo.ErrFirewallSwarmNotFound
+		}
+	}
+	bindings, err := r.BindingsForScope(ctx, tenant.BindingScope{HiveID: hiveID, SwarmID: swarmID})
 	if err != nil {
 		return nil, err
 	}

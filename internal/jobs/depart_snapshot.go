@@ -37,10 +37,17 @@ func DepartureSnapshotFromDB(ctx context.Context, db *gorm.DB, hypervisorID uuid
 		// which a worker retries, instead of the gate's own not_a_member answer,
 		// which a worker cancels.
 		//
-		// Returned as an EMPTY snapshot rather than as a refusal from here: the
-		// gate lives in CheckDeparture and refuses on exactly this — a nil HiveID
-		// or a zero node count — so raising it here would be a second copy of one
-		// rule, and the copies would have to agree forever.
+		// Returned as a snapshot rather than as a refusal from here: the gate lives
+		// in CheckDeparture and refuses on exactly this — a nil HiveID or a zero
+		// node count — so raising it here would be a second copy of one rule, and
+		// the copies would have to agree forever.
+		//
+		// The snapshot is NOT empty. Hypervisor and BeeID are already set above and
+		// are deliberately kept, because CheckDeparture needs the machine to answer
+		// at all: it is what it reports not_a_member ABOUT. What is left unset is
+		// everything read per-hive below — the hive, its node count, the placements
+		// — every one of which is scoped by hive_id and would match nothing against
+		// a NULL anyway.
 		if hyp.HiveID == nil {
 			return nil
 		}

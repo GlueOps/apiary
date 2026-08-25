@@ -11,6 +11,7 @@ Name | Type
 `hiveId` | string
 `priority` | number
 `rulesetId` | string
+`swarmId` | string
 
 ## Example
 
@@ -24,6 +25,7 @@ const example = {
   "hiveId": null,
   "priority": null,
   "rulesetId": null,
+  "swarmId": null,
 } satisfies CreateBindingRequestBody
 
 console.log(example)

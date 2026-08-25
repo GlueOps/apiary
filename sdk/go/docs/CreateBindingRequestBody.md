@@ -7,8 +7,9 @@ Name | Type | Description | Notes
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
 **Enabled** | **bool** |  | [default to true]
 **HiveId** | Pointer to **string** | Omit to bind ORG-WIDE: every host in the organization, whatever fleet it is in. That is what covers a host between fleets, which has no hive-scoped bindings at all. | [optional] 
-**Priority** | Pointer to **int64** | Lower renders first, and outranks rule positions inside the ruleset. | [optional] [default to 100]
+**Priority** | Pointer to **int64** | Lower renders first, and outranks rule positions inside the ruleset. Ties break by scope, most specific first. | [optional] [default to 100]
 **RulesetId** | **string** |  | 
+**SwarmId** | Pointer to **string** | Narrow the binding to one group of hypervisors inside the fleet. Requires hive_id: swarm names are unique only within a fleet, so a swarm alone does not identify a scope. | [optional] 
 
 ## Methods
 
@@ -143,6 +144,31 @@ and a boolean to check if the value has been set.
 
 SetRulesetId sets RulesetId field to given value.
 
+
+### GetSwarmId
+
+`func (o *CreateBindingRequestBody) GetSwarmId() string`
+
+GetSwarmId returns the SwarmId field if non-nil, zero value otherwise.
+
+### GetSwarmIdOk
+
+`func (o *CreateBindingRequestBody) GetSwarmIdOk() (*string, bool)`
+
+GetSwarmIdOk returns a tuple with the SwarmId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSwarmId
+
+`func (o *CreateBindingRequestBody) SetSwarmId(v string)`
+
+SetSwarmId sets SwarmId field to given value.
+
+### HasSwarmId
+
+`func (o *CreateBindingRequestBody) HasSwarmId() bool`
+
+HasSwarmId returns a boolean if a field has been set.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

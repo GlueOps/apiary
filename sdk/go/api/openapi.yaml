@@ -1331,6 +1331,20 @@ paths:
           format: uuid
           type: string
         style: form
+      - description: "Preview a host in one group inside the fleet. Requires hive_id.\
+          \ Omit to preview a host in no group, which receives fleet and organization\
+          \ scope only."
+        explode: false
+        in: query
+        name: swarm_id
+        required: false
+        schema:
+          description: "Preview a host in one group inside the fleet. Requires hive_id.\
+            \ Omit to preview a host in no group, which receives fleet and organization\
+            \ scope only."
+          format: uuid
+          type: string
+        style: form
       responses:
         "200":
           content:
@@ -3663,6 +3677,7 @@ components:
         hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         priority: 0
         ruleset_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        swarm_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -3681,11 +3696,17 @@ components:
         priority:
           default: 100
           description: "Lower renders first, and outranks rule positions inside the\
-            \ ruleset."
+            \ ruleset. Ties break by scope, most specific first."
           format: int64
           minimum: 0
           type: integer
         ruleset_id:
+          format: uuid
+          type: string
+        swarm_id:
+          description: "Narrow the binding to one group of hypervisors inside the\
+            \ fleet. Requires hive_id: swarm names are unique only within a fleet,\
+            \ so a swarm alone does not identify a scope."
           format: uuid
           type: string
       required:

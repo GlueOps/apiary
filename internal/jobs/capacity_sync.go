@@ -312,6 +312,14 @@ func managedVMIDs(tx *gorm.DB, hiveID uuid.UUID) (map[int]struct{}, error) {
 	if err := tx.Model(&tenant.Placement{}).
 		Where("hive_id = ?", hiveID).
 		Where("vmid IS NOT NULL").
+		// AND NOT ZERO. FoldClusterResources treats a guest whose VMID never
+		// arrived (zero) as foreign, which is only true while nothing puts 0 in
+		// this set — a single placement row carrying a zero vmid would make every
+		// unidentified guest in the cluster look like ours and stop its capacity
+		// being subtracted at all, which is the exact failure the foreign
+		// accounting exists to close. IS NOT NULL does not exclude a stored zero,
+		// so it is excluded here rather than assumed away.
+		Where("vmid <> 0").
 		Where("state IN ?", placementStatesHoldingCapacity()).
 		Distinct().Pluck("vmid", &ids).Error; err != nil {
 		return nil, fmt.Errorf("read the placement ledger for this hive: %w", err)

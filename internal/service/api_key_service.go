@@ -143,6 +143,21 @@ type Authenticated struct {
 // human or an automation forging an agent) and an agent key must not reach the
 // org surface (a compromised hypervisor turning its credential on the rest of
 // the tenant's API).
+// Revoke retires a key by id.
+//
+// Idempotent, inherited from the repository: revoking an already-revoked key is
+// the state the caller wanted, and erroring would make a retried request look
+// like a failure. Takes no scope or organization, because the id already names
+// exactly one key — the authorization to revoke it belongs to whoever resolved
+// that id, not to this call.
+func (s *APIKeyService) Revoke(ctx context.Context, id uuid.UUID) error {
+	// A check that cannot reach a decision must deny.
+	if s == nil || s.keys == nil {
+		return ErrTenantUnavailable
+	}
+	return s.keys.Revoke(ctx, id)
+}
+
 func (s *APIKeyService) Authenticate(ctx context.Context, public, secret string, wantScopes ...string) (*Authenticated, error) {
 	key, err := s.keys.ByKeyHash(ctx, hashAPISecret(public))
 	if err != nil || key == nil {

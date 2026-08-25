@@ -115,7 +115,7 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	two := named("hv7", nil)
 	// Not yet in a cluster: there is no cluster for a domain to contradict, which
 	// is what makes adoption from a fully qualified address safe here. The
-	// clustered case is covered by TestMatchMachineByAddressRefusesACrossClusterAdoption.
+	// clustered case is covered by TestTwoClustersWithTheSameNodeNameAdoptNeither.
 	one.HiveID = nil
 	two.HiveID = nil
 
@@ -142,26 +142,50 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	}
 }
 
-func TestMatchMachineByAddressRefusesACrossClusterAdoption(t *testing.T) {
-	// The hole the ambiguity rule does not close. `hv5.dc2.example.com` truncates
-	// to `hv5`, and when the only discovered `hv5` is in dc1 that is UNAMBIGUOUS
-	// by name — so it adopted, and the agent's credential landed on the record for
-	// a physically different host in another cluster.
-	//
-	// The domain is evidence the candidate cannot corroborate. Refusing costs a
-	// duplicate row an operator can merge, which this package prefers to a wrong
-	// adoption.
+// The discovered-node adoption is the whole point of this fallback, and it has
+// to work from a fully qualified address because that is what agents enrol with.
+//
+// A guard on "the enrolling address looks qualified" was tried here and
+// reverted: it refused exactly this case — the common one — to narrow a rarer
+// one, so every agent enrolling on a node the capacity sync had already found
+// would have created a duplicate record.
+func TestMatchMachineByAddressAdoptsADiscoveredNode(t *testing.T) {
 	dc1 := uuid.New()
 	name := "hv5"
+	// What the capacity sync leaves behind: a hive and a node name, no machine
+	// id, no address. Proxmox's /cluster/resources reports nothing else.
 	candidates := []Hypervisor{{ID: uuid.New(), HiveID: &dc1, Name: &name}}
 
-	if m := MatchMachineByAddress(candidates, "hv5.dc2.example.com"); m != nil {
-		t.Fatal("a fully qualified address must not adopt a machine matched on its first " +
-			"label alone — that is how an agent lands on a host in another cluster")
+	if m := MatchMachineByAddress(candidates, "hv5.dc1.example.com"); m == nil {
+		t.Fatal("an agent enrolling on a node the sync already discovered adopted nothing, " +
+			"so enrolment creates a second record for one machine — one carrying the " +
+			"cluster membership and capacity, the other the agent, and neither the machine")
 	}
-	// A bare node name still adopts: that carries no contradicting evidence.
 	if m := MatchMachineByAddress(candidates, "hv5"); m == nil {
-		t.Fatal("a bare node name must still adopt")
+		t.Fatal("a bare node name must adopt too")
+	}
+}
+
+// The residual cross-cluster risk, pinned as the shape it actually has rather
+// than as a guard that does not exist.
+//
+// `hv5.dc2.example.com` truncating to `hv5` and adopting dc1's `hv5` is possible
+// ONLY while exactly one cluster holds that node name. The moment the second
+// cluster is discovered there are two candidates and the ambiguity rule refuses
+// both — which is the property worth asserting, because it is what bounds the
+// window. Closing the rest needs evidence the model does not carry: the machine
+// id the sync cannot report, or a hive recorded against a DNS domain.
+func TestTwoClustersWithTheSameNodeNameAdoptNeither(t *testing.T) {
+	dc1, dc2 := uuid.New(), uuid.New()
+	n1, n2 := "hv5", "hv5"
+	candidates := []Hypervisor{
+		{ID: uuid.New(), HiveID: &dc1, Name: &n1},
+		{ID: uuid.New(), HiveID: &dc2, Name: &n2},
+	}
+	if m := MatchMachineByAddress(candidates, "hv5.dc2.example.com"); m != nil {
+		t.Fatalf("adopted %s — with the same node name in two clusters there is no evidence "+
+			"which one enrolled, and attaching an agent's credential to the wrong physical "+
+			"host is worse than a duplicate row an operator can merge", m.ID)
 	}
 }
 
