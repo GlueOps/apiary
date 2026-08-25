@@ -265,3 +265,31 @@ lab-gates: _lab-env _require-test-db
   set -o pipefail
   go test ./internal/service/ -run TestDepartureGateAgainstLiveClusters \
     -count=1 -v -timeout 5m 2>&1 | python3 scripts/lab/timeline.py
+
+# Scan every module for known vulnerabilities that this code can actually reach.
+#
+# govulncheck walks the CALL GRAPH, so it reports an advisory only when a
+# vulnerable symbol is reachable from this code. That is the difference between
+# it and a manifest scanner: an advisory in a dependency nothing calls is not a
+# finding, so a non-empty result here is worth acting on rather than triaging.
+#
+# All four modules, because it analyses one at a time and the root run does not
+# descend into the nested ones. GOWORK=off so each resolves through its own
+# go.mod, which is how they are built and released.
+#
+# The database is fetched from vuln.go.dev at run time, so this can go red on a
+# tree that has not changed — which is the point. It means an advisory was
+# published against something already shipped.
+[doc("Scan every Go module for reachable known vulnerabilities")]
+vuln:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  # The toolchain is pinned in mise.toml; this is the fallback for a machine
+  # that has not run `mise install`, and it is why the version appears twice.
+  command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+  failed=0
+  for m in . ./pkg/proxmox ./sdk/go ./agent; do
+    echo "--- $m"
+    (cd "$m" && GOWORK=off govulncheck ./...) || failed=1
+  done
+  exit "$failed"

@@ -170,6 +170,55 @@ jobs:
       - name: Scan the history
         run: gitleaks git . --config .gitleaks.toml --redact --verbose
 
+  vulnerabilities:
+    name: no known vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # NOT pinned, and that is the opposite of the choice made for gitleaks two
+      # jobs down — deliberately, because the two scanners fail in opposite
+      # directions.
+      #
+      # A secret scanner whose rules move can turn a green history red on a
+      # commit that changed nothing, so gitleaks is pinned. A vulnerability
+      # scanner going red on a commit that changed nothing is the entire point:
+      # it means an advisory was published against code this repository already
+      # ships. Pinning the database away is the one thing that would make this
+      # job worthless.
+      #
+      # The TOOL is still pinned. Only the vulnerability data it fetches from
+      # vuln.go.dev is expected to move.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      # Every module, because govulncheck analyses one at a time and the root run
+      # does not descend into the nested ones — the same reason the lint job
+      # loops. GOWORK=off so each is resolved through its own go.mod rather than
+      # the workspace, which is how they are built and released.
+      #
+      # This is reachability, not a manifest scan: govulncheck walks the call
+      # graph and reports only advisories whose vulnerable symbols this code can
+      # actually reach. An advisory sitting in a dependency nothing calls is not
+      # a finding here, which is what makes a red result worth acting on.
+      - name: Scan every module
+        run: |
+          set -euo pipefail
+          failed=0
+          for m in . ./pkg/proxmox ./sdk/go ./agent; do
+            echo "::group::govulncheck $m"
+            (cd "$m" && GOWORK=off govulncheck ./...) || failed=1
+            echo "::endgroup::"
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::govulncheck reported a reachable vulnerability; see the groups above"
+            exit 1
+          fi
+
   lint:
     runs-on: ubuntu-latest
     steps:
