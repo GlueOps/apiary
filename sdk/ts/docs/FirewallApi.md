@@ -9,6 +9,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**firewallBindingsList**](FirewallApi.md#firewallbindingslist) | **GET** /api/v1/firewall/bindings | List ruleset bindings |
 | [**firewallBindingsUpdate**](FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding |
 | [**firewallPreview**](FirewallApi.md#firewallpreview) | **GET** /api/v1/firewall/preview | Preview the rules a fleet would receive |
+| [**firewallPublish**](FirewallApi.md#firewallpublish) | **POST** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet\&#39;s rules as the next revision |
+| [**firewallRevert**](FirewallApi.md#firewallrevert) | **POST** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision\&#39;s ruleset |
 | [**firewallRulesCreate**](FirewallApi.md#firewallrulescreate) | **POST** /api/v1/firewall/rulesets/{id}/rules | Add a rule to a ruleset |
 | [**firewallRulesDelete**](FirewallApi.md#firewallrulesdelete) | **DELETE** /api/v1/firewall/rules/{id} | Delete a rule |
 | [**firewallRulesList**](FirewallApi.md#firewallruleslist) | **GET** /api/v1/firewall/rulesets/{id}/rules | List a ruleset\&#39;s rules |
@@ -17,6 +19,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**firewallRulesetsDelete**](FirewallApi.md#firewallrulesetsdelete) | **DELETE** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset |
 | [**firewallRulesetsList**](FirewallApi.md#firewallrulesetslist) | **GET** /api/v1/firewall/rulesets | List firewall rulesets |
 | [**firewallRulesetsUpdate**](FirewallApi.md#firewallrulesetsupdate) | **PUT** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset |
+| [**firewallSnapshotBody**](FirewallApi.md#firewallsnapshotbody) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision\&#39;s ruleset |
+| [**firewallSnapshotsList**](FirewallApi.md#firewallsnapshotslist) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet\&#39;s published revisions |
 
 
 
@@ -397,6 +401,168 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | OK |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## firewallPublish
+
+> PublishResponseBody firewallPublish(hiveId, publishRequestBody)
+
+Publish this fleet\&#39;s rules as the next revision
+
+Renders every binding that applies to this fleet into one nft ruleset, stores it, and points the fleet at it. Bees converge on their next heartbeat.  Publishing an UNCHANGED policy does nothing and says so. Every revision makes the whole fleet re-apply, and re-applying an identical ruleset flushes and reloads every host\&#39;s firewall to arrive at the state it was already in.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FirewallApi,
+} from '@glueops/apiary-sdk';
+import type { FirewallPublishRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FirewallApi(config);
+
+  const body = {
+    // string
+    hiveId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // PublishRequestBody
+    publishRequestBody: ...,
+  } satisfies FirewallPublishRequest;
+
+  try {
+    const data = await api.firewallPublish(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **hiveId** | `string` |  | [Defaults to `undefined`] |
+| **publishRequestBody** | [PublishRequestBody](PublishRequestBody.md) |  | |
+
+### Return type
+
+[**PublishResponseBody**](PublishResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## firewallRevert
+
+> PublishResponseBody firewallRevert(hiveId, revertRequestBody)
+
+Republish an earlier revision\&#39;s ruleset
+
+Publishes an OLD revision\&#39;s body as a NEW revision. The number goes up, never down: a bee decides whether to converge by comparing what it applied against this number, and a number that moved backwards leaves a host pinned to the very ruleset being backed out.  The old body verbatim, not a re-render of the old rules — the rules have moved on, which is why this is a backout.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FirewallApi,
+} from '@glueops/apiary-sdk';
+import type { FirewallRevertRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FirewallApi(config);
+
+  const body = {
+    // string
+    hiveId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // RevertRequestBody
+    revertRequestBody: ...,
+  } satisfies FirewallRevertRequest;
+
+  try {
+    const data = await api.firewallRevert(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **hiveId** | `string` |  | [Defaults to `undefined`] |
+| **revertRequestBody** | [RevertRequestBody](RevertRequestBody.md) |  | |
+
+### Return type
+
+[**PublishResponseBody**](PublishResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
 | **0** | Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -1009,6 +1175,165 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | OK |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## firewallSnapshotBody
+
+> SnapshotBodyResponseBody firewallSnapshotBody(hiveId, revision)
+
+Read one published revision\&#39;s ruleset
+
+The exact text a host loads, so it can be compared against &#x60;nft list ruleset&#x60; on the machine. That comparison is the only way to answer \&#39;is this host running what we think\&#39; from the host itself.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FirewallApi,
+} from '@glueops/apiary-sdk';
+import type { FirewallSnapshotBodyRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FirewallApi(config);
+
+  const body = {
+    // string
+    hiveId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // number
+    revision: 789,
+  } satisfies FirewallSnapshotBodyRequest;
+
+  try {
+    const data = await api.firewallSnapshotBody(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **hiveId** | `string` |  | [Defaults to `undefined`] |
+| **revision** | `number` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**SnapshotBodyResponseBody**](SnapshotBodyResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | OK |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## firewallSnapshotsList
+
+> SnapshotsResponseBody firewallSnapshotsList(hiveId)
+
+List this fleet\&#39;s published revisions
+
+Newest first. This is what a backout is chosen from, so it carries the reason each revision was published and which revision a backout reproduced.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FirewallApi,
+} from '@glueops/apiary-sdk';
+import type { FirewallSnapshotsListRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FirewallApi(config);
+
+  const body = {
+    // string
+    hiveId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies FirewallSnapshotsListRequest;
+
+  try {
+    const data = await api.firewallSnapshotsList(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **hiveId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**SnapshotsResponseBody**](SnapshotsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: `application/json`, `application/problem+json`
 
 

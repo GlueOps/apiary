@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
+**Firewall** | Pointer to [**FirewallDesiredView**](FirewallDesiredView.md) |  | [optional] 
 **Task** | Pointer to [**TaskView**](TaskView.md) | This bee&#39;s one outstanding task, or absent. A bee that already holds a task is handed the SAME one back. | [optional] 
 
 ## Methods
@@ -50,6 +51,31 @@ SetSchema sets Schema field to given value.
 `func (o *HeartbeatResponseBody) HasSchema() bool`
 
 HasSchema returns a boolean if a field has been set.
+
+### GetFirewall
+
+`func (o *HeartbeatResponseBody) GetFirewall() FirewallDesiredView`
+
+GetFirewall returns the Firewall field if non-nil, zero value otherwise.
+
+### GetFirewallOk
+
+`func (o *HeartbeatResponseBody) GetFirewallOk() (*FirewallDesiredView, bool)`
+
+GetFirewallOk returns a tuple with the Firewall field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetFirewall
+
+`func (o *HeartbeatResponseBody) SetFirewall(v FirewallDesiredView)`
+
+SetFirewall sets Firewall field to given value.
+
+### HasFirewall
+
+`func (o *HeartbeatResponseBody) HasFirewall() bool`
+
+HasFirewall returns a boolean if a field has been set.
 
 ### GetTask
 

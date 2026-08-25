@@ -134,6 +134,32 @@ paths:
       summary: Enrol a fleet agent into an organization
       tags:
       - Fleet
+  /api/v1/agent/firewall:
+    get:
+      description: |-
+        The complete nft ruleset, not a patch — it begins with a flush, so a host that missed several revisions converges on this one rather than replaying a history it never saw.
+
+        An EMPTY response means hold what you have. It is returned for a machine in no fleet and for a fleet that has published nothing, and neither is an empty ruleset: flushing there would strip a host of its management access at the moment it is least reachable. Separate from the heartbeat because the body can be tens of kilobytes and would otherwise ride on every poll from every host to say 'unchanged'.
+      operationId: fleet-bee-firewall
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentFirewallResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - AgentKeyAuth: []
+        AgentKeySecret: []
+      summary: Fetch the ruleset this host should enforce
+      tags:
+      - Fleet
   /api/v1/agent/heartbeat:
     post:
       description: "One request carries both, deliberately: two endpoints would give\
@@ -1308,6 +1334,172 @@ paths:
       - OrgKeyAuth: []
         OrgKeySecret: []
       summary: Reprioritise or disable a binding
+      tags:
+      - Firewall
+  /api/v1/firewall/hives/{hive_id}/publish:
+    post:
+      description: |-
+        Renders every binding that applies to this fleet into one nft ruleset, stores it, and points the fleet at it. Bees converge on their next heartbeat.
+
+        Publishing an UNCHANGED policy does nothing and says so. Every revision makes the whole fleet re-apply, and re-applying an identical ruleset flushes and reloads every host's firewall to arrive at the state it was already in.
+      operationId: firewall-publish
+      parameters:
+      - explode: false
+        in: path
+        name: hive_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishResponseBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Publish this fleet's rules as the next revision
+      tags:
+      - Firewall
+  /api/v1/firewall/hives/{hive_id}/revert:
+    post:
+      description: |-
+        Publishes an OLD revision's body as a NEW revision. The number goes up, never down: a bee decides whether to converge by comparing what it applied against this number, and a number that moved backwards leaves a host pinned to the very ruleset being backed out.
+
+        The old body verbatim, not a re-render of the old rules — the rules have moved on, which is why this is a backout.
+      operationId: firewall-revert
+      parameters:
+      - explode: false
+        in: path
+        name: hive_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishResponseBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Republish an earlier revision's ruleset
+      tags:
+      - Firewall
+  /api/v1/firewall/hives/{hive_id}/snapshots:
+    get:
+      description: "Newest first. This is what a backout is chosen from, so it carries\
+        \ the reason each revision was published and which revision a backout reproduced."
+      operationId: firewall-snapshots-list
+      parameters:
+      - explode: false
+        in: path
+        name: hive_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List this fleet's published revisions
+      tags:
+      - Firewall
+  /api/v1/firewall/hives/{hive_id}/snapshots/{revision}:
+    get:
+      description: "The exact text a host loads, so it can be compared against `nft\
+        \ list ruleset` on the machine. That comparison is the only way to answer\
+        \ 'is this host running what we think' from the host itself."
+      operationId: firewall-snapshot-body
+      parameters:
+      - explode: false
+        in: path
+        name: hive_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: revision
+        required: true
+        schema:
+          format: int64
+          minimum: 1
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotBodyResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Read one published revision's ruleset
       tags:
       - Firewall
   /api/v1/firewall/preview:
@@ -3438,6 +3630,29 @@ components:
       - seeded
       - updated_at
       - value
+    AgentFirewallResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        content: content
+        digest: digest
+        revision: 0
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          description: "The complete nft ruleset, to be loaded with nft -f. It begins\
+            \ with a flush because it is desired state rather than a patch: anything\
+            \ already loaded that it does not declare must go."
+          type: string
+        digest:
+          type: string
+        revision:
+          format: int64
+          type: integer
     ArriveRequestBody:
       additionalProperties: false
       example:
@@ -4451,6 +4666,26 @@ components:
       - provider
       - scope
       - scope_version
+    FirewallDesiredView:
+      additionalProperties: false
+      example:
+        digest: digest
+        revision: 0
+      properties:
+        digest:
+          description: "Of the rendered body. Compared as well as the revision, so\
+            \ a host that loaded the right revision from a corrupted or hand-edited\
+            \ file is still seen as diverged."
+          type: string
+        revision:
+          description: "Only ever increases. A backout is a NEW revision carrying\
+            \ an older body, so an agent comparing revisions can use != or < and behave\
+            \ identically."
+          format: int64
+          type: integer
+      required:
+      - digest
+      - revision
     FleetlessHostView:
       additionalProperties: false
       example:
@@ -4627,10 +4862,12 @@ components:
       example:
         $schema: https://openapi-generator.tech
         agent_version: agent_version
+        applied_firewall_digest: applied_firewall_digest
+        applied_firewall_revision: 0
         back: true
-        unavailable_for_seconds: 6919
+        unavailable_for_seconds: 52077
         unavailable_reason: unavailable_reason
-        wait_seconds: 15
+        wait_seconds: 3
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -4640,6 +4877,17 @@ components:
         agent_version:
           maxLength: 64
           type: string
+        applied_firewall_digest:
+          description: "Digest of the body actually loaded, so a host that applied\
+            \ the right revision from a stale body is still detected as diverged."
+          maxLength: 71
+          type: string
+        applied_firewall_revision:
+          description: The firewall revision this host has actually loaded. Omit or
+            zero if it has applied none.
+          format: int64
+          minimum: 0
+          type: integer
         back:
           description: "Withdraws a standing declaration: the host has returned."
           type: boolean
@@ -4665,6 +4913,9 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
+        firewall:
+          digest: digest
+          revision: 0
         task: ""
       properties:
         $schema:
@@ -4672,6 +4923,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        firewall:
+          $ref: "#/components/schemas/FirewallDesiredView"
         task:
           allOf:
           - $ref: "#/components/schemas/TaskView"
@@ -6739,6 +6992,54 @@ components:
           type: string
       required:
       - challenge
+    PublishRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        reason: reason
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: "Why this policy is being published. Read later by whoever\
+            \ is deciding whether to back it out, which is the moment it matters most."
+          maxLength: 500
+          type: string
+    PublishResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        bytes: 0
+        digest: digest
+        revision: 6
+        unchanged: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        bytes:
+          format: int64
+          type: integer
+        digest:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        unchanged:
+          description: "True when the rendered policy matched the published one and\
+            \ no revision was created. Not a failure: publishing twice is the ordinary\
+            \ way to reach it."
+          type: boolean
+      required:
+      - bytes
+      - digest
+      - revision
+      - unchanged
     RefreshRequestBody:
       additionalProperties: false
       example:
@@ -7016,6 +7317,29 @@ components:
           type: string
       required:
       - message
+    RevertRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        reason: reason
+        to_revision: 1
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          maxLength: 500
+          type: string
+        to_revision:
+          description: The revision whose BODY to republish. The new revision number
+            is higher than the current one — a backout never moves the number down.
+          format: int64
+          minimum: 1
+          type: integer
+      required:
+      - to_revision
     RevokeAPIKeyResponseBody:
       additionalProperties: false
       example:
@@ -7347,6 +7671,100 @@ components:
           type: string
       required:
       - state
+    SnapshotBodyResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        content: content
+        digest: digest
+        revision: 0
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        content:
+          type: string
+        digest:
+          type: string
+        revision:
+          format: int64
+          type: integer
+      required:
+      - content
+      - digest
+      - revision
+    SnapshotView:
+      additionalProperties: false
+      example:
+        bytes: 0
+        created_at: 2000-01-23T04:56:07.000+00:00
+        current: true
+        digest: digest
+        reason: reason
+        revert_of: 6
+        revision: 1
+      properties:
+        bytes:
+          format: int64
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        current:
+          description: Whether this is the revision the fleet is being told to converge
+            on.
+          type: boolean
+        digest:
+          type: string
+        reason:
+          type: string
+        revert_of:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+      required:
+      - bytes
+      - created_at
+      - current
+      - digest
+      - revision
+    SnapshotsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        snapshots:
+        - bytes: 0
+          created_at: 2000-01-23T04:56:07.000+00:00
+          current: true
+          digest: digest
+          reason: reason
+          revert_of: 6
+          revision: 1
+        - bytes: 0
+          created_at: 2000-01-23T04:56:07.000+00:00
+          current: true
+          digest: digest
+          reason: reason
+          revert_of: 6
+          revision: 1
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        snapshots:
+          items:
+            $ref: "#/components/schemas/SnapshotView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - snapshots
     SoleOwnershipsResponseBody:
       additionalProperties: false
       example:

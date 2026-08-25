@@ -95,6 +95,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FirewallApi* | [**firewallBindingsList**](docs/FirewallApi.md#firewallbindingslist) | **GET** /api/v1/firewall/bindings | List ruleset bindings
 *FirewallApi* | [**firewallBindingsUpdate**](docs/FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
 *FirewallApi* | [**firewallPreview**](docs/FirewallApi.md#firewallpreview) | **GET** /api/v1/firewall/preview | Preview the rules a fleet would receive
+*FirewallApi* | [**firewallPublish**](docs/FirewallApi.md#firewallpublish) | **POST** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet\&#39;s rules as the next revision
+*FirewallApi* | [**firewallRevert**](docs/FirewallApi.md#firewallrevert) | **POST** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision\&#39;s ruleset
 *FirewallApi* | [**firewallRulesCreate**](docs/FirewallApi.md#firewallrulescreate) | **POST** /api/v1/firewall/rulesets/{id}/rules | Add a rule to a ruleset
 *FirewallApi* | [**firewallRulesDelete**](docs/FirewallApi.md#firewallrulesdelete) | **DELETE** /api/v1/firewall/rules/{id} | Delete a rule
 *FirewallApi* | [**firewallRulesList**](docs/FirewallApi.md#firewallruleslist) | **GET** /api/v1/firewall/rulesets/{id}/rules | List a ruleset\&#39;s rules
@@ -103,8 +105,11 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FirewallApi* | [**firewallRulesetsDelete**](docs/FirewallApi.md#firewallrulesetsdelete) | **DELETE** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset
 *FirewallApi* | [**firewallRulesetsList**](docs/FirewallApi.md#firewallrulesetslist) | **GET** /api/v1/firewall/rulesets | List firewall rulesets
 *FirewallApi* | [**firewallRulesetsUpdate**](docs/FirewallApi.md#firewallrulesetsupdate) | **PUT** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
+*FirewallApi* | [**firewallSnapshotBody**](docs/FirewallApi.md#firewallsnapshotbody) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision\&#39;s ruleset
+*FirewallApi* | [**firewallSnapshotsList**](docs/FirewallApi.md#firewallsnapshotslist) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet\&#39;s published revisions
 *FleetApi* | [**fleetBeeAppendLogs**](docs/FleetApi.md#fleetbeeappendlogs) | **POST** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
 *FleetApi* | [**fleetBeeEnrol**](docs/FleetApi.md#fleetbeeenrol) | **POST** /api/v1/agent/enrol | Enrol a fleet agent into an organization
+*FleetApi* | [**fleetBeeFirewall**](docs/FleetApi.md#fleetbeefirewall) | **GET** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
 *FleetApi* | [**fleetBeeHeartbeat**](docs/FleetApi.md#fleetbeeheartbeat) | **POST** /api/v1/agent/heartbeat | Report liveness and collect work
 *FleetApi* | [**fleetBeeReportTask**](docs/FleetApi.md#fleetbeereporttask) | **POST** /api/v1/agent/tasks/{id}/status | Report progress or the outcome of a task
 *FleetApi* | [**fleetBeesDelete**](docs/FleetApi.md#fleetbeesdelete) | **DELETE** /api/v1/fleet/bees/{id} | Remove a fleet agent
@@ -162,6 +167,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [AcceptRequestBody](docs/AcceptRequestBody.md)
 - [AcceptResponseBody](docs/AcceptResponseBody.md)
 - [AccessRuleView](docs/AccessRuleView.md)
+- [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
 - [ArriveRequestBody](docs/ArriveRequestBody.md)
 - [ArriveResponseBody](docs/ArriveResponseBody.md)
 - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
@@ -199,6 +205,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [ErrorDetail](docs/ErrorDetail.md)
 - [ErrorModel](docs/ErrorModel.md)
 - [EstateView](docs/EstateView.md)
+- [FirewallDesiredView](docs/FirewallDesiredView.md)
 - [FleetlessHostView](docs/FleetlessHostView.md)
 - [ForgotPasswordRequestBody](docs/ForgotPasswordRequestBody.md)
 - [ForgotPasswordResponseBody](docs/ForgotPasswordResponseBody.md)
@@ -262,6 +269,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [PreviewResponseBody1](docs/PreviewResponseBody1.md)
 - [PublicKeyCredentialCreationOptions](docs/PublicKeyCredentialCreationOptions.md)
 - [PublicKeyCredentialRequestOptions](docs/PublicKeyCredentialRequestOptions.md)
+- [PublishRequestBody](docs/PublishRequestBody.md)
+- [PublishResponseBody](docs/PublishResponseBody.md)
 - [RefreshRequestBody](docs/RefreshRequestBody.md)
 - [RefreshResponseBody](docs/RefreshResponseBody.md)
 - [RefusalView](docs/RefusalView.md)
@@ -275,6 +284,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [ResendVerificationResponseBody](docs/ResendVerificationResponseBody.md)
 - [ResetPasswordRequestBody](docs/ResetPasswordRequestBody.md)
 - [ResetPasswordResponseBody](docs/ResetPasswordResponseBody.md)
+- [RevertRequestBody](docs/RevertRequestBody.md)
 - [RevokeAPIKeyResponseBody](docs/RevokeAPIKeyResponseBody.md)
 - [RevokeResponseBody](docs/RevokeResponseBody.md)
 - [RevokeResponseBody1](docs/RevokeResponseBody1.md)
@@ -283,6 +293,9 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [RuleView](docs/RuleView.md)
 - [RulesetView](docs/RulesetView.md)
 - [SetRequestBody](docs/SetRequestBody.md)
+- [SnapshotBodyResponseBody](docs/SnapshotBodyResponseBody.md)
+- [SnapshotView](docs/SnapshotView.md)
+- [SnapshotsResponseBody](docs/SnapshotsResponseBody.md)
 - [SoleOwnershipsResponseBody](docs/SoleOwnershipsResponseBody.md)
 - [StartAuthResponseBody](docs/StartAuthResponseBody.md)
 - [StoredTaskLogLine](docs/StoredTaskLogLine.md)

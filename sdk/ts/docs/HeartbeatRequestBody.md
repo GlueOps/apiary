@@ -8,6 +8,8 @@ Name | Type
 ------------ | -------------
 `$schema` | string
 `agentVersion` | string
+`appliedFirewallDigest` | string
+`appliedFirewallRevision` | number
 `back` | boolean
 `unavailableForSeconds` | number
 `unavailableReason` | string
@@ -22,6 +24,8 @@ import type { HeartbeatRequestBody } from '@glueops/apiary-sdk'
 const example = {
   "$schema": null,
   "agentVersion": null,
+  "appliedFirewallDigest": null,
+  "appliedFirewallRevision": null,
   "back": null,
   "unavailableForSeconds": null,
   "unavailableReason": null,

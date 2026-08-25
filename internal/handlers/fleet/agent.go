@@ -87,12 +87,48 @@ type HeartbeatRequest struct {
 		Back                  bool   `json:"back,omitempty" doc:"Withdraws a standing declaration: the host has returned."`
 
 		WaitSeconds int `json:"wait_seconds,omitempty" minimum:"0" maximum:"25" doc:"Hold the request open for up to this long waiting for a task. The response is the same shape either way."`
+
+		// What this host is CURRENTLY enforcing, so convergence is reported rather
+		// than assumed. A publish only says what should be running; marking a fleet
+		// converged when an operator clicks Publish would report the policy as
+		// enforced on every host that happened to be switched off.
+		AppliedFirewallRevision int    `json:"applied_firewall_revision,omitempty" minimum:"0" doc:"The firewall revision this host has actually loaded. Omit or zero if it has applied none."`
+		AppliedFirewallDigest   string `json:"applied_firewall_digest,omitempty" maxLength:"71" doc:"Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged."`
 	}
 }
 
 type HeartbeatResponse struct {
 	Body struct {
 		Task *TaskView `json:"task,omitempty" doc:"This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back."`
+
+		// Firewall is ABSENT when there is nothing to enforce — the machine is in
+		// no fleet, or its fleet has published nothing. Absent means HOLD, never
+		// flush: a host between fleets still needs its management access, and it is
+		// least reachable at exactly that moment.
+		//
+		// Only the revision and digest travel here. The body can be tens of
+		// kilobytes and would ride on every heartbeat from every host in the fleet
+		// to say "unchanged"; the agent fetches it from /agent/firewall only when
+		// these differ from what it applied.
+		Firewall *FirewallDesiredView `json:"firewall,omitempty"`
+	}
+}
+
+// FirewallDesiredView is the small half of the convergence protocol.
+type FirewallDesiredView struct {
+	Revision int    `json:"revision" doc:"Only ever increases. A backout is a NEW revision carrying an older body, so an agent comparing revisions can use != or < and behave identically."`
+	Digest   string `json:"digest" doc:"Of the rendered body. Compared as well as the revision, so a host that loaded the right revision from a corrupted or hand-edited file is still seen as diverged."`
+}
+
+type AgentFirewallRequest struct{}
+
+type AgentFirewallResponse struct {
+	Body struct {
+		// Absent when there is nothing to enforce. Same meaning as on the
+		// heartbeat: hold what you have.
+		Revision int    `json:"revision,omitempty"`
+		Digest   string `json:"digest,omitempty"`
+		Content  string `json:"content,omitempty" doc:"The complete nft ruleset, to be loaded with nft -f. It begins with a flush because it is desired state rather than a patch: anything already loaded that it does not declare must go."`
 	}
 }
 
@@ -221,6 +257,19 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 			return nil, huma.Error401Unauthorized("not an authenticated bee")
 		}
 
+		// Recorded BEFORE the heartbeat's own wait. Heartbeat can hold the request
+		// open for up to 25 seconds waiting for a task, and a convergence report
+		// held behind that would arrive a poll late every time on a fleet that is
+		// otherwise idle — which is most of the time.
+		if err := svc.RecordAppliedFirewall(ctx, sess,
+			in.Body.AppliedFirewallRevision, in.Body.AppliedFirewallDigest); err != nil {
+			// Logged, never returned. A bee whose convergence report failed to
+			// record is still alive, and refusing its heartbeat over bookkeeping
+			// would make it look offline — a page for a host that is fine.
+			slog.WarnContext(ctx, "could not record a bee's applied firewall revision",
+				"bee_id", sess.Bee.ID, "error", err)
+		}
+
 		res, err := svc.Heartbeat(ctx, service.HeartbeatInput{
 			Session:           sess,
 			AgentVersion:      in.Body.AgentVersion,
@@ -234,6 +283,50 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		}
 		out := &HeartbeatResponse{}
 		out.Body.Task = toTaskView(res.Task)
+
+		// Absent means HOLD. A failure to resolve it leaves it absent for the same
+		// reason: a check that cannot reach a decision must not act, and the action
+		// here would be flushing a host's firewall.
+		if snap, err := svc.DesiredFirewallFor(ctx, sess); err != nil {
+			slog.WarnContext(ctx, "could not resolve a bee's desired firewall; telling it to hold",
+				"bee_id", sess.Bee.ID, "error", err)
+		} else if snap != nil {
+			out.Body.Firewall = &FirewallDesiredView{Revision: snap.Revision, Digest: snap.Digest}
+		}
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-bee-firewall",
+		Method:      http.MethodGet,
+		Path:        "/agent/firewall",
+		Summary:     "Fetch the ruleset this host should enforce",
+		Description: "The complete nft ruleset, not a patch — it begins with a flush, so a host " +
+			"that missed several revisions converges on this one rather than replaying a history " +
+			"it never saw.\n\n" +
+			"An EMPTY response means hold what you have. It is returned for a machine in no " +
+			"fleet and for a fleet that has published nothing, and neither is an empty ruleset: " +
+			"flushing there would strip a host of its management access at the moment it is " +
+			"least reachable. Separate from the heartbeat because the body can be tens of " +
+			"kilobytes and would otherwise ride on every poll from every host to say 'unchanged'.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityAgent,
+	}, func(ctx context.Context, _ *AgentFirewallRequest) (*AgentFirewallResponse, error) {
+		sess, ok := apimiddleware.BeeFromContext(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("not an authenticated bee")
+		}
+		snap, err := svc.DesiredFirewallFor(ctx, sess)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &AgentFirewallResponse{}
+		if snap == nil {
+			return out, nil
+		}
+		out.Body.Revision = snap.Revision
+		out.Body.Digest = snap.Digest
+		out.Body.Content = snap.Content
 		return out, nil
 	})
 

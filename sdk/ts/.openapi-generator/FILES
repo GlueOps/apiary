@@ -8,6 +8,7 @@ docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
 docs/AdminApi.md
+docs/AgentFirewallResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
 docs/AuthApi.md
@@ -48,6 +49,7 @@ docs/ErrorModel.md
 docs/EstateView.md
 docs/EstatesApi.md
 docs/FirewallApi.md
+docs/FirewallDesiredView.md
 docs/FleetApi.md
 docs/FleetlessHostView.md
 docs/ForgotPasswordRequestBody.md
@@ -118,6 +120,8 @@ docs/PreviewResponseBody1.md
 docs/ProfileApi.md
 docs/PublicKeyCredentialCreationOptions.md
 docs/PublicKeyCredentialRequestOptions.md
+docs/PublishRequestBody.md
+docs/PublishResponseBody.md
 docs/RefreshRequestBody.md
 docs/RefreshResponseBody.md
 docs/RefusalView.md
@@ -131,6 +135,7 @@ docs/ResendVerificationRequestBody.md
 docs/ResendVerificationResponseBody.md
 docs/ResetPasswordRequestBody.md
 docs/ResetPasswordResponseBody.md
+docs/RevertRequestBody.md
 docs/RevokeAPIKeyResponseBody.md
 docs/RevokeResponseBody.md
 docs/RevokeResponseBody1.md
@@ -139,6 +144,9 @@ docs/RuleBody.md
 docs/RuleView.md
 docs/RulesetView.md
 docs/SetRequestBody.md
+docs/SnapshotBodyResponseBody.md
+docs/SnapshotView.md
+docs/SnapshotsResponseBody.md
 docs/SoleOwnershipsResponseBody.md
 docs/StartAuthResponseBody.md
 docs/StoredTaskLogLine.md
@@ -181,6 +189,7 @@ src/models/APIKeyView.ts
 src/models/AcceptRequestBody.ts
 src/models/AcceptResponseBody.ts
 src/models/AccessRuleView.ts
+src/models/AgentFirewallResponseBody.ts
 src/models/ArriveRequestBody.ts
 src/models/ArriveResponseBody.ts
 src/models/AuthenticatorSelection.ts
@@ -218,6 +227,7 @@ src/models/EnrolResponseBody.ts
 src/models/ErrorDetail.ts
 src/models/ErrorModel.ts
 src/models/EstateView.ts
+src/models/FirewallDesiredView.ts
 src/models/FleetlessHostView.ts
 src/models/ForgotPasswordRequestBody.ts
 src/models/ForgotPasswordResponseBody.ts
@@ -281,6 +291,8 @@ src/models/PreviewResponseBody.ts
 src/models/PreviewResponseBody1.ts
 src/models/PublicKeyCredentialCreationOptions.ts
 src/models/PublicKeyCredentialRequestOptions.ts
+src/models/PublishRequestBody.ts
+src/models/PublishResponseBody.ts
 src/models/RefreshRequestBody.ts
 src/models/RefreshResponseBody.ts
 src/models/RefusalView.ts
@@ -294,6 +306,7 @@ src/models/ResendVerificationRequestBody.ts
 src/models/ResendVerificationResponseBody.ts
 src/models/ResetPasswordRequestBody.ts
 src/models/ResetPasswordResponseBody.ts
+src/models/RevertRequestBody.ts
 src/models/RevokeAPIKeyResponseBody.ts
 src/models/RevokeResponseBody.ts
 src/models/RevokeResponseBody1.ts
@@ -302,6 +315,9 @@ src/models/RuleBody.ts
 src/models/RuleView.ts
 src/models/RulesetView.ts
 src/models/SetRequestBody.ts
+src/models/SnapshotBodyResponseBody.ts
+src/models/SnapshotView.ts
+src/models/SnapshotsResponseBody.ts
 src/models/SoleOwnershipsResponseBody.ts
 src/models/StartAuthResponseBody.ts
 src/models/StoredTaskLogLine.ts

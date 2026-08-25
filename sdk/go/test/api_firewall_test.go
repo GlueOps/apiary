@@ -86,6 +86,34 @@ func Test_apiary_FirewallAPIService(t *testing.T) {
 
 	})
 
+	t.Run("Test FirewallAPIService FirewallPublish", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var hiveId string
+
+		resp, httpRes, err := apiClient.FirewallAPI.FirewallPublish(context.Background(), hiveId).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FirewallAPIService FirewallRevert", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var hiveId string
+
+		resp, httpRes, err := apiClient.FirewallAPI.FirewallRevert(context.Background(), hiveId).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FirewallAPIService FirewallRulesCreate", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test
@@ -187,6 +215,35 @@ func Test_apiary_FirewallAPIService(t *testing.T) {
 		var id string
 
 		resp, httpRes, err := apiClient.FirewallAPI.FirewallRulesetsUpdate(context.Background(), id).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FirewallAPIService FirewallSnapshotBody", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var hiveId string
+		var revision int64
+
+		resp, httpRes, err := apiClient.FirewallAPI.FirewallSnapshotBody(context.Background(), hiveId, revision).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FirewallAPIService FirewallSnapshotsList", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var hiveId string
+
+		resp, httpRes, err := apiClient.FirewallAPI.FirewallSnapshotsList(context.Background(), hiveId).Execute()
 
 		require.Nil(t, err)
 		require.NotNil(t, resp)

@@ -23,6 +23,7 @@ docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
 docs/AdminAPI.md
+docs/AgentFirewallResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
 docs/AuthAPI.md
@@ -63,6 +64,7 @@ docs/ErrorModel.md
 docs/EstateView.md
 docs/EstatesAPI.md
 docs/FirewallAPI.md
+docs/FirewallDesiredView.md
 docs/FleetAPI.md
 docs/FleetlessHostView.md
 docs/ForgotPasswordRequestBody.md
@@ -133,6 +135,8 @@ docs/PreviewResponseBody1.md
 docs/ProfileAPI.md
 docs/PublicKeyCredentialCreationOptions.md
 docs/PublicKeyCredentialRequestOptions.md
+docs/PublishRequestBody.md
+docs/PublishResponseBody.md
 docs/RefreshRequestBody.md
 docs/RefreshResponseBody.md
 docs/RefusalView.md
@@ -146,6 +150,7 @@ docs/ResendVerificationRequestBody.md
 docs/ResendVerificationResponseBody.md
 docs/ResetPasswordRequestBody.md
 docs/ResetPasswordResponseBody.md
+docs/RevertRequestBody.md
 docs/RevokeAPIKeyResponseBody.md
 docs/RevokeResponseBody.md
 docs/RevokeResponseBody1.md
@@ -154,6 +159,9 @@ docs/RuleBody.md
 docs/RuleView.md
 docs/RulesetView.md
 docs/SetRequestBody.md
+docs/SnapshotBodyResponseBody.md
+docs/SnapshotView.md
+docs/SnapshotsResponseBody.md
 docs/SoleOwnershipsResponseBody.md
 docs/StartAuthResponseBody.md
 docs/StoredTaskLogLine.md
@@ -183,6 +191,7 @@ go.sum
 model_accept_request_body.go
 model_accept_response_body.go
 model_access_rule_view.go
+model_agent_firewall_response_body.go
 model_api_key_view.go
 model_arrive_request_body.go
 model_arrive_response_body.go
@@ -221,6 +230,7 @@ model_enrol_response_body.go
 model_error_detail.go
 model_error_model.go
 model_estate_view.go
+model_firewall_desired_view.go
 model_fleetless_host_view.go
 model_forgot_password_request_body.go
 model_forgot_password_response_body.go
@@ -284,6 +294,8 @@ model_preview_response_body.go
 model_preview_response_body1.go
 model_public_key_credential_creation_options.go
 model_public_key_credential_request_options.go
+model_publish_request_body.go
+model_publish_response_body.go
 model_refresh_request_body.go
 model_refresh_response_body.go
 model_refusal_view.go
@@ -297,6 +309,7 @@ model_resend_verification_request_body.go
 model_resend_verification_response_body.go
 model_reset_password_request_body.go
 model_reset_password_response_body.go
+model_revert_request_body.go
 model_revoke_api_key_response_body.go
 model_revoke_response_body.go
 model_revoke_response_body1.go
@@ -305,6 +318,9 @@ model_rule_body.go
 model_rule_view.go
 model_ruleset_view.go
 model_set_request_body.go
+model_snapshot_body_response_body.go
+model_snapshot_view.go
+model_snapshots_response_body.go
 model_sole_ownerships_response_body.go
 model_start_auth_response_body.go
 model_stored_task_log_line.go

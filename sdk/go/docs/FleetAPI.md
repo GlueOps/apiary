@@ -6,6 +6,7 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**FleetBeeAppendLogs**](FleetAPI.md#FleetBeeAppendLogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
 [**FleetBeeEnrol**](FleetAPI.md#FleetBeeEnrol) | **Post** /api/v1/agent/enrol | Enrol a fleet agent into an organization
+[**FleetBeeFirewall**](FleetAPI.md#FleetBeeFirewall) | **Get** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
 [**FleetBeeHeartbeat**](FleetAPI.md#FleetBeeHeartbeat) | **Post** /api/v1/agent/heartbeat | Report liveness and collect work
 [**FleetBeeReportTask**](FleetAPI.md#FleetBeeReportTask) | **Post** /api/v1/agent/tasks/{id}/status | Report progress or the outcome of a task
 [**FleetBeesDelete**](FleetAPI.md#FleetBeesDelete) | **Delete** /api/v1/fleet/bees/{id} | Remove a fleet agent
@@ -162,6 +163,67 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetBeeFirewall
+
+> AgentFirewallResponseBody FleetBeeFirewall(ctx).Execute()
+
+Fetch the ruleset this host should enforce
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetBeeFirewall(context.Background()).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetBeeFirewall``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetBeeFirewall`: AgentFirewallResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetBeeFirewall`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+This endpoint does not need any parameter.
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetBeeFirewallRequest struct via the builder pattern
+
+
+### Return type
+
+[**AgentFirewallResponseBody**](AgentFirewallResponseBody.md)
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: application/json, application/problem+json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)

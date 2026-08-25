@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AdminImpersonateEndData, AdminImpersonateEndErrors, AdminImpersonateEndResponses, AdminImpersonateStartData, AdminImpersonateStartErrors, AdminImpersonateStartResponses, ApiKeysCreateData, ApiKeysCreateErrors, ApiKeysCreateResponses, ApiKeysListData, ApiKeysListErrors, ApiKeysListResponses, ApiKeysRevokeData, ApiKeysRevokeErrors, ApiKeysRevokeResponses, AuthForgotPasswordData, AuthForgotPasswordErrors, AuthForgotPasswordResponses, AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutErrors, AuthLogoutResponses, AuthMfaVerifyData, AuthMfaVerifyErrors, AuthMfaVerifyResponses, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginErrors, AuthPasskeyLoginBeginResponses, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishErrors, AuthPasskeyLoginFinishResponses, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginErrors, AuthPasskeyRegisterBeginResponses, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishErrors, AuthPasskeyRegisterFinishResponses, AuthPasskeysDeleteData, AuthPasskeysDeleteErrors, AuthPasskeysDeleteResponses, AuthPasskeysListData, AuthPasskeysListErrors, AuthPasskeysListResponses, AuthRefreshData, AuthRefreshErrors, AuthRefreshResponses, AuthRegisterData, AuthRegisterErrors, AuthRegisterResponses, AuthResendVerificationData, AuthResendVerificationErrors, AuthResendVerificationResponses, AuthResetPasswordData, AuthResetPasswordErrors, AuthResetPasswordResponses, AuthSocialCallbackData, AuthSocialCallbackErrors, AuthSocialCallbackResponses, AuthSocialStartData, AuthSocialStartErrors, AuthSocialStartResponses, AuthTotpConfirmData, AuthTotpConfirmErrors, AuthTotpConfirmResponses, AuthTotpDisableData, AuthTotpDisableErrors, AuthTotpDisableResponses, AuthTotpSetupData, AuthTotpSetupErrors, AuthTotpSetupResponses, AuthVerifyEmailData, AuthVerifyEmailErrors, AuthVerifyEmailResponses, EstatesCreateData, EstatesCreateErrors, EstatesCreateResponses, EstatesDeleteData, EstatesDeleteErrors, EstatesDeleteResponses, EstatesGetData, EstatesGetErrors, EstatesGetResponses, EstatesListData, EstatesListErrors, EstatesListResponses, EstatesRotateCredentialData, EstatesRotateCredentialErrors, EstatesRotateCredentialResponses, FirewallBindingsCreateData, FirewallBindingsCreateErrors, FirewallBindingsCreateResponses, FirewallBindingsDeleteData, FirewallBindingsDeleteErrors, FirewallBindingsDeleteResponses, FirewallBindingsListData, FirewallBindingsListErrors, FirewallBindingsListResponses, FirewallBindingsUpdateData, FirewallBindingsUpdateErrors, FirewallBindingsUpdateResponses, FirewallPreviewData, FirewallPreviewErrors, FirewallPreviewResponses, FirewallRulesCreateData, FirewallRulesCreateErrors, FirewallRulesCreateResponses, FirewallRulesDeleteData, FirewallRulesDeleteErrors, FirewallRulesDeleteResponses, FirewallRulesetsCreateData, FirewallRulesetsCreateErrors, FirewallRulesetsCreateResponses, FirewallRulesetsDeleteData, FirewallRulesetsDeleteErrors, FirewallRulesetsDeleteResponses, FirewallRulesetsListData, FirewallRulesetsListErrors, FirewallRulesetsListResponses, FirewallRulesetsUpdateData, FirewallRulesetsUpdateErrors, FirewallRulesetsUpdateResponses, FirewallRulesListData, FirewallRulesListErrors, FirewallRulesListResponses, FirewallRulesUpdateData, FirewallRulesUpdateErrors, FirewallRulesUpdateResponses, FleetBeeAppendLogsData, FleetBeeAppendLogsErrors, FleetBeeAppendLogsResponses, FleetBeeEnrolData, FleetBeeEnrolErrors, FleetBeeEnrolResponses, FleetBeeHeartbeatData, FleetBeeHeartbeatErrors, FleetBeeHeartbeatResponses, FleetBeeReportTaskData, FleetBeeReportTaskErrors, FleetBeeReportTaskResponses, FleetBeesDeleteData, FleetBeesDeleteErrors, FleetBeesDeleteResponses, FleetBeesListData, FleetBeesListErrors, FleetBeesListResponses, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintErrors, FleetEnrolmentTokensMintResponses, FleetHivesCreateData, FleetHivesCreateErrors, FleetHivesCreateResponses, FleetHivesDeleteData, FleetHivesDeleteErrors, FleetHivesDeleteResponses, FleetHivesListData, FleetHivesListErrors, FleetHivesListResponses, FleetHivesSyncData, FleetHivesSyncErrors, FleetHivesSyncResponses, FleetHivesUpdateData, FleetHivesUpdateErrors, FleetHivesUpdateResponses, FleetHostsArriveData, FleetHostsArriveErrors, FleetHostsArriveResponses, FleetHostsFleetlessData, FleetHostsFleetlessErrors, FleetHostsFleetlessResponses, FleetHypervisorsCordonData, FleetHypervisorsCordonErrors, FleetHypervisorsCordonResponses, FleetHypervisorsDepartData, FleetHypervisorsDepartErrors, FleetHypervisorsDepartResponses, FleetHypervisorsGetData, FleetHypervisorsGetErrors, FleetHypervisorsGetResponses, FleetHypervisorsListData, FleetHypervisorsListErrors, FleetHypervisorsListResponses, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionErrors, FleetHypervisorsReprovisionResponses, FleetTasksCreateData, FleetTasksCreateErrors, FleetTasksCreateResponses, FleetTasksLogsData, FleetTasksLogsErrors, FleetTasksLogsResponses, InvitationsAcceptData, InvitationsAcceptErrors, InvitationsAcceptResponses, InvitationsPreviewData, InvitationsPreviewErrors, InvitationsPreviewResponses, MeChangePasswordData, MeChangePasswordErrors, MeChangePasswordResponses, MeDeleteAccountData, MeDeleteAccountErrors, MeDeleteAccountResponses, MeGetData, MeGetErrors, MeGetResponses, MeOrgsListData, MeOrgsListErrors, MeOrgsListResponses, MeSoleOwnershipsData, MeSoleOwnershipsErrors, MeSoleOwnershipsResponses, MeUpdateData, MeUpdateErrors, MeUpdateResponses, OrgDeleteData, OrgDeleteErrors, OrgDeleteResponses, OrgInvitationsCreateData, OrgInvitationsCreateErrors, OrgInvitationsCreateResponses, OrgInvitationsListData, OrgInvitationsListErrors, OrgInvitationsListResponses, OrgInvitationsRevokeData, OrgInvitationsRevokeErrors, OrgInvitationsRevokeResponses, OrgMembersListData, OrgMembersListErrors, OrgMembersListResponses, OrgMembersRemoveData, OrgMembersRemoveErrors, OrgMembersRemoveResponses, OrgMembersUpdateRoleData, OrgMembersUpdateRoleErrors, OrgMembersUpdateRoleResponses, OrgPoliciesClearData, OrgPoliciesClearErrors, OrgPoliciesClearResponses, OrgPoliciesImpactData, OrgPoliciesImpactErrors, OrgPoliciesImpactResponses, OrgPoliciesListData, OrgPoliciesListErrors, OrgPoliciesListResponses, OrgPoliciesSetData, OrgPoliciesSetErrors, OrgPoliciesSetResponses, PlatformAccessRulesCreateData, PlatformAccessRulesCreateErrors, PlatformAccessRulesCreateResponses, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteErrors, PlatformAccessRulesDeleteResponses, PlatformAccessRulesListData, PlatformAccessRulesListErrors, PlatformAccessRulesListResponses, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateErrors, PlatformAccessRulesUpdateResponses, PlatformPoliciesClearData, PlatformPoliciesClearErrors, PlatformPoliciesClearResponses, PlatformPoliciesImpactData, PlatformPoliciesImpactErrors, PlatformPoliciesImpactResponses, PlatformPoliciesListData, PlatformPoliciesListErrors, PlatformPoliciesListResponses, PlatformPoliciesSetData, PlatformPoliciesSetErrors, PlatformPoliciesSetResponses, SshKeysListData, SshKeysListErrors, SshKeysListResponses, SshKeysMintData, SshKeysMintErrors, SshKeysMintResponses, SshKeysRevokeData, SshKeysRevokeErrors, SshKeysRevokeResponses } from './types.gen';
+import type { AdminImpersonateEndData, AdminImpersonateEndErrors, AdminImpersonateEndResponses, AdminImpersonateStartData, AdminImpersonateStartErrors, AdminImpersonateStartResponses, ApiKeysCreateData, ApiKeysCreateErrors, ApiKeysCreateResponses, ApiKeysListData, ApiKeysListErrors, ApiKeysListResponses, ApiKeysRevokeData, ApiKeysRevokeErrors, ApiKeysRevokeResponses, AuthForgotPasswordData, AuthForgotPasswordErrors, AuthForgotPasswordResponses, AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutErrors, AuthLogoutResponses, AuthMfaVerifyData, AuthMfaVerifyErrors, AuthMfaVerifyResponses, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginErrors, AuthPasskeyLoginBeginResponses, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishErrors, AuthPasskeyLoginFinishResponses, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginErrors, AuthPasskeyRegisterBeginResponses, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishErrors, AuthPasskeyRegisterFinishResponses, AuthPasskeysDeleteData, AuthPasskeysDeleteErrors, AuthPasskeysDeleteResponses, AuthPasskeysListData, AuthPasskeysListErrors, AuthPasskeysListResponses, AuthRefreshData, AuthRefreshErrors, AuthRefreshResponses, AuthRegisterData, AuthRegisterErrors, AuthRegisterResponses, AuthResendVerificationData, AuthResendVerificationErrors, AuthResendVerificationResponses, AuthResetPasswordData, AuthResetPasswordErrors, AuthResetPasswordResponses, AuthSocialCallbackData, AuthSocialCallbackErrors, AuthSocialCallbackResponses, AuthSocialStartData, AuthSocialStartErrors, AuthSocialStartResponses, AuthTotpConfirmData, AuthTotpConfirmErrors, AuthTotpConfirmResponses, AuthTotpDisableData, AuthTotpDisableErrors, AuthTotpDisableResponses, AuthTotpSetupData, AuthTotpSetupErrors, AuthTotpSetupResponses, AuthVerifyEmailData, AuthVerifyEmailErrors, AuthVerifyEmailResponses, EstatesCreateData, EstatesCreateErrors, EstatesCreateResponses, EstatesDeleteData, EstatesDeleteErrors, EstatesDeleteResponses, EstatesGetData, EstatesGetErrors, EstatesGetResponses, EstatesListData, EstatesListErrors, EstatesListResponses, EstatesRotateCredentialData, EstatesRotateCredentialErrors, EstatesRotateCredentialResponses, FirewallBindingsCreateData, FirewallBindingsCreateErrors, FirewallBindingsCreateResponses, FirewallBindingsDeleteData, FirewallBindingsDeleteErrors, FirewallBindingsDeleteResponses, FirewallBindingsListData, FirewallBindingsListErrors, FirewallBindingsListResponses, FirewallBindingsUpdateData, FirewallBindingsUpdateErrors, FirewallBindingsUpdateResponses, FirewallPreviewData, FirewallPreviewErrors, FirewallPreviewResponses, FirewallPublishData, FirewallPublishErrors, FirewallPublishResponses, FirewallRevertData, FirewallRevertErrors, FirewallRevertResponses, FirewallRulesCreateData, FirewallRulesCreateErrors, FirewallRulesCreateResponses, FirewallRulesDeleteData, FirewallRulesDeleteErrors, FirewallRulesDeleteResponses, FirewallRulesetsCreateData, FirewallRulesetsCreateErrors, FirewallRulesetsCreateResponses, FirewallRulesetsDeleteData, FirewallRulesetsDeleteErrors, FirewallRulesetsDeleteResponses, FirewallRulesetsListData, FirewallRulesetsListErrors, FirewallRulesetsListResponses, FirewallRulesetsUpdateData, FirewallRulesetsUpdateErrors, FirewallRulesetsUpdateResponses, FirewallRulesListData, FirewallRulesListErrors, FirewallRulesListResponses, FirewallRulesUpdateData, FirewallRulesUpdateErrors, FirewallRulesUpdateResponses, FirewallSnapshotBodyData, FirewallSnapshotBodyErrors, FirewallSnapshotBodyResponses, FirewallSnapshotsListData, FirewallSnapshotsListErrors, FirewallSnapshotsListResponses, FleetBeeAppendLogsData, FleetBeeAppendLogsErrors, FleetBeeAppendLogsResponses, FleetBeeEnrolData, FleetBeeEnrolErrors, FleetBeeEnrolResponses, FleetBeeFirewallData, FleetBeeFirewallErrors, FleetBeeFirewallResponses, FleetBeeHeartbeatData, FleetBeeHeartbeatErrors, FleetBeeHeartbeatResponses, FleetBeeReportTaskData, FleetBeeReportTaskErrors, FleetBeeReportTaskResponses, FleetBeesDeleteData, FleetBeesDeleteErrors, FleetBeesDeleteResponses, FleetBeesListData, FleetBeesListErrors, FleetBeesListResponses, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintErrors, FleetEnrolmentTokensMintResponses, FleetHivesCreateData, FleetHivesCreateErrors, FleetHivesCreateResponses, FleetHivesDeleteData, FleetHivesDeleteErrors, FleetHivesDeleteResponses, FleetHivesListData, FleetHivesListErrors, FleetHivesListResponses, FleetHivesSyncData, FleetHivesSyncErrors, FleetHivesSyncResponses, FleetHivesUpdateData, FleetHivesUpdateErrors, FleetHivesUpdateResponses, FleetHostsArriveData, FleetHostsArriveErrors, FleetHostsArriveResponses, FleetHostsFleetlessData, FleetHostsFleetlessErrors, FleetHostsFleetlessResponses, FleetHypervisorsCordonData, FleetHypervisorsCordonErrors, FleetHypervisorsCordonResponses, FleetHypervisorsDepartData, FleetHypervisorsDepartErrors, FleetHypervisorsDepartResponses, FleetHypervisorsGetData, FleetHypervisorsGetErrors, FleetHypervisorsGetResponses, FleetHypervisorsListData, FleetHypervisorsListErrors, FleetHypervisorsListResponses, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionErrors, FleetHypervisorsReprovisionResponses, FleetTasksCreateData, FleetTasksCreateErrors, FleetTasksCreateResponses, FleetTasksLogsData, FleetTasksLogsErrors, FleetTasksLogsResponses, InvitationsAcceptData, InvitationsAcceptErrors, InvitationsAcceptResponses, InvitationsPreviewData, InvitationsPreviewErrors, InvitationsPreviewResponses, MeChangePasswordData, MeChangePasswordErrors, MeChangePasswordResponses, MeDeleteAccountData, MeDeleteAccountErrors, MeDeleteAccountResponses, MeGetData, MeGetErrors, MeGetResponses, MeOrgsListData, MeOrgsListErrors, MeOrgsListResponses, MeSoleOwnershipsData, MeSoleOwnershipsErrors, MeSoleOwnershipsResponses, MeUpdateData, MeUpdateErrors, MeUpdateResponses, OrgDeleteData, OrgDeleteErrors, OrgDeleteResponses, OrgInvitationsCreateData, OrgInvitationsCreateErrors, OrgInvitationsCreateResponses, OrgInvitationsListData, OrgInvitationsListErrors, OrgInvitationsListResponses, OrgInvitationsRevokeData, OrgInvitationsRevokeErrors, OrgInvitationsRevokeResponses, OrgMembersListData, OrgMembersListErrors, OrgMembersListResponses, OrgMembersRemoveData, OrgMembersRemoveErrors, OrgMembersRemoveResponses, OrgMembersUpdateRoleData, OrgMembersUpdateRoleErrors, OrgMembersUpdateRoleResponses, OrgPoliciesClearData, OrgPoliciesClearErrors, OrgPoliciesClearResponses, OrgPoliciesImpactData, OrgPoliciesImpactErrors, OrgPoliciesImpactResponses, OrgPoliciesListData, OrgPoliciesListErrors, OrgPoliciesListResponses, OrgPoliciesSetData, OrgPoliciesSetErrors, OrgPoliciesSetResponses, PlatformAccessRulesCreateData, PlatformAccessRulesCreateErrors, PlatformAccessRulesCreateResponses, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteErrors, PlatformAccessRulesDeleteResponses, PlatformAccessRulesListData, PlatformAccessRulesListErrors, PlatformAccessRulesListResponses, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateErrors, PlatformAccessRulesUpdateResponses, PlatformPoliciesClearData, PlatformPoliciesClearErrors, PlatformPoliciesClearResponses, PlatformPoliciesImpactData, PlatformPoliciesImpactErrors, PlatformPoliciesImpactResponses, PlatformPoliciesListData, PlatformPoliciesListErrors, PlatformPoliciesListResponses, PlatformPoliciesSetData, PlatformPoliciesSetErrors, PlatformPoliciesSetResponses, SshKeysListData, SshKeysListErrors, SshKeysListResponses, SshKeysMintData, SshKeysMintErrors, SshKeysMintResponses, SshKeysRevokeData, SshKeysRevokeErrors, SshKeysRevokeResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -60,6 +60,19 @@ export const fleetBeeEnrol = <ThrowOnError extends boolean = false>(options: Opt
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Fetch the ruleset this host should enforce
+ *
+ * The complete nft ruleset, not a patch — it begins with a flush, so a host that missed several revisions converges on this one rather than replaying a history it never saw.
+ *
+ * An EMPTY response means hold what you have. It is returned for a machine in no fleet and for a fleet that has published nothing, and neither is an empty ruleset: flushing there would strip a host of its management access at the moment it is least reachable. Separate from the heartbeat because the body can be tens of kilobytes and would otherwise ride on every poll from every host to say 'unchanged'.
+ */
+export const fleetBeeFirewall = <ThrowOnError extends boolean = false>(options?: Options<FleetBeeFirewallData, ThrowOnError>): RequestResult<FleetBeeFirewallResponses, FleetBeeFirewallErrors, ThrowOnError> => (options?.client ?? client).get<FleetBeeFirewallResponses, FleetBeeFirewallErrors, ThrowOnError>({
+    security: [{ name: 'X-AGENT-Key', type: 'apiKey' }, { name: 'X-AGENT-Secret', type: 'apiKey' }],
+    url: '/api/v1/agent/firewall',
+    ...options
 });
 
 /**
@@ -558,6 +571,82 @@ export const firewallBindingsUpdate = <ThrowOnError extends boolean = false>(opt
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Publish this fleet's rules as the next revision
+ *
+ * Renders every binding that applies to this fleet into one nft ruleset, stores it, and points the fleet at it. Bees converge on their next heartbeat.
+ *
+ * Publishing an UNCHANGED policy does nothing and says so. Every revision makes the whole fleet re-apply, and re-applying an identical ruleset flushes and reloads every host's firewall to arrive at the state it was already in.
+ */
+export const firewallPublish = <ThrowOnError extends boolean = false>(options: Options<FirewallPublishData, ThrowOnError>): RequestResult<FirewallPublishResponses, FirewallPublishErrors, ThrowOnError> => (options.client ?? client).post<FirewallPublishResponses, FirewallPublishErrors, ThrowOnError>({
+    security: [
+        { scheme: 'bearer', type: 'http' },
+        { name: 'X-API-Key', type: 'apiKey' },
+        { name: 'X-ORG-Key', type: 'apiKey' },
+        { name: 'X-ORG-Secret', type: 'apiKey' }
+    ],
+    url: '/api/v1/firewall/hives/{hive_id}/publish',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Republish an earlier revision's ruleset
+ *
+ * Publishes an OLD revision's body as a NEW revision. The number goes up, never down: a bee decides whether to converge by comparing what it applied against this number, and a number that moved backwards leaves a host pinned to the very ruleset being backed out.
+ *
+ * The old body verbatim, not a re-render of the old rules — the rules have moved on, which is why this is a backout.
+ */
+export const firewallRevert = <ThrowOnError extends boolean = false>(options: Options<FirewallRevertData, ThrowOnError>): RequestResult<FirewallRevertResponses, FirewallRevertErrors, ThrowOnError> => (options.client ?? client).post<FirewallRevertResponses, FirewallRevertErrors, ThrowOnError>({
+    security: [
+        { scheme: 'bearer', type: 'http' },
+        { name: 'X-API-Key', type: 'apiKey' },
+        { name: 'X-ORG-Key', type: 'apiKey' },
+        { name: 'X-ORG-Secret', type: 'apiKey' }
+    ],
+    url: '/api/v1/firewall/hives/{hive_id}/revert',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List this fleet's published revisions
+ *
+ * Newest first. This is what a backout is chosen from, so it carries the reason each revision was published and which revision a backout reproduced.
+ */
+export const firewallSnapshotsList = <ThrowOnError extends boolean = false>(options: Options<FirewallSnapshotsListData, ThrowOnError>): RequestResult<FirewallSnapshotsListResponses, FirewallSnapshotsListErrors, ThrowOnError> => (options.client ?? client).get<FirewallSnapshotsListResponses, FirewallSnapshotsListErrors, ThrowOnError>({
+    security: [
+        { scheme: 'bearer', type: 'http' },
+        { name: 'X-API-Key', type: 'apiKey' },
+        { name: 'X-ORG-Key', type: 'apiKey' },
+        { name: 'X-ORG-Secret', type: 'apiKey' }
+    ],
+    url: '/api/v1/firewall/hives/{hive_id}/snapshots',
+    ...options
+});
+
+/**
+ * Read one published revision's ruleset
+ *
+ * The exact text a host loads, so it can be compared against `nft list ruleset` on the machine. That comparison is the only way to answer 'is this host running what we think' from the host itself.
+ */
+export const firewallSnapshotBody = <ThrowOnError extends boolean = false>(options: Options<FirewallSnapshotBodyData, ThrowOnError>): RequestResult<FirewallSnapshotBodyResponses, FirewallSnapshotBodyErrors, ThrowOnError> => (options.client ?? client).get<FirewallSnapshotBodyResponses, FirewallSnapshotBodyErrors, ThrowOnError>({
+    security: [
+        { scheme: 'bearer', type: 'http' },
+        { name: 'X-API-Key', type: 'apiKey' },
+        { name: 'X-ORG-Key', type: 'apiKey' },
+        { name: 'X-ORG-Secret', type: 'apiKey' }
+    ],
+    url: '/api/v1/firewall/hives/{hive_id}/snapshots/{revision}',
+    ...options
 });
 
 /**

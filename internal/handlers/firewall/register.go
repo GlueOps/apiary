@@ -11,6 +11,7 @@ import (
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type ListRulesetsRequest struct{}
@@ -124,6 +125,20 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		}
 		return p, nil
 	}
+
+	// Publishing, backing out, and reading what was published. Mounted here so it
+	// shares this file's admin gate: authoring a rule and putting it on metal are
+	// both changes to what the fleet enforces.
+	registerPublish(hapi, admin,
+		func(ctx context.Context, orgID uuid.UUID) (*gorm.DB, error) {
+			tCtx, err := deps.Tenants.GetTenantContext(ctx, orgID.String())
+			if err != nil {
+				return nil, err
+			}
+			return tCtx.DB, nil
+		},
+		repo.ResolveHiveRenderInput,
+	)
 
 	huma.Register(hapi, huma.Operation{
 		OperationID: "firewall-rulesets-list",

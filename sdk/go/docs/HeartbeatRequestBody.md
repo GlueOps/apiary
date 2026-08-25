@@ -6,6 +6,8 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
 **AgentVersion** | Pointer to **string** |  | [optional] 
+**AppliedFirewallDigest** | Pointer to **string** | Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged. | [optional] 
+**AppliedFirewallRevision** | Pointer to **int64** | The firewall revision this host has actually loaded. Omit or zero if it has applied none. | [optional] 
 **Back** | Pointer to **bool** | Withdraws a standing declaration: the host has returned. | [optional] 
 **UnavailableForSeconds** | Pointer to **int64** | Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault. | [optional] 
 **UnavailableReason** | Pointer to **string** |  | [optional] 
@@ -79,6 +81,56 @@ SetAgentVersion sets AgentVersion field to given value.
 `func (o *HeartbeatRequestBody) HasAgentVersion() bool`
 
 HasAgentVersion returns a boolean if a field has been set.
+
+### GetAppliedFirewallDigest
+
+`func (o *HeartbeatRequestBody) GetAppliedFirewallDigest() string`
+
+GetAppliedFirewallDigest returns the AppliedFirewallDigest field if non-nil, zero value otherwise.
+
+### GetAppliedFirewallDigestOk
+
+`func (o *HeartbeatRequestBody) GetAppliedFirewallDigestOk() (*string, bool)`
+
+GetAppliedFirewallDigestOk returns a tuple with the AppliedFirewallDigest field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAppliedFirewallDigest
+
+`func (o *HeartbeatRequestBody) SetAppliedFirewallDigest(v string)`
+
+SetAppliedFirewallDigest sets AppliedFirewallDigest field to given value.
+
+### HasAppliedFirewallDigest
+
+`func (o *HeartbeatRequestBody) HasAppliedFirewallDigest() bool`
+
+HasAppliedFirewallDigest returns a boolean if a field has been set.
+
+### GetAppliedFirewallRevision
+
+`func (o *HeartbeatRequestBody) GetAppliedFirewallRevision() int64`
+
+GetAppliedFirewallRevision returns the AppliedFirewallRevision field if non-nil, zero value otherwise.
+
+### GetAppliedFirewallRevisionOk
+
+`func (o *HeartbeatRequestBody) GetAppliedFirewallRevisionOk() (*int64, bool)`
+
+GetAppliedFirewallRevisionOk returns a tuple with the AppliedFirewallRevision field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAppliedFirewallRevision
+
+`func (o *HeartbeatRequestBody) SetAppliedFirewallRevision(v int64)`
+
+SetAppliedFirewallRevision sets AppliedFirewallRevision field to given value.
+
+### HasAppliedFirewallRevision
+
+`func (o *HeartbeatRequestBody) HasAppliedFirewallRevision() bool`
+
+HasAppliedFirewallRevision returns a boolean if a field has been set.
 
 ### GetBack
 

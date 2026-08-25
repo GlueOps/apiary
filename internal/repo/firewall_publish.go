@@ -204,3 +204,61 @@ func DesiredFirewall(
 	}
 	return &snap, nil
 }
+
+// DesiredForBee answers "what should the host running this bee be enforcing".
+//
+// A bee does not carry its own hive — that column lives on Hypervisor, because
+// two columns answering "which cluster is this in" diverged during a migration
+// and the machine record is the one that owns the answer. So the hive is reached
+// through the machine.
+//
+// A bee whose machine is in NO hive gets nil, meaning HOLD. That is the state
+// every migration passes through, and it is exactly then that flushing the
+// host's rules would be worst: the machine is mid-move, still needs management
+// access, and has no hive whose policy could replace what it is running. Only
+// org-wide bindings apply to it, and those reach it through whichever hive
+// publishes them — never by wiping it in the interval.
+func DesiredForBee(
+	ctx context.Context, db *gorm.DB, beeID uuid.UUID,
+) (*tenant.FirewallSnapshot, error) {
+	var hv tenant.Hypervisor
+	err := db.WithContext(ctx).First(&hv, "bee_id = ?", beeID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// A bee with no machine record has just enrolled and not yet been paired.
+		// Hold, for the same reason: there is nothing to derive a policy from.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hv.HiveID == nil {
+		return nil, nil
+	}
+	return DesiredFirewall(ctx, db, *hv.HiveID)
+}
+
+// RecordAppliedFirewall stores what a bee reports it is now enforcing.
+//
+// Written from the bee's report rather than assumed at publish time, because the
+// publish only says what SHOULD be running. A fleet where every bee was marked
+// converged the moment an operator clicked Publish would report a policy as
+// enforced on hosts that were switched off at the time.
+//
+// Zero revision is ignored rather than stored. An agent that has applied nothing
+// reports nothing, and writing a zero over a real applied revision would make a
+// converged host look like one that had never applied anything — sending an
+// operator to investigate a host that is fine.
+func RecordAppliedFirewall(
+	ctx context.Context, db *gorm.DB, beeID uuid.UUID, revision int, digest string,
+) error {
+	if revision <= 0 || digest == "" {
+		return nil
+	}
+	return db.WithContext(ctx).Model(&tenant.Bee{}).
+		Where("id = ?", beeID).
+		Updates(map[string]any{
+			"applied_firewall_revision": revision,
+			"applied_firewall_digest":   digest,
+			"applied_firewall_at":       gorm.Expr("now()"),
+		}).Error
+}

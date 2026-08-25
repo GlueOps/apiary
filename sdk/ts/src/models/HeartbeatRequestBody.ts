@@ -32,6 +32,18 @@ export interface HeartbeatRequestBody {
      */
     agentVersion?: string;
     /**
+     * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
+     * @type {string}
+     * @memberof HeartbeatRequestBody
+     */
+    appliedFirewallDigest?: string;
+    /**
+     * The firewall revision this host has actually loaded. Omit or zero if it has applied none.
+     * @type {number}
+     * @memberof HeartbeatRequestBody
+     */
+    appliedFirewallRevision?: number;
+    /**
      * Withdraws a standing declaration: the host has returned.
      * @type {boolean}
      * @memberof HeartbeatRequestBody
@@ -76,6 +88,8 @@ export function HeartbeatRequestBodyFromJSONTyped(json: any, ignoreDiscriminator
         
         '$schema': json['$schema'] == null ? undefined : json['$schema'],
         'agentVersion': json['agent_version'] == null ? undefined : json['agent_version'],
+        'appliedFirewallDigest': json['applied_firewall_digest'] == null ? undefined : json['applied_firewall_digest'],
+        'appliedFirewallRevision': json['applied_firewall_revision'] == null ? undefined : json['applied_firewall_revision'],
         'back': json['back'] == null ? undefined : json['back'],
         'unavailableForSeconds': json['unavailable_for_seconds'] == null ? undefined : json['unavailable_for_seconds'],
         'unavailableReason': json['unavailable_reason'] == null ? undefined : json['unavailable_reason'],
@@ -95,6 +109,8 @@ export function HeartbeatRequestBodyToJSONTyped(value?: Omit<HeartbeatRequestBod
     return {
         
         'agent_version': value['agentVersion'],
+        'applied_firewall_digest': value['appliedFirewallDigest'],
+        'applied_firewall_revision': value['appliedFirewallRevision'],
         'back': value['back'],
         'unavailable_for_seconds': value['unavailableForSeconds'],
         'unavailable_reason': value['unavailableReason'],
