@@ -14,6 +14,6 @@ import (
 // trading a collision problem for unbounded sprawl in a shared database.
 func TestMain(m *testing.M) {
 	code := m.Run()
-	testsupport.DropSchemas(prftSchema, estateSvcSchema, estateSvcSchemaB, bootstrapTestSchema, registrationTestSchema, invmSchema, sestSchema, cycleSchema, fwScopeSchema)
+	testsupport.DropSchemas(prftSchema, estateSvcSchema, estateSvcSchemaB, bootstrapTestSchema, registrationTestSchema, invmSchema, sestSchema, cycleSchema, fwScopeSchema, gateSchema)
 	os.Exit(code)
 }

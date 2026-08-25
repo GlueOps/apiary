@@ -237,3 +237,31 @@ fleet-move direction="forward": _lab-env _require-test-db
   set -o pipefail
   go test ./internal/service/ -run TestFleetCycleAgainstLiveClusters \
     -count=1 -v -timeout 15m 2>&1 | python3 scripts/lab/timeline.py
+
+# The departure gate, against real observations from cluster A.
+#
+# Non-destructive: it reads the provider and writes only to its own test schema.
+# It never departs anything, so unlike `fleet-move` it is safe to run against a
+# lab that is mid-experiment — which is the only way a refusal test gets run
+# often enough to be worth having.
+#
+# Covers the refusals `fleet-move` structurally cannot: that test needs an empty
+# node to get anywhere and stops on its own precondition when one is not, so
+# guests_present — the refusal that stops a live host being torn out of its
+# cluster — was never reached against real data.
+[doc("Exercise the departure gate against live observations (non-destructive)")]
+lab-gates: _lab-env _require-test-db
+  #!/usr/bin/env bash
+  set -euo pipefail
+  set -a; . ./.env.lab; set +a
+  set -a; . ./.env; set +a
+  export TEST_DATABASE_URL="$(just _test-dsn)"
+  unset GOROOT
+  export APIARY_CYCLE_SOURCE_API="$LAB_A_API"
+  export APIARY_CYCLE_SOURCE_TOKEN_ID="$LAB_A_TOKEN_ID"
+  export APIARY_CYCLE_SOURCE_SECRET="$LAB_A_SECRET"
+  echo "DEPARTURE GATE  vs cluster A"
+  echo "=========================================================================="
+  set -o pipefail
+  go test ./internal/service/ -run TestDepartureGateAgainstLiveClusters \
+    -count=1 -v -timeout 5m 2>&1 | python3 scripts/lab/timeline.py

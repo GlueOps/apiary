@@ -82,3 +82,8 @@ ui/playwright-report/
 ui/test-results/
 ui/e2e/__screenshots__/
 session.txt
+
+# Local tool pins. mise.toml was untracked before it was briefly committed;
+# CI pins gitleaks in .github/workflows/ci.yml, so nothing depends on this file.
+mise.toml
+mise.lock
