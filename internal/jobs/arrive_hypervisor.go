@@ -142,7 +142,7 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 		TargetNodeCount: snap.TargetNodeCount,
 	})
 	if len(refusals) > 0 {
-		return fmt.Errorf("%w: %s", ErrArrivalRefused, tenant.ArrivalRefusalsError(refusals))
+		return fmt.Errorf("%w: %w", ErrArrivalRefused, tenant.ArrivalRefusalsError(refusals))
 	}
 
 	if snap.JoiningAddress == "" || snap.TargetAddress == "" {

@@ -12,8 +12,17 @@ func TestMachineIDDigestIsStableAndTrimmed(t *testing.T) {
 	// separately. The lookup could then never match, so every onboard ended in
 	// "no heartbeat" however healthy the host.
 	raw := "9f1c2d3e4b5a6789"
-	if MachineIDDigest(raw) != MachineIDDigest(raw) {
+	// Two calls, held apart in variables: comparing the expression with itself
+	// reads as a tautology to any reader and to static analysis, which is exactly
+	// what it looked like. This asks the real question — twice over the same
+	// input, same answer.
+	first, second := MachineIDDigest(raw), MachineIDDigest(raw)
+	if first != second {
 		t.Fatal("the digest must be deterministic, or nothing can ever look a machine up")
+	}
+	if first == "" {
+		t.Fatal("the digest is empty, so every machine would hash to the same key and " +
+			"enrolment would adopt the first row it found")
 	}
 	if MachineIDDigest("  "+raw+"\n") != MachineIDDigest(raw) {
 		t.Fatal("whitespace must be trimmed before hashing: an agent that reads /etc/machine-id " +

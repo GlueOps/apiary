@@ -376,11 +376,11 @@ export const FirewallRulesets = () => {
                   <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
                     <IconAlertTriangle className="mt-px size-4 shrink-0" />
                     <p>
-                      Two rules sit on the same position or one apart. Tied positions still
-                      render in a fixed order — oldest first — so the ruleset is not
-                      unpredictable, but the order is now creation history rather than
-                      anything you chose, and inserting between them needs a respace.
-                      Space them 10, 20, 30 to put the ordering back in your hands.
+                      Two rules sit on the same position or one apart. Tied positions still render
+                      in a fixed order — oldest first — so the ruleset is not unpredictable, but the
+                      order is now creation history rather than anything you chose, and inserting
+                      between them needs a respace. Space them 10, 20, 30 to put the ordering back
+                      in your hands.
                     </p>
                   </div>
                 ) : null}

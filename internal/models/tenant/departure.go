@@ -128,8 +128,8 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 		})
 	}
 
-	switch {
-	case req.Drain.State == DrainStateUnknown:
+	switch req.Drain.State {
+	case DrainStateUnknown:
 		// The project's standing rule: a check that cannot reach a decision
 		// denies. Here the cost of the other choice is concrete — dismantling the
 		// cluster membership of a node that turns out to have been running

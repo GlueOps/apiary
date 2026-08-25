@@ -494,19 +494,18 @@ func TestBindingsForScopeGivesOneSwarmNotItsSibling(t *testing.T) {
 		}
 		return ids
 	}
-	has := func(ids []uuid.UUID, want uuid.UUID) bool { return slices.Contains(ids, want) }
 
 	t.Run("a host in fleet-prod", func(t *testing.T) {
 		ids := rulesetsFor(tenant.BindingScope{HiveID: &hive.ID, SwarmID: &prod.ID})
 		for _, want := range []uuid.UUID{orgRS.ID, hiveRS.ID, prodRS.ID} {
-			if !has(ids, want) {
+			if !slices.Contains(ids, want) {
 				t.Fatalf("missing ruleset %v; got %v", want, ids)
 			}
 		}
-		if has(ids, nonprodRS.ID) {
+		if slices.Contains(ids, nonprodRS.ID) {
 			t.Fatalf("a host in fleet-prod received fleet-nonprod's ruleset; got %v", ids)
 		}
-		if has(ids, otherRS.ID) {
+		if slices.Contains(ids, otherRS.ID) {
 			t.Fatalf("a host received another cluster's swarm ruleset; got %v", ids)
 		}
 		if len(ids) != 3 {
@@ -517,11 +516,11 @@ func TestBindingsForScopeGivesOneSwarmNotItsSibling(t *testing.T) {
 	t.Run("spare capacity, in the cluster but in no swarm", func(t *testing.T) {
 		ids := rulesetsFor(tenant.BindingScope{HiveID: &hive.ID})
 		for _, want := range []uuid.UUID{orgRS.ID, hiveRS.ID} {
-			if !has(ids, want) {
+			if !slices.Contains(ids, want) {
 				t.Fatalf("missing ruleset %v; got %v", want, ids)
 			}
 		}
-		if has(ids, prodRS.ID) || has(ids, nonprodRS.ID) {
+		if slices.Contains(ids, prodRS.ID) || slices.Contains(ids, nonprodRS.ID) {
 			t.Fatalf("spare metal received a swarm's rules; got %v", ids)
 		}
 		if len(ids) != 2 {

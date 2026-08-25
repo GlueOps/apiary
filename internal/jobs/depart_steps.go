@@ -94,15 +94,15 @@ func PruneKeysFromClusterKeyring(ctx context.Context, r Runner, keys []string) (
 	var b strings.Builder
 	b.WriteString("set -e; : > /tmp/.apiary-prune-pat; ")
 	for _, k := range keys {
-		b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >> /tmp/.apiary-prune-pat; ", shellQuote(k)))
+		fmt.Fprintf(&b, "printf '%%s\\n' %s >> /tmp/.apiary-prune-pat; ", shellQuote(k))
 	}
 	// `|| true` on grep: it exits 1 when nothing survives the filter, which is
 	// the legitimate case of a keyring that held only the departing node's key.
 	// Without it, set -e turns an empty result into a failure.
-	b.WriteString(fmt.Sprintf(
+	fmt.Fprintf(&b,
 		"grep -vF -f /tmp/.apiary-prune-pat %s > /tmp/.apiary-keyring.new || true; "+
 			"cp /tmp/.apiary-keyring.new %s; rm -f /tmp/.apiary-prune-pat /tmp/.apiary-keyring.new",
-		clusterKeyring, clusterKeyring))
+		clusterKeyring, clusterKeyring)
 
 	if out, err := r.Run(ctx, b.String()); err != nil {
 		return 0, fmt.Errorf("depart: prune the cluster keyring: %w (%s)", err, strings.TrimSpace(out))
@@ -136,10 +136,10 @@ func countMatches(ctx context.Context, r Runner, path string, keys []string) (in
 	var b strings.Builder
 	b.WriteString(": > /tmp/.apiary-count-pat; ")
 	for _, k := range keys {
-		b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >> /tmp/.apiary-count-pat; ", shellQuote(k)))
+		fmt.Fprintf(&b, "printf '%%s\\n' %s >> /tmp/.apiary-count-pat; ", shellQuote(k))
 	}
-	b.WriteString(fmt.Sprintf("grep -cF -f /tmp/.apiary-count-pat %s || true; rm -f /tmp/.apiary-count-pat",
-		path))
+	fmt.Fprintf(&b, "grep -cF -f /tmp/.apiary-count-pat %s || true; rm -f /tmp/.apiary-count-pat",
+		path)
 
 	out, err := r.Run(ctx, b.String())
 	if err != nil {
@@ -210,13 +210,13 @@ func RevokeJoinKeys(ctx context.Context, r Runner, keys []string) (int, error) {
 	var b strings.Builder
 	b.WriteString("set -e; : > /tmp/.apiary-join-pat; ")
 	for _, k := range keys {
-		b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >> /tmp/.apiary-join-pat; ", shellQuote(k)))
+		fmt.Fprintf(&b, "printf '%%s\\n' %s >> /tmp/.apiary-join-pat; ", shellQuote(k))
 	}
-	b.WriteString(fmt.Sprintf(
+	fmt.Fprintf(&b,
 		"grep -vF -f /tmp/.apiary-join-pat %s > /tmp/.apiary-join.new || true; "+
 			"cat /tmp/.apiary-join.new > %s; chmod 0644 %s; "+
 			"rm -f /tmp/.apiary-join-pat /tmp/.apiary-join.new",
-		joinKeyFile, joinKeyFile, joinKeyFile))
+		joinKeyFile, joinKeyFile, joinKeyFile)
 	if out, err := r.Run(ctx, b.String()); err != nil {
 		return 0, fmt.Errorf("depart: revoke join keys: %w (%s)", err, strings.TrimSpace(out))
 	}

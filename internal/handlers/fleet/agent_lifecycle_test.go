@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -90,8 +91,11 @@ func statusOf(t *testing.T, err error) int {
 	if err == nil {
 		t.Fatal("expected an error and got none")
 	}
-	se, ok := err.(huma.StatusError)
-	if !ok {
+	// errors.As, not a type assertion: a handler that wraps its refusal — which
+	// is the normal way to add context — would otherwise fail this helper with
+	// "expected a huma status error" while returning exactly the right status.
+	var se huma.StatusError
+	if !errors.As(err, &se) {
 		t.Fatalf("expected a huma status error, got %T: %v", err, err)
 	}
 	return se.GetStatus()

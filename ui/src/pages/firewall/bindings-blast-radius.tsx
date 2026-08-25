@@ -78,57 +78,57 @@ export function BlastRadius({
           // A header row with nothing under it and a footnote about counting
           // tells a new tenant nothing. Say what the card is for and what the
           // first move is, because this is the state every organization starts in.
-          <p className="text-muted-foreground text-sm">
-            No rulesets yet, so nothing reaches any fleet. Create a ruleset, add rules to it,
-            then bind it — org-wide to cover every host including ones between fleets, or to a
-            single fleet. Once bound, this card shows how far an edit to each ruleset travels.
+          <p className="text-sm text-muted-foreground">
+            No rulesets yet, so nothing reaches any fleet. Create a ruleset, add rules to it, then
+            bind it — org-wide to cover every host including ones between fleets, or to a single
+            fleet. Once bound, this card shows how far an edit to each ruleset travels.
           </p>
         ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Ruleset</TableHead>
-              <TableHead>Reaches</TableHead>
-              <TableHead>Fleets</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reach.map((r) => (
-              <TableRow key={r.ruleset.id}>
-                <TableCell className="font-medium">
-                  {r.ruleset.name}
-                  {r.disabledBindings > 0 ? (
-                    <span className="block text-xs text-muted-foreground">
-                      {r.disabledBindings} binding{r.disabledBindings === 1 ? '' : 's'} disabled,
-                      not counted
-                    </span>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  {r.orgWide ? (
-                    <div className="flex flex-col gap-1">
-                      <Badge className="w-fit bg-amber-500/15 text-amber-500">
-                        <IconAlertTriangle className="size-3" /> every fleet
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        and hosts in no fleet at all
-                      </span>
-                    </div>
-                  ) : r.fleets.length === 0 ? (
-                    <span className="text-sm text-muted-foreground">nowhere — not bound</span>
-                  ) : (
-                    <span className="text-sm tabular-nums">
-                      {r.fleets.length} fleet{r.fleets.length === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {r.fleets.length === 0 ? '—' : r.fleets.map((f) => f.label).join(', ')}
-                </TableCell>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Ruleset</TableHead>
+                <TableHead>Reaches</TableHead>
+                <TableHead>Fleets</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {reach.map((r) => (
+                <TableRow key={r.ruleset.id}>
+                  <TableCell className="font-medium">
+                    {r.ruleset.name}
+                    {r.disabledBindings > 0 ? (
+                      <span className="block text-xs text-muted-foreground">
+                        {r.disabledBindings} binding{r.disabledBindings === 1 ? '' : 's'} disabled,
+                        not counted
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {r.orgWide ? (
+                      <div className="flex flex-col gap-1">
+                        <Badge className="w-fit bg-amber-500/15 text-amber-500">
+                          <IconAlertTriangle className="size-3" /> every fleet
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          and hosts in no fleet at all
+                        </span>
+                      </div>
+                    ) : r.fleets.length === 0 ? (
+                      <span className="text-sm text-muted-foreground">nowhere — not bound</span>
+                    ) : (
+                      <span className="text-sm tabular-nums">
+                        {r.fleets.length} fleet{r.fleets.length === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {r.fleets.length === 0 ? '—' : r.fleets.map((f) => f.label).join(', ')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <p className="text-xs text-muted-foreground">

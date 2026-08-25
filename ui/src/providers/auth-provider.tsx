@@ -233,8 +233,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // dropped connection during refresh signed the user out, with a valid
         // refresh token still in hand. Only an explicit refusal ends the
         // session; anything else leaves it alone for the next attempt.
-        const status = (err as { response?: { status?: number }; status?: number })?.response
-          ?.status ?? (err as { status?: number })?.status;
+        const status =
+          (err as { response?: { status?: number }; status?: number })?.response?.status ??
+          (err as { status?: number })?.status;
         if (status === 401 || status === 403) clear();
       }
     };

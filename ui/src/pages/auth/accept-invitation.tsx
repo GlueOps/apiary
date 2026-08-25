@@ -217,7 +217,7 @@ export const AcceptInvitation = () => {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" disabled={accept.isPending}>
             {accept.isPending ? 'Creating your account…' : `Join ${organization}`}
           </Button>

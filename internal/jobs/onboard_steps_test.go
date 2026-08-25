@@ -202,7 +202,12 @@ func TestSshdDropInIsRenderedWholeRatherThanMatchedOnASubstring(t *testing.T) {
 	// complete path, and a longer path that merely starts with it is not what
 	// satisfies the check.
 	withJoin := sshdDropInContent(true)
-	fields := strings.Fields(withJoin[strings.Index(withJoin, "AuthorizedKeysFile"):])
+	at := strings.Index(withJoin, "AuthorizedKeysFile")
+	if at < 0 {
+		t.Fatal("the drop-in names no AuthorizedKeysFile at all, so sshd would fall back to " +
+			"its default and never read the join key")
+	}
+	fields := strings.Fields(withJoin[at:])
 	found := false
 	for _, f := range fields {
 		if f == joinKeyFile {

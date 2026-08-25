@@ -125,7 +125,11 @@ func MapProxmoxResources(rs proxmox.ClusterResources) []tenant.ResourceRow {
 			Status: r.Status,
 			// MaxCPU, not CPU. MaxCPU is the configured core count; CPU is a 0..1
 			// utilisation ratio that truncates to zero on anything not busy.
-			CPUCores:  int(r.MaxCPU),
+			// Through the same saturating clamp as the VMID. A wrapped core count
+			// is a small positive number, so a node would report a handful of cores
+			// and the placement oracle would treat a large host as nearly full —
+			// or, wrapped the other way, hand out capacity that does not exist.
+			CPUCores:  clampVMID(r.MaxCPU),
 			MemBytes:  r.MaxMem,
 			DiskBytes: r.MaxDisk,
 			// Proxmox reports template as 0/1 rather than a bool.

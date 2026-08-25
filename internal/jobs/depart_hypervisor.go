@@ -165,7 +165,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		// Wrapped so a caller can distinguish a policy refusal from a broken
 		// cluster, and joined into one message so the operator sees the whole list
 		// rather than fixing one gate per worker run.
-		return fmt.Errorf("%w: %s", ErrDepartureRefused, tenant.DepartureRefusalsError(refusals))
+		return fmt.Errorf("%w: %w", ErrDepartureRefused, tenant.DepartureRefusalsError(refusals))
 	}
 
 	if snap.DepartingAddress == "" || snap.RemainingAddress == "" {

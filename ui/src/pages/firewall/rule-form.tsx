@@ -161,7 +161,11 @@ interface Draft {
 // 0 is the API's "unset" for a port, and it is not a port anyone can type.
 const asText = (n: number) => (n ? String(n) : '');
 
-function draftFrom(rule: RuleView | null, nextPosition: number, mode: 'new' | 'edit' | 'clone'): Draft {
+function draftFrom(
+  rule: RuleView | null,
+  nextPosition: number,
+  mode: 'new' | 'edit' | 'clone',
+): Draft {
   if (!rule) {
     return {
       name: '',
@@ -357,8 +361,8 @@ export function RuleFormDialog({
             <DialogDescription>
               Everything is copied except the name, including the position — a rule cloned from
               above a drop has to stay above it, and moving the copy to the end of the chain would
-              invert what it does. Two rules on one position render oldest first, so this copy
-              lands immediately after its source. Change the source address, then save.
+              invert what it does. Two rules on one position render oldest first, so this copy lands
+              immediately after its source. Change the source address, then save.
             </DialogDescription>
           ) : null}
           <DialogDescription>

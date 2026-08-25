@@ -42,7 +42,7 @@ func TestScopeRankReadsSwarmBeforeHive(t *testing.T) {
 		}
 	}
 
-	if !(ScopeRankSwarm < ScopeRankHive && ScopeRankHive < ScopeRankOrg) {
+	if ScopeRankSwarm >= ScopeRankHive || ScopeRankHive >= ScopeRankOrg {
 		t.Fatalf("ranks are ordered %d/%d/%d; most specific must sort FIRST because nft "+
 			"stops at the first terminal verdict, so an org-wide drop ranked first would "+
 			"shadow the swarm ruleset meant to override it",

@@ -202,18 +202,18 @@ export function PolicyEditor({
                     only when it does, so nobody has to notice an absence to
                     learn which level is deciding. */}
                 {inherits ? (
-                <p className="text-sm text-muted-foreground">
-                  Effective:{' '}
-                  <span className={p.effective_enabled ? 'font-medium text-foreground' : ''}>
-                    {p.effective_enabled ? 'enforced' : 'not enforced'}
-                  </span>
-                  {differs ? (
-                    <span className="text-amber-500">
-                      {' '}
-                      — decided elsewhere, not by this setting
+                  <p className="text-sm text-muted-foreground">
+                    Effective:{' '}
+                    <span className={p.effective_enabled ? 'font-medium text-foreground' : ''}>
+                      {p.effective_enabled ? 'enforced' : 'not enforced'}
                     </span>
-                  ) : null}
-                </p>
+                    {differs ? (
+                      <span className="text-amber-500">
+                        {' '}
+                        — decided elsewhere, not by this setting
+                      </span>
+                    ) : null}
+                  </p>
                 ) : null}
 
                 {p.kind === 'password_min_length' ? (

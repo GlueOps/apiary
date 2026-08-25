@@ -225,13 +225,13 @@ func SeedKnownHosts(ctx context.Context, r Runner, names []string, hostKeys []st
 	// ssh-keygen -R rewrites the file removing every entry for that host. Run
 	// before appending so a retry re-pins rather than duplicating.
 	for _, n := range names {
-		b.WriteString(fmt.Sprintf("ssh-keygen -R %s -f %s >/dev/null 2>&1 || true; ",
-			shellQuote(n), knownHostsFile))
+		fmt.Fprintf(&b, "ssh-keygen -R %s -f %s >/dev/null 2>&1 || true; ",
+			shellQuote(n), knownHostsFile)
 	}
 	for _, n := range names {
 		for _, k := range hostKeys {
-			b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >> %s; ",
-				shellQuote(n+" "+k), knownHostsFile))
+			fmt.Fprintf(&b, "printf '%%s\\n' %s >> %s; ",
+				shellQuote(n+" "+k), knownHostsFile)
 		}
 	}
 	b.WriteString("chmod 0600 " + knownHostsFile)

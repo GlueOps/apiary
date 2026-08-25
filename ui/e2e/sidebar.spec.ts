@@ -43,7 +43,10 @@ test.describe('sidebar', () => {
       await page.waitForLoadState('networkidle');
 
       const active = await activeHrefs(page);
-      expect(active, `${path} should light exactly one nav entry, got ${JSON.stringify(active)}`).toEqual([expected]);
+      expect(
+        active,
+        `${path} should light exactly one nav entry, got ${JSON.stringify(active)}`,
+      ).toEqual([expected]);
     });
   }
 
@@ -53,7 +56,9 @@ test.describe('sidebar', () => {
     await page.goto('/fleet/hives');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.locator('[data-slot="sidebar-content"] a[href="/fleet/hives"]')).toBeVisible();
+    await expect(
+      page.locator('[data-slot="sidebar-content"] a[href="/fleet/hives"]'),
+    ).toBeVisible();
     await expect(
       page.locator('[data-slot="sidebar-content"] a[href="/fleet/hypervisors"]'),
     ).toBeVisible();

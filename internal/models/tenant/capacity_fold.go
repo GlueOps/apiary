@@ -1,6 +1,9 @@
 package tenant
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // Guest resource types as the provider reports them.
 const (
@@ -147,8 +150,8 @@ func FoldClusterResources(rows []ResourceRow, managed map[int]struct{}) map[stri
 		case ResourceTypeNode:
 			o := get(node)
 			o.CPUTotal = r.CPUCores
-			o.RAMGBTotal = int(r.MemBytes / bytesPerGiB)
-			o.DiskGBTotal = int(r.DiskBytes / bytesPerGiB)
+			o.RAMGBTotal = gibToInt(r.MemBytes)
+			o.DiskGBTotal = gibToInt(r.DiskBytes)
 			// "online" is the provider's word for a node it can see. Anything else
 			// — offline, unknown — is not online, and treating an unrecognised
 			// status as up would report a dead node as available.
@@ -161,8 +164,8 @@ func FoldClusterResources(rows []ResourceRow, managed map[int]struct{}) map[stri
 			// line the gates depend on; narrowing it to running guests is the bug
 			// it exists to prevent.
 			o.Guests++
-			ram := int(r.MemBytes / bytesPerGiB)
-			disk := int(r.DiskBytes / bytesPerGiB)
+			ram := gibToInt(r.MemBytes)
+			disk := gibToInt(r.DiskBytes)
 			o.CPUUsed += r.CPUCores
 			o.RAMGBUsed += ram
 			o.DiskGBUsed += disk
@@ -182,4 +185,21 @@ func FoldClusterResources(rows []ResourceRow, managed map[int]struct{}) map[stri
 		}
 	}
 	return out
+}
+
+// gibToInt converts a byte count to whole GiB, SATURATING rather than wrapping.
+//
+// The provider's figure is a uint64 and this system's arithmetic is int, so on a
+// 32-bit build — and in principle on any build given a corrupt or hostile
+// response — the conversion can wrap. Wrapping is the dangerous direction: it
+// turns an enormous figure into a small positive one, so a node reports itself
+// nearly empty and the placement oracle fills it. Saturating reports an absurdly
+// large total instead, which every comparison in the capacity path treats as
+// "no room", and which an operator notices.
+func gibToInt(b uint64) int {
+	g := b / bytesPerGiB
+	if g > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(g)
 }

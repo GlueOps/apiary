@@ -1,6 +1,5 @@
-import { Navigate, Outlet } from 'react-router-dom';
-
 import { useQuery } from '@tanstack/react-query';
+import { Navigate, Outlet } from 'react-router-dom';
 
 import { meGetOptions } from '@/sdk/@tanstack/react-query.gen';
 
