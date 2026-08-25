@@ -65,6 +65,34 @@ const IDENTITY_LABEL: Record<string, string> = {
   hetzner: 'Token name',
 };
 
+/** A worked example of the identifying half, per provider.
+ *
+ * The register form had none, and the rotate dialog hard-coded the Proxmox one —
+ * so an AWS credential was offered `root@pam!apiary` as its example. Both read
+ * from here now.
+ *
+ * This is not decoration. A Proxmox token id is `user@realm!tokenname`, a shape
+ * nobody guesses, and a credential stored without it authenticates against
+ * nothing — the capacity sync fails with "the API token id is unknown and the
+ * secret alone cannot authenticate", which is a long way from the form that
+ * accepted it. */
+const IDENTITY_PLACEHOLDER: Record<string, string> = {
+  aws: 'AKIAIOSFODNN7EXAMPLE',
+  proxmox: 'root@pam!apiary',
+  hetzner: 'apiary-readonly',
+};
+
+/** Why the identifying half is asked for and stored, said once.
+ *
+ * Both forms write the same value to the same column, so they say the same
+ * thing. They did not: the register form said only "Not secret. This is what
+ * gets fingerprinted", which explains what happens to the value and not why it
+ * is required — and a field whose purpose reads as bookkeeping is one people
+ * leave empty. */
+const IDENTITY_HINT =
+  'Not secret, and it is stored: the provider API needs both halves. A credential ' +
+  'saved without it cannot authenticate at all, whatever the secret is.';
+
 const SECRET_LABEL: Record<string, string> = {
   aws: 'Secret access key',
   proxmox: 'Token secret',
@@ -274,11 +302,10 @@ export function EstatesPage() {
                 id="identity"
                 value={identity}
                 onChange={(e) => setIdentity(e.target.value)}
+                placeholder={IDENTITY_PLACEHOLDER[provider]}
                 required
               />
-              <p className="text-xs text-muted-foreground">
-                Not secret. This is what gets fingerprinted.
-              </p>
+              <p className="text-xs text-muted-foreground">{IDENTITY_HINT}</p>
             </div>
 
             <div className="grid gap-2">
@@ -394,17 +421,19 @@ export function EstatesPage() {
           </DialogHeader>
           <form onSubmit={(e) => void onRotate(e)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="rotate-identity">Identity</Label>
+              <Label htmlFor="rotate-identity">
+                {(rotating && IDENTITY_LABEL[rotating.provider]) ?? 'Identity'}
+              </Label>
               <Input
                 id="rotate-identity"
                 value={rotateIdentity}
                 required
-                placeholder="root@pam!apiary"
+                placeholder={rotating ? IDENTITY_PLACEHOLDER[rotating.provider] : undefined}
                 onChange={(e) => setRotateIdentity(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Not secret, and it is stored: the provider API needs both halves, so a rotation that
-                changed only the secret would leave the two belonging to different credentials.
+                {IDENTITY_HINT} A rotation that changed only the secret would leave the two halves
+                belonging to different credentials.
               </p>
             </div>
             <div className="space-y-2">
