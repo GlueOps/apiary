@@ -45,7 +45,7 @@ jobs:
       # isolation job below proves that rather than trusting it.
       TEST_DATABASE_URL: postgres://test:test@localhost:5432/apiary_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: actions/setup-go@v5
         with:
@@ -141,7 +141,7 @@ jobs:
     name: no secrets in the history
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           # Full history. The default shallow clone gives gitleaks one commit to
           # look at, so a credential added and then removed in a later commit —
@@ -173,7 +173,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -204,7 +204,7 @@ jobs:
     name: generated artifacts are committed and current
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: actions/setup-go@v5
         with:
@@ -260,7 +260,7 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -280,7 +280,7 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
