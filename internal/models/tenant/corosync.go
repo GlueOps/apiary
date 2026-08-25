@@ -2,6 +2,7 @@ package tenant
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -127,4 +128,43 @@ func SortCorosyncLinks(links []CorosyncLink) []CorosyncLink {
 	copy(out, links)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out
+}
+
+// clusterNameRe is Proxmox's own node-name format, which is what it validates a
+// cluster name against.
+//
+// Read off a running node rather than inferred: PVE::API2::ClusterConfig declares
+// clustername with `format => 'pve-node', maxLength => 15`, and
+// PVE::JSONSchema::pve_verify_node_name is this expression. Alphanumeric at both
+// ends, hyphens permitted only in between.
+var clusterNameRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+
+// ClusterNameMaxLen is Proxmox's maxLength for a cluster name.
+//
+// Fifteen, and it is a hard limit rather than a guideline: corosync writes the
+// name into its ring configuration, and `pvecm create` refuses a longer one
+// outright. Worth checking here because the alternative is discovering it on
+// real metal, after the SSH session has already opened.
+const ClusterNameMaxLen = 15
+
+// ValidateClusterName refuses a name `pvecm create` would.
+//
+// This is the ONE place a hive's name has to be more than a label. Everywhere
+// else it is free text — the arrival path deliberately compares a joiner against
+// the target's own reported cluster rather than against the hive name, because
+// nothing enforces that the two match. A bootstrap is where the hive name
+// BECOMES the cluster name, so it has to be legal before the command runs.
+func ValidateClusterName(name string) error {
+	if name == "" {
+		return fmt.Errorf("a cluster name is required")
+	}
+	if len(name) > ClusterNameMaxLen {
+		return fmt.Errorf("cluster name %q is %d characters; Proxmox allows at most %d, and "+
+			"`pvecm create` refuses a longer one", name, len(name), ClusterNameMaxLen)
+	}
+	if !clusterNameRe.MatchString(name) {
+		return fmt.Errorf("cluster name %q is not a valid Proxmox node name: it must start and "+
+			"end with a letter or digit and may contain hyphens in between", name)
+	}
+	return nil
 }
