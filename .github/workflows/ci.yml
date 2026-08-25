@@ -96,10 +96,19 @@ jobs:
 
       # A suite that silently skipped its DB-backed tests looks exactly like one
       # that passed. Assert the database really was reachable.
+      # Matches the TEST_DATABASE_URL skip specifically, not every 'SKIPPING'.
+      #
+      # This package also holds lab tests that require real Proxmox clusters
+      # (APIARY_LAB_*) and a live Proxmox API. Those skip in CI by design and
+      # always will, so counting every skip made the guard fire on the one thing
+      # it was never meant to police — and a guard that cannot pass gets deleted
+      # rather than fixed. What must never happen silently is a DB-backed test
+      # skipping because the database is not reachable.
       - name: Prove the database-backed tests actually ran
         run: |
           set -euo pipefail
-          skipped=$(go test ./internal/service/ -count=1 -v 2>&1 | grep -c 'SKIPPING' || true)
+          skipped=$(go test ./internal/service/ -count=1 -v 2>&1 \
+            | grep -c 'TEST_DATABASE_URL is not set' || true)
           if [ "$skipped" -ne 0 ]; then
             echo "::error::$skipped DB-backed test(s) skipped — TEST_DATABASE_URL is not reaching them."
             exit 1
