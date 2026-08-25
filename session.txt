@@ -1,0 +1,40 @@
+Claude Code session — apiary, 2026-08-25
+
+Resume with:
+    claude --resume cafe382f-029c-4179-bbd6-f81e4121f1ac
+
+session id: cafe382f-029c-4179-bbd6-f81e4121f1ac
+transcript: ~/.claude/projects/-Users-dragon-projects-glueops-apiary/cafe382f-029c-4179-bbd6-f81e4121f1ac.jsonl
+
+Open at restart
+---------------
+PR #43  fix: a node arrives cordoned, and its hive is re-observed after a delay
+PR #44  test: exercise the departure gate against live observations
+        (both open, unmerged; main is at the #39 merge)
+
+Lab state
+---------
+lab-dc  = pve (10.10.10.2) + pve2 (10.10.10.3)   3 guests
+lab-dc2 = pve3 (10.10.10.4)                      2 guests
+alpine-201 (LXC 102) is STOPPED on pve2 — blocks `just fleet-move` by design.
+Move or delete it, then sync, to make the cycle runnable again.
+
+Demo tokens (root@pam!apiary-demo, privsep 0) live on .2 and .4; .env.lab holds
+the secrets and is gitignored. Revoke with:
+    ssh root@10.10.10.2 'pveum user token remove root@pam apiary-demo'
+    ssh root@10.10.10.4 'pveum user token remove root@pam apiary-demo'
+
+Recipes
+-------
+just lab-topology    which cluster holds which node
+just lab-gates       departure gate vs live observations (non-destructive)
+just fleet-move      move a node A -> B   (add `reverse` for B -> A)
+
+Open questions
+--------------
+- Discovery still creates hypervisors with Schedulable=true, while arrival now
+  cordons. Same node, different state depending how it got there.
+- Nothing has exercised the API path against the lab: no HTTP endpoints, no
+  River (incl. the new 30s ScheduledAt re-sync), no credential unseal.
+- GitGuardian's 4 findings on PR #1 still need marking as false positives.
+- 16 Renovate PRs open (#2-#26 minus the 9 closed as superseded).

@@ -134,6 +134,11 @@ func platformMutations() []call {
 		{"queue a task", http.MethodPost, "/fleet/tasks",
 			map[string]any{"bee_id": uuid.NewString(), "kind": "fleet.host.ping"}},
 		{"remove an agent", http.MethodDelete, "/fleet/bees/" + uuid.NewString(), nil},
+		// Deleting a cluster is as destructive as removing an agent and gets the
+		// same gate. Listed here rather than trusted to look similar: the auth
+		// rule lives in this table, so an endpoint absent from it has no auth test
+		// at all, whatever its handler does.
+		{"delete a cluster", http.MethodDelete, "/fleet/hives/" + uuid.NewString(), nil},
 	}
 }
 

@@ -273,9 +273,17 @@ type HiveDetailView struct {
 type UpdateHiveRequest struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
-		Description        *string  `json:"description,omitempty"`
-		APIURL             *string  `json:"api_url,omitempty" doc:"e.g. https://10.0.0.1:8006/api2/json"`
-		CredentialID       *string  `json:"credential_id,omitempty" format:"uuid"`
+		Description *string `json:"description,omitempty"`
+		APIURL      *string `json:"api_url,omitempty" doc:"e.g. https://10.0.0.1:8006/api2/json"`
+		// NO format:"uuid" HERE, deliberately. The empty string is a legal value
+		// meaning "unbind whatever is currently bound", which the handler below
+		// implements — and a uuid format constraint rejects it during schema
+		// validation, before any handler runs. That made the unbind branch
+		// unreachable and turned the ordinary case of saving a cluster that has no
+		// credential yet into a 422 with nothing useful in it, because the UI sends
+		// the field on every save. A genuinely malformed id still gets a 422, from
+		// the uuid.Parse below, with a message that says which field was wrong.
+		CredentialID       *string  `json:"credential_id,omitempty" doc:"A credential id to bind, or \"\" to unbind. Omit the field to leave the binding unchanged."`
 		InsecureSkipVerify *bool    `json:"insecure_skip_verify,omitempty" doc:"Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive."`
 		CPUOvercommitRatio *float64 `json:"cpu_overcommit_ratio,omitempty" minimum:"1"`
 		MinimumNodes       *int     `json:"minimum_nodes,omitempty" minimum:"1" doc:"Lower this only for a test fleet. Below three, a departure strands the nodes that remain."`

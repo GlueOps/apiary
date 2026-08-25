@@ -38,7 +38,7 @@ export interface UpdateHiveRequestBody {
      */
     cpuOvercommitRatio?: number;
     /**
-     * 
+     * A credential id to bind, or "" to unbind. Omit the field to leave the binding unchanged.
      * @type {string}
      * @memberof UpdateHiveRequestBody
      */

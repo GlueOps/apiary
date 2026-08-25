@@ -111,6 +111,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FleetApi* | [**fleetBeesList**](docs/FleetApi.md#fleetbeeslist) | **GET** /api/v1/fleet/bees | List fleet agents
 *FleetApi* | [**fleetEnrolmentTokensMint**](docs/FleetApi.md#fleetenrolmenttokensmint) | **POST** /api/v1/fleet/enrolment-tokens | Mint an enrolment token
 *FleetApi* | [**fleetHivesCreate**](docs/FleetApi.md#fleethivescreate) | **POST** /api/v1/fleet/hives | Create a hive
+*FleetApi* | [**fleetHivesDelete**](docs/FleetApi.md#fleethivesdelete) | **DELETE** /api/v1/fleet/hives/{id} | Delete a hive
 *FleetApi* | [**fleetHivesList**](docs/FleetApi.md#fleethiveslist) | **GET** /api/v1/fleet/hives | List hives
 *FleetApi* | [**fleetHivesSync**](docs/FleetApi.md#fleethivessync) | **POST** /api/v1/fleet/hives/{id}/sync | Refresh a hive\&#39;s capacity observations now
 *FleetApi* | [**fleetHivesUpdate**](docs/FleetApi.md#fleethivesupdate) | **PATCH** /api/v1/fleet/hives/{id} | Update a hive\&#39;s configuration

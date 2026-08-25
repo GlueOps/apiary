@@ -124,6 +124,19 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 
 	})
 
+	t.Run("Test FleetAPIService FleetHivesDelete", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var id string
+
+		httpRes, err := apiClient.FleetAPI.FleetHivesDelete(context.Background(), id).Execute()
+
+		require.Nil(t, err)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetHivesList", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test

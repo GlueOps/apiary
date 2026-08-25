@@ -3,6 +3,7 @@ package fleet
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -362,5 +363,49 @@ func TestFleetOpsRejectsAnOrganizationSmuggledInTheBody(t *testing.T) {
 				t.Fatalf("an unknown organization field in the body must be rejected outright: got %d", got)
 			}
 		})
+	}
+}
+
+// The empty string must survive schema validation, because it is how a caller
+// unbinds a credential.
+//
+// UpdateHiveRequest.credential_id carried format:"uuid" while the handler
+// implemented `"" means unbind`. Those cannot both be true: format validation
+// runs before any handler, so the unbind branch was unreachable and — because
+// the UI sends the field on every save — the ordinary case of saving a cluster
+// that has no credential bound yet returned 422 with nothing in it that named
+// the problem.
+//
+// Asserted against the generated schema rather than by sending a request,
+// because that is where the constraint lives; a handler test would pass while
+// the document that rejects the request still said uuid.
+func TestUnbindingACredentialSurvivesSchemaValidation(t *testing.T) {
+	api, _, _ := fleetopsAPI(t)
+
+	// Straight off the registered API's document, which is the artifact that
+	// actually rejects the request.
+	doc, err := json.Marshal(api.OpenAPI())
+	if err != nil {
+		t.Fatalf("render the openapi document: %v", err)
+	}
+	var spec map[string]any
+	if err := json.Unmarshal(doc, &spec); err != nil {
+		t.Fatalf("parse the openapi document: %v", err)
+	}
+	comps, _ := spec["components"].(map[string]any)
+	schemas, _ := comps["schemas"].(map[string]any)
+	body, ok := schemas["UpdateHiveRequestBody"].(map[string]any)
+	if !ok {
+		t.Fatal("no UpdateHiveRequestBody schema was generated; this test is asserting nothing")
+	}
+	props, _ := body["properties"].(map[string]any)
+	prop, ok := props["credential_id"].(map[string]any)
+	if !ok {
+		t.Fatal("UpdateHiveRequestBody has no credential_id property")
+	}
+	if f, has := prop["format"]; has {
+		t.Fatalf("credential_id declares format %v, so the empty string is rejected during "+
+			"schema validation and a cluster with no credential cannot be saved at all; the "+
+			"handler validates the id itself and returns a 422 that names the field", f)
 	}
 }

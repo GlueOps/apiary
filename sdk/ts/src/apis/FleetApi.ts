@@ -213,6 +213,10 @@ export interface FleetHivesCreateRequest {
     createHiveRequestBody: Omit<CreateHiveRequestBody, '$schema'>;
 }
 
+export interface FleetHivesDeleteRequest {
+    id: string;
+}
+
 export interface FleetHivesSyncRequest {
     id: string;
 }
@@ -768,6 +772,72 @@ export class FleetApi extends runtime.BaseAPI {
     async fleetHivesCreate(requestParameters: FleetHivesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<HiveView> {
         const response = await this.fleetHivesCreateRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Creates request options for fleetHivesDelete without sending the request
+     */
+    async fleetHivesDeleteRequestOpts(requestParameters: FleetHivesDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling fleetHivesDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/fleet/hives/{id}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Refuses while the cluster still holds hypervisors. A hypervisor row is the durable record of a physical machine — its machine id, its onboarding history, the agent bound to it — so deleting the cluster out from under one would either destroy that or leave it pointing at a cluster that no longer exists.  Depart the nodes first; each one becomes fleetless and keeps its identity, and the cluster can then be removed.
+     * Delete a hive
+     */
+    async fleetHivesDeleteRaw(requestParameters: FleetHivesDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.fleetHivesDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Refuses while the cluster still holds hypervisors. A hypervisor row is the durable record of a physical machine — its machine id, its onboarding history, the agent bound to it — so deleting the cluster out from under one would either destroy that or leave it pointing at a cluster that no longer exists.  Depart the nodes first; each one becomes fleetless and keeps its identity, and the cluster can then be removed.
+     * Delete a hive
+     */
+    async fleetHivesDelete(requestParameters: FleetHivesDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.fleetHivesDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
