@@ -142,6 +142,7 @@ seed:
 #
 # .env is deliberately NOT allowlisted in .gitleaks.toml, so if it is ever
 # force-added past the ignore rule this trips immediately.
+[doc("Scan the committed history for secrets")]
 secrets:
   gitleaks git . --config .gitleaks.toml --redact --verbose
 
@@ -151,5 +152,88 @@ secrets:
 # call. Nothing installs a hook here on purpose: core.hooksPath is commonly set
 # globally, so writing one would either be ignored or apply to every repository
 # on the machine.
+[doc("Scan staged changes for secrets, before they become a commit")]
 secrets-staged:
   gitleaks git . --config .gitleaks.toml --redact --verbose --staged
+
+
+# ---- Lab: fleet operations against real clusters ----------------------------
+
+# Loads .env.lab and fails loudly if anything it needs is missing.
+#
+# A dependency of the lab recipes rather than something each repeats, so a
+# half-filled .env.lab is one clear message instead of a curl that 403s or a test
+# that skips with "APIARY_CYCLE_* is not set" and looks like it passed.
+[private]
+_lab-env:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  [ -f .env.lab ] || { echo "no .env.lab — copy .env.lab.example and fill it in" >&2; exit 1; }
+  set -a; . ./.env.lab; set +a
+  missing=""
+  for k in LAB_A_API LAB_A_TOKEN_ID LAB_A_SECRET LAB_A_PEER \
+           LAB_B_API LAB_B_TOKEN_ID LAB_B_SECRET LAB_B_PEER \
+           LAB_MOVING LAB_LINK; do
+    [ -n "${!k:-}" ] || missing="$missing $k"
+  done
+  [ -z "$missing" ] || { echo "unset in .env.lab:$missing" >&2; exit 1; }
+
+# Which cluster holds which node, right now.
+#
+# Worth running either side of a move: it is the before-and-after of the demo,
+# and it reads the API rather than SSH because the API view is what placement
+# acts on.
+[doc("Show which lab cluster currently holds which node")]
+lab-topology: _lab-env
+  #!/usr/bin/env bash
+  set -euo pipefail
+  set -a; . ./.env.lab; set +a
+  python3 scripts/lab/topology.py "cluster A" "$LAB_A_API" "$LAB_A_TOKEN_ID" "$LAB_A_SECRET"
+  python3 scripts/lab/topology.py "cluster B" "$LAB_B_API" "$LAB_B_TOKEN_ID" "$LAB_B_SECRET"
+
+# Move a hypervisor between the two lab clusters, end to end.
+#
+#   just fleet-move            A -> B
+#   just fleet-move reverse    B -> A
+#
+# DESTRUCTIVE, AND IT DOES NOT PUT THE NODE BACK. It drives the real thing:
+# capacity sync, the departure gate refusing twice, cordon, delnode on the
+# source, join on the destination, and a re-sync of both. A failure part-way can
+# leave the node standalone — in neither cluster — which is recoverable, but is a
+# state a live demo should not meet for the first time.
+#
+# The node named by LAB_MOVING must have NO guests. The gate refuses one that is
+# still carrying any, which is the gate working rather than the demo breaking.
+#
+# A shebang recipe so `just` does not echo it: the token secrets reach the test
+# through this environment and must not land in terminal scrollback.
+[doc("Move a hypervisor between the lab clusters (direction: forward|reverse)")]
+fleet-move direction="forward": _lab-env _require-test-db
+  #!/usr/bin/env bash
+  set -euo pipefail
+  set -a; . ./.env.lab; set +a
+  set -a; . ./.env; set +a
+  export TEST_DATABASE_URL="$(just _test-dsn)"
+  # goreleaser and go both trip over a stale GOROOT left by a removed toolchain;
+  # the Makefile unexports it for the same reason.
+  unset GOROOT
+  # Direction is only ever a swap of A and B — the node that moves and the link
+  # it advertises do not change. Sending a node back is therefore one word rather
+  # than an edit of .env.lab, which is exactly the edit a live demo fumbles.
+  case "{{direction}}" in
+    forward) from=A; to=B; s=A; d=B ;;
+    reverse) from=B; to=A; s=B; d=A ;;
+    *) echo "direction must be 'forward' or 'reverse', got '{{direction}}'" >&2; exit 1 ;;
+  esac
+  api_s="LAB_${s}_API";  tok_s="LAB_${s}_TOKEN_ID"; sec_s="LAB_${s}_SECRET"; peer_s="LAB_${s}_PEER"
+  api_d="LAB_${d}_API";  tok_d="LAB_${d}_TOKEN_ID"; sec_d="LAB_${d}_SECRET"; peer_d="LAB_${d}_PEER"
+  export APIARY_CYCLE_SOURCE_API="${!api_s}"      APIARY_CYCLE_SOURCE_TOKEN_ID="${!tok_s}"
+  export APIARY_CYCLE_SOURCE_SECRET="${!sec_s}"   APIARY_CYCLE_SOURCE_PEER="${!peer_s}"
+  export APIARY_CYCLE_DEST_API="${!api_d}"        APIARY_CYCLE_DEST_TOKEN_ID="${!tok_d}"
+  export APIARY_CYCLE_DEST_SECRET="${!sec_d}"     APIARY_CYCLE_DEST_PEER="${!peer_d}"
+  export APIARY_CYCLE_MOVING="$LAB_MOVING"        APIARY_CYCLE_LINK="$LAB_LINK"
+  echo "FLEET MOVE  ${LAB_MOVING#*,} :  cluster $from  ->  cluster $to"
+  echo "=========================================================================="
+  set -o pipefail
+  go test ./internal/service/ -run TestFleetCycleAgainstLiveClusters \
+    -count=1 -v -timeout 15m 2>&1 | python3 scripts/lab/timeline.py
