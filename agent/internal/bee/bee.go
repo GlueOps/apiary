@@ -23,8 +23,10 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/glueops/apiary-agent/internal/firewall"
 	"github.com/glueops/apiary-agent/internal/store"
 	apiary "github.com/glueops/apiary/sdk/go"
 )
@@ -57,12 +59,26 @@ type Options struct {
 	HeartbeatWait time.Duration
 	IdleBackoff   time.Duration
 	LogBatch      int
+
+	// FirewallRunner executes the commands that load a ruleset. A dependency so
+	// the convergence path can be driven in a test without nft and without the
+	// ability to break the machine running it — which matters more here than
+	// anywhere else in this agent, because the failure mode is an unreachable
+	// host rather than a failed task.
+	FirewallRunner firewall.Runner
 }
 
 type Bee struct {
 	opts      Options
 	executors map[string]Executor
 	notify    *notifier
+
+	// firewall is what this host is enforcing, as established by this process.
+	firewall appliedFirewall
+
+	// desiredFirewall is what the last heartbeat said it should be. Nil means
+	// hold.
+	desiredFirewall atomic.Value
 
 	// declareMu serialises Declare against the report loop's own heartbeat, so a
 	// declaration cannot be lost to a heartbeat that raced it.
@@ -72,6 +88,9 @@ type Bee struct {
 func New(opts Options, executors map[string]Executor) *Bee {
 	if opts.HeartbeatWait <= 0 {
 		opts.HeartbeatWait = 25 * time.Second
+	}
+	if opts.FirewallRunner == nil {
+		opts.FirewallRunner = firewall.OSRunner{}
 	}
 	if opts.IdleBackoff <= 0 {
 		opts.IdleBackoff = 2 * time.Second
@@ -125,6 +144,13 @@ func (b *Bee) reportLoop(ctx context.Context) {
 			slog.WarnContext(ctx, "heartbeat failed", "error", err)
 		}
 
+		// AFTER the heartbeat returns and its lock is released. Convergence
+		// confirms itself with a heartbeat of its own, and running it inside the
+		// one that delivered the instruction would deadlock on declareMu.
+		if d, _ := b.desiredFirewall.Load().(*desiredFirewall); d != nil {
+			b.converge(ctx, d.revision, d.digest)
+		}
+
 		// ALWAYS pause, whether or not a task came back.
 		//
 		// The obvious version — loop immediately when a task arrives — spins at
@@ -156,6 +182,12 @@ func (b *Bee) heartbeat(ctx context.Context, o heartbeatOpts) (bool, error) {
 	body := *apiary.NewHeartbeatRequestBody()
 	body.SetAgentVersion(b.opts.AgentVersion)
 	body.SetWaitSeconds(int64(o.wait.Seconds()))
+	// Reported every time, so convergence is a fact the control plane observes
+	// rather than one it assumes from having published.
+	if rev, digest := b.firewall.get(); rev > 0 && digest != "" {
+		body.SetAppliedFirewallRevision(int64(rev))
+		body.SetAppliedFirewallDigest(digest)
+	}
 	if o.back {
 		body.SetBack(true)
 	} else if o.unavailableFor > 0 {
@@ -167,6 +199,19 @@ func (b *Bee) heartbeat(ctx context.Context, o heartbeatOpts) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Recorded, not acted on here. Converging takes seconds and can roll back with
+	// its own heartbeat, and doing that while holding declareMu would deadlock
+	// against the confirm — so the report loop acts on it once the lock is gone.
+	if fw, ok := res.GetFirewallOk(); ok && fw != nil {
+		b.desiredFirewall.Store(&desiredFirewall{
+			revision: int(fw.GetRevision()), digest: fw.GetDigest(),
+		})
+	} else {
+		// Absent means HOLD. Cleared rather than left standing, so a machine that
+		// leaves its fleet stops being told to converge on that fleet's policy.
+		b.desiredFirewall.Store((*desiredFirewall)(nil))
+	}
+
 	task, ok := res.GetTaskOk()
 	if !ok || task == nil {
 		return false, nil
