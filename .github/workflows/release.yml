@@ -63,7 +63,7 @@ jobs:
       # well as Go. It does NOT need Java: SDK generation was deliberately moved
       # out of goreleaser's before-hooks (see .goreleaser.yaml) and is verified
       # on pull requests instead.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
 
