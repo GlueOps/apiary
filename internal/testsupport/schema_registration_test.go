@@ -36,23 +36,35 @@ func TestEverySchemaDeclaredIsAlsoDropped(t *testing.T) {
 	declared := map[string]map[string]string{} // package dir -> name -> file
 	dropped := map[string]map[string]bool{}    // package dir -> name
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	// Two passes: collect the paths, then read them. Reading inside the walk
+	// callback is a symlink TOCTOU shape (gosec G122) — harmless when the target
+	// is the repository's own source, but the split costs nothing and keeps the
+	// walk to one job.
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			switch info.Name() {
+		if d.IsDir() {
+			switch d.Name() {
 			case "node_modules", ".git", "bin", "webdist":
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, "_test.go") {
-			return nil
+		if strings.HasSuffix(path, "_test.go") {
+			files = append(files, path)
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk the tree: %v", err)
+	}
+
+	for _, path := range files {
 		b, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			t.Fatalf("read %s: %v", path, err)
 		}
 		src, dir := string(b), filepath.Dir(path)
 
@@ -71,10 +83,6 @@ func TestEverySchemaDeclaredIsAlsoDropped(t *testing.T) {
 				dropped[dir][id] = true
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk the tree: %v", err)
 	}
 
 	if len(declared) == 0 {
