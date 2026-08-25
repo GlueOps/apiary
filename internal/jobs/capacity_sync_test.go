@@ -80,8 +80,14 @@ func TestSyncWritesObservedGuestsAlongsideFreshness(t *testing.T) {
 		t.Errorf("foreign usage must be written alongside the freshness stamp: want cpu=5 "+
 			"ram=9, got %d/%d", hv.ObservedForeignCPUUsed, hv.ObservedForeignRAMGBUsed)
 	}
-	if !hv.Schedulable {
-		t.Error("a newly discovered node defaults to schedulable")
+	// Cordoned, and the observation still lands. Those two go together on
+	// purpose: an operator decides whether a newly found host may receive
+	// guests, and needs the figures in front of them to decide. The full rule,
+	// including that a later sync must not re-cordon a host somebody enabled,
+	// is TestSyncCreatesNewlyDiscoveredNodesCordoned.
+	if hv.Schedulable {
+		t.Error("a newly discovered node must arrive cordoned; nothing has validated this " +
+			"host, and arrival already treats the same column that way")
 	}
 }
 
@@ -819,5 +825,67 @@ func TestPlacementStatesHoldingCapacityFollowsThePredicate(t *testing.T) {
 				"intended usage must be the same set of rows by the same definition",
 				s, listed, tenant.PlacementHoldsCapacity(s))
 		}
+	}
+}
+
+// A node the control plane has just met is not schedulable, and the operator's
+// later decision survives every sync after that.
+//
+// Same column and same rule as arrival: a host receives guests when somebody
+// says it may, having seen what was observed on it. The create path used to
+// write true, so the identical machine ended up in opposite states depending on
+// whether the control plane met it by MOVING it or by FINDING it — and the
+// discovered case is the weaker one, since nothing has validated that host at
+// all.
+//
+// Both directions are checked because the change is only on the create path. If
+// it ever spread to the update path it would re-cordon a host an operator had
+// deliberately enabled, on the next tick, for the life of the cluster — a far
+// worse failure than the one being fixed, and one that looks like the fleet
+// randomly refusing work.
+func TestSyncCreatesNewlyDiscoveredNodesCordoned(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rows := []tenant.ResourceRow{
+		{Type: "node", Node: "hv-new", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	}
+	if _, err := SyncHiveCapacity(context.Background(), syncDeps(db, rows), uuid.New(), hive.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var hv tenant.Hypervisor
+	if err := db.First(&hv, "hive_id = ? AND name = ?", hive.ID, "hv-new").Error; err != nil {
+		t.Fatalf("the sync did not create the discovered node: %v", err)
+	}
+	if hv.Schedulable {
+		t.Fatal("a newly discovered node is schedulable; the placement oracle can land guests " +
+			"on a host nobody has looked at, which is the opposite of what arrival does with " +
+			"the same column")
+	}
+	// The observation still lands — cordoning must not cost the figures an
+	// operator needs in order to decide.
+	if hv.ObservedCPUTotal != 8 || hv.ObservedRAMGBTotal != 32 {
+		t.Errorf("observed capacity must be recorded on create, got cpu=%d ram=%d",
+			hv.ObservedCPUTotal, hv.ObservedRAMGBTotal)
+	}
+
+	// The operator enables it, and that decision must outlive every later sync.
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
+		Update("schedulable", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SyncHiveCapacity(context.Background(), syncDeps(db, rows), uuid.New(), hive.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&hv, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !hv.Schedulable {
+		t.Fatal("a later sync re-cordoned a host the operator had enabled; the cordon rule " +
+			"belongs to the create path alone, or the fleet refuses work at every tick")
 	}
 }
