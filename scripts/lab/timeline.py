@@ -9,8 +9,14 @@ Reads stdin, writes stdout. Unbuffered on purpose: a demo that prints nothing fo
 thirty seconds and then everything at once has lost the plot.
 """
 
+import re
 import sys
 import time
+
+# Any lab test's "file.go:123: " prefix, not one file's. This matched only
+# fleet_cycle_lab_test.go at first, so a second lab test's lines fell through to
+# the generic branch and kept the file:line noise the stripping exists to remove.
+_PREFIX = re.compile(r"^\s*\w+_lab_test\.go:\d+:\s*")
 
 
 def main() -> int:
@@ -18,9 +24,9 @@ def main() -> int:
     failed = False
     for line in sys.stdin:
         s = line.rstrip()
-        if "fleet_cycle_lab_test.go:" in s:
+        if _PREFIX.match(s):
             # "    fleet_cycle_lab_test.go:117: [sync] ok  ..." -> "[sync] ok  ..."
-            print(f"{time.time() - t0:6.1f}s  {s.split(': ', 1)[-1]}", flush=True)
+            print(f"{time.time() - t0:6.1f}s  {_PREFIX.sub('', s)}", flush=True)
         elif s.startswith("    ") and s.strip():
             print(f"        {s.strip()}", flush=True)
         elif s.startswith(("--- ", "ok  ", "FAIL")):
