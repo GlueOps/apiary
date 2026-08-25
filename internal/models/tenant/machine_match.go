@@ -108,10 +108,48 @@ func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor 
 	if nodeName == "" {
 		return nil
 	}
+	// A fully qualified enrolling address carries a domain the candidate cannot
+	// corroborate — a discovered machine is known only by hive and node name,
+	// never by address.
+	fqdn := false
+	if host := strings.TrimSuffix(strings.TrimSpace(address), "."); strings.Contains(host, ".") &&
+		net.ParseIP(host) == nil {
+		fqdn = true
+	}
+
 	var found *Hypervisor
 	for i := range candidates {
 		c := &candidates[i]
 		if c.MachineID != nil || c.Name == nil || *c.Name != nodeName {
+			continue
+		}
+
+		// Strongest evidence first: a machine onboarded by address and later
+		// rediscovered keeps that address, so when one is recorded it must agree.
+		// Costs nothing when absent and settles the case outright when present.
+		if c.Address != "" {
+			if !strings.EqualFold(strings.TrimSpace(c.Address), strings.TrimSpace(address)) {
+				continue
+			}
+			if found != nil {
+				return nil
+			}
+			found = c
+			continue
+		}
+
+		// No recorded address, so the only evidence is the node name.
+		// `hv5.dc2.example.com` truncates to `hv5` and matches the `hv5` a sync
+		// discovered in dc1: unambiguous by the name rule, and wrong, because those
+		// are two machines in two clusters. The agent's credential and machine id
+		// would land on the record for the other one.
+		//
+		// Refused only when the candidate is IN A CLUSTER, which is precisely the
+		// case where being wrong means crossing one. A candidate with no hive has
+		// no cluster for a domain to contradict, so the ordinary onboard-by-FQDN
+		// path keeps working. The cost of refusing is a duplicate row an operator
+		// can merge, which this package prefers to a wrong adoption.
+		if fqdn && c.HiveID != nil {
 			continue
 		}
 		if found != nil {

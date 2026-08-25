@@ -730,3 +730,78 @@ func TestTheOrgArmDoesNotLeanOnTheCheckConstraint(t *testing.T) {
 		}
 	}
 }
+
+// TestCreateStoresDisabledRatherThanSilentlyEnabling is a security test, not a
+// tidiness one.
+//
+// GORM omits a zero value from the INSERT when the field carries a `default:`
+// tag, so `Create(&FirewallRule{Enabled: false})` stores TRUE. A rule or binding
+// an operator deliberately created DISABLED would therefore be live the moment it
+// was written — a firewall rule applying when its author asked for it not to.
+//
+// This is the same defect already documented for Hypervisor.Schedulable, where it
+// silently failed to cordon. Here the blast radius is a packet filter.
+func TestCreateStoresDisabledRatherThanSilentlyEnabling(t *testing.T) {
+	db := firewallDB(t)
+	repo := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	rs := &tenant.FirewallRuleset{Name: "rs-" + uuid.NewString()[:8]}
+	if err := repo.CreateRuleset(ctx, rs); err != nil {
+		t.Fatalf("create ruleset: %v", err)
+	}
+
+	t.Run("rule", func(t *testing.T) {
+		rule := &tenant.FirewallRule{
+			RulesetID: rs.ID, Name: "drop-all", Enabled: false,
+			Family: "inet", TableName: "filter", ChainName: "input", Position: 100,
+			SrcCidr: "0.0.0.0/0", DstCidr: "0.0.0.0/0", Protocol: "any", Action: "drop",
+		}
+		if err := repo.CreateRule(ctx, rule); err != nil {
+			t.Fatalf("create rule: %v", err)
+		}
+		var back tenant.FirewallRule
+		if err := db.First(&back, "id = ?", rule.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if back.Enabled {
+			t.Fatal("a rule created with Enabled=false was stored ENABLED — it is live " +
+				"despite its author disabling it")
+		}
+	})
+
+	t.Run("binding", func(t *testing.T) {
+		b := &tenant.FirewallBinding{RulesetID: rs.ID, Priority: 100, Enabled: false}
+		if err := repo.CreateBinding(ctx, b); err != nil {
+			t.Fatalf("create binding: %v", err)
+		}
+		var back tenant.FirewallBinding
+		if err := db.First(&back, "id = ?", b.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if back.Enabled {
+			t.Fatal("a binding created with Enabled=false was stored ENABLED — the ruleset " +
+				"applies immediately despite being bound disabled")
+		}
+	})
+
+	t.Run("enabled still defaults to true when not specified", func(t *testing.T) {
+		// The fix must not invert the default: a rule created without an opinion
+		// is enabled, which is what the column default is for.
+		rule := &tenant.FirewallRule{
+			RulesetID: rs.ID, Name: "accept-ssh", Enabled: true,
+			Family: "inet", TableName: "filter", ChainName: "input", Position: 200,
+			SrcCidr: "0.0.0.0/0", DstCidr: "0.0.0.0/0", Protocol: "tcp", Action: "accept",
+		}
+		if err := repo.CreateRule(ctx, rule); err != nil {
+			t.Fatalf("create rule: %v", err)
+		}
+		var back tenant.FirewallRule
+		if err := db.First(&back, "id = ?", rule.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !back.Enabled {
+			t.Fatal("a rule created enabled must stay enabled")
+		}
+	})
+}

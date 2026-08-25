@@ -28,6 +28,7 @@ type arriveRunner struct {
 	joinKeyMatches int
 	revokeIsNoOp   bool
 	knownHostsOK   bool
+	nodeName       string
 	failOn         string
 	reconnectErr   error
 }
@@ -52,6 +53,14 @@ func (a *arriveRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 		return fmt.Sprintf("APIARY_CONF=%s\nAPIARY_AKEY=%s\nAPIARY_CORO=%s\nAPIARY_GUESTS=%d\nAPIARY_DIRS=%s\n",
 			yn(a.hasConf), yn(a.hasAuthKey), coro, a.guestConfigs, a.nodeDirs), nil
+	case strings.Contains(cmd, "APIARY_NODE="):
+		// The host answers with its own name. The fake must speak the same marker
+		// contract, and a name here is what an IP-addressed machine cannot derive
+		// from its address.
+		if a.nodeName == "" {
+			return "APIARY_NODE=\n", nil
+		}
+		return "APIARY_NODE=" + a.nodeName + "\n", nil
 	case strings.Contains(cmd, "ssh_host_ed25519_key.pub"):
 		return "ssh-ed25519 AAAAHOSTKEY root@target\n", nil
 	case strings.Contains(cmd, "id_rsa.pub"):
@@ -119,7 +128,7 @@ func newArriveHarness() *arriveHarness {
 	h.joiner = &arriveRunner{
 		name: "joiner", log: &h.log,
 		clusterName: "dc2", quorate: true,
-		nodeDirs: "hv9", knownHostsOK: true,
+		nodeDirs: "hv9", knownHostsOK: true, nodeName: "hv9",
 	}
 	h.target = &arriveRunner{
 		name: "target", log: &h.log,
@@ -677,5 +686,51 @@ func TestArriveTriggersNoSyncForAHiveThatCannotBeSynced(t *testing.T) {
 				t.Fatalf("no sync may be enqueued for a hive that cannot be synced, got %v", h.syncs)
 			}
 		})
+	}
+}
+
+func TestArriveWorksForAnIPAddressedMachine(t *testing.T) {
+	// The case that was broken. A machine recorded by IP has no node name to
+	// derive from its address — NodeNameFromAddress returns "" for an IP literal
+	// by design, so 10.0.0.9 does not become the node "10" — and Proxmox metal is
+	// routinely recorded by IP.
+	//
+	// Two things failed on the empty name: ReadJoinBlockers filters
+	// /etc/pve/nodes against it, so the node's OWN directory read as a former
+	// peer's and the arrival was refused before it began; and MarkJoined refuses
+	// to record membership without a name, so a join that did succeed could not be
+	// written down. Asking the host is what fixes both.
+	h := newArriveHarness()
+	h.snapshot.JoiningAddress = "10.0.0.9"
+	h.snapshot.JoiningNodeName = "" // nothing derivable from an IP
+	h.joiner.nodeName = "pve2"      // what the machine actually calls itself
+	h.joiner.nodeDirs = "pve2"
+
+	if err := h.run(); err != nil {
+		t.Fatalf("an IP-addressed machine must be able to arrive: %v", err)
+	}
+	if len(h.joined) != 1 {
+		t.Fatal("membership must be recorded")
+	}
+	if len(h.joinedNames) != 1 || h.joinedNames[0] != "pve2" {
+		t.Fatalf("membership must be recorded under the name the HOST reports, got %v",
+			h.joinedNames)
+	}
+}
+
+func TestArriveRefusesWhenTheHostReportsNoNodeName(t *testing.T) {
+	// A host that cannot say what it is called cannot be recorded: a row with
+	// hive_id set and name NULL is the shape the capacity sync cannot match and
+	// duplicates on its next tick. Refusing leaves the machine visibly fleetless
+	// and retryable.
+	h := newArriveHarness()
+	h.joiner.nodeName = ""
+
+	err := h.run()
+	if err == nil {
+		t.Fatal("an unnameable host must not be joined")
+	}
+	if indexOf(h.log, "pvecm add") >= 0 {
+		t.Error("the join must not be attempted before the name is known")
 	}
 }

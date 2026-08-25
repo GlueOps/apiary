@@ -462,6 +462,22 @@ func TestBookableIsTheOneDefinitionFitsAndCandidateForShare(t *testing.T) {
 	}
 }
 
+func TestClusteredPredicateIsPinnedLikeItsSiblings(t *testing.T) {
+	// Pinned for the same reason as the other two, and pinned NOW precisely
+	// because nothing consumes it yet: a literal with no caller is exactly the one
+	// that drifts unnoticed, and by the time a placement query carries it the
+	// change will look deliberate.
+	//
+	// It matters because a machine with no hive is not a placement candidate — it
+	// is being onboarded, or it is between clusters mid-migration. Widening this
+	// to something always-true would hand guests to metal that is not in a cluster
+	// at all.
+	if ClusteredPredicate != "hive_id IS NOT NULL" {
+		t.Fatalf("the clustered predicate changed to %q — it decides whether unclustered "+
+			"metal can receive guests", ClusteredPredicate)
+	}
+}
+
 func TestProvisionedPredicateIsTheOnboardingGate(t *testing.T) {
 	// A THIRD axis, not more of the cordon. Half-onboarded metal is reachable, in
 	// the cluster, and schedulable by default — nothing else in the placement

@@ -301,3 +301,63 @@ func TestSwarmScopePredicateExcludesSpareCapacity(t *testing.T) {
 		t.Fatalf("a pool targeting prod must see only prod's members, got %v", names)
 	}
 }
+
+func TestAnUnclusteredMachineCannotClaimSwarmMembership(t *testing.T) {
+	// The CHECK constraint that closes a hole the foreign key cannot.
+	//
+	// (hive_id, swarm_id) -> swarms(hive_id, id) uses MATCH SIMPLE, Postgres's
+	// default, under which the constraint is NOT CHECKED AT ALL when either
+	// referencing column is null. So once hive_id became nullable, a machine in no
+	// cluster could name any swarm and no foreign key would object.
+	//
+	// This was verified by hand against Postgres when the migration was written
+	// and by nothing since — deleting the constraint left the whole suite green.
+	db := swarmDB(t)
+	dc1 := newHive(t, db, "dc1")
+	prod := tenant.Swarm{HiveID: dc1.ID, Name: "prod"}
+	if err := db.Create(&prod).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	name := "unclustered"
+	err := db.Create(&tenant.Hypervisor{
+		Name: &name, HiveID: nil, SwarmID: &prod.ID,
+	}).Error
+	if err == nil {
+		t.Fatal("a machine in no cluster must not be able to claim swarm membership — the " +
+			"composite foreign key does not catch this, which is why the CHECK exists")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "ck_hypervisors_swarm_needs_hive") &&
+		!strings.Contains(strings.ToLower(err.Error()), "check") {
+		t.Errorf("want the swarm-needs-hive check to refuse it, got %v", err)
+	}
+
+	// Positive control: the same row without a swarm is fine, so the refusal above
+	// is about swarm membership and not about being unclustered.
+	other := "unclustered-2"
+	if err := db.Create(&tenant.Hypervisor{Name: &other}).Error; err != nil {
+		t.Fatalf("an unclustered machine with NO swarm must be storable: %v", err)
+	}
+}
+
+func TestProvisioningStateIsConstrainedToTheKnownStates(t *testing.T) {
+	// A typo'd or invented state would sit in the column and be read by the
+	// onboarding ticker's claim query, which selects on exact values — a row in
+	// 'provisionning' would simply never be picked up and never be reported as
+	// stuck.
+	db := swarmDB(t)
+	name := "typo"
+	err := db.Create(&tenant.Hypervisor{
+		Name: &name, ProvisioningState: "half-done",
+	}).Error
+	if err == nil {
+		t.Fatal("an unknown provisioning state must be refused by the database")
+	}
+
+	for _, state := range []string{"pending", "provisioning", "provisioned", "failed"} {
+		n := "ok-" + state
+		if err := db.Create(&tenant.Hypervisor{Name: &n, ProvisioningState: state}).Error; err != nil {
+			t.Errorf("%q is a valid provisioning state and must be accepted: %v", state, err)
+		}
+	}
+}

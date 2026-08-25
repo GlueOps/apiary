@@ -181,7 +181,16 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 	}
 	defer closeTarget()
 
-	blockers, err := ReadJoinBlockers(ctx, joiner, snap.JoiningNodeName)
+	// Asked of the machine rather than derived from its address. The snapshot's
+	// name is a fallback for a host already known to a cluster; a machine being
+	// onboarded by IP has no name to derive, and an empty one makes the node's own
+	// pmxcfs directory read as a former peer's.
+	nodeName, err := ReadNodeName(ctx, joiner)
+	if err != nil {
+		return err
+	}
+
+	blockers, err := ReadJoinBlockers(ctx, joiner, nodeName)
 	if err != nil {
 		return err
 	}
@@ -253,7 +262,7 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 
 	if d.MarkJoined != nil {
 		if err := d.MarkJoined(ctx, in.OrganizationID, in.HypervisorID, snap.TargetHive.ID,
-			snap.JoiningNodeName); err != nil {
+			nodeName); err != nil {
 			return fmt.Errorf("arrive: the host joined %q but recording its membership failed, "+
 				"so the control plane still shows it as fleetless: %w", snap.TargetHive.Name, err)
 		}

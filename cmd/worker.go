@@ -174,28 +174,7 @@ func runWorker() error {
 				if err != nil {
 					return false, err
 				}
-				var n int64
-				// TWO ROWS, ONE QUESTION. The machine id identifies the MACHINE and
-				// the heartbeat belongs to the AGENT on it, so this has to cross the
-				// link between them — it used to query bees.machine_id, a column
-				// that no longer exists, and a string column name is not something
-				// the compiler would have caught.
-				//
-				// The id is DIGESTED here. Enrolment stores the digest while the job
-				// carries the raw /etc/machine-id, so comparing them directly could
-				// never match: Heartbeated would always answer false and every
-				// onboard would end in ErrNoHeartbeat, however healthy the host.
-				// Latent only because nothing enqueues the onboarding job yet.
-				//
-				// Compared against a timestamp taken BEFORE the install, so an
-				// agent that was already running from a previous attempt does not
-				// count as proof that this one worked.
-				err = db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-					Joins("JOIN bees ON bees.id = hypervisors.bee_id").
-					Where("hypervisors.machine_id = ? AND bees.last_seen_at IS NOT NULL "+
-						"AND bees.last_seen_at >= ?", tenant.MachineIDDigest(machineID), since).
-					Count(&n).Error
-				return n > 0, err
+				return repo.Heartbeated(ctx, db, machineID, since)
 			},
 		}))
 
@@ -229,22 +208,7 @@ func runWorker() error {
 				if err != nil {
 					return err
 				}
-				// To NULL, not to some placeholder: "no fleet" is a real state
-				// these columns can express, which is the whole reason they are
-				// nullable.
-				//
-				// All three together. A swarm is a subdivision of a cluster the
-				// machine has left, and ck_hypervisors_swarm_needs_hive rejects the
-				// row outright if swarm_id outlives hive_id; the node name is the
-				// cluster's word for this node, and leaving it behind would let
-				// another hive's sync adopt this machine by a name it no longer
-				// answers to.
-				//
-				// A named-column update rather than a struct save: these are exactly
-				// the nullable-to-NULL fields GORM drops from a struct save.
-				return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-					Where("id = ?", hypervisorID).
-					Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil}).Error
+				return repo.MarkFleetless(ctx, db, hypervisorID)
 			},
 			EnqueueCapacitySync: enqueueCapacitySync,
 			Thresholds:          tenant.DrainThresholds{ObservationMaxAge: cfg.FleetObservationMaxAge},
@@ -280,24 +244,7 @@ func runWorker() error {
 				if err != nil {
 					return err
 				}
-				// hive_id AND name, in one statement. The node name is the capacity
-				// sync's half of this machine's identity — /cluster/resources
-				// reports no machine id, so (hive_id, name) is all it can match on —
-				// and a clustered row with no name is one the very next sync fails
-				// to recognise and duplicates.
-				//
-				// Refused rather than written empty when the name is unknown: a row
-				// with hive_id set and name NULL is exactly the shape that
-				// duplicates, so failing here leaves the machine visibly fleetless
-				// and retryable instead.
-				if nodeName == "" {
-					return fmt.Errorf("the node joined %s but no node name was resolved for it, "+
-						"so recording membership would leave a row the next capacity sync "+
-						"cannot match and would duplicate", hiveID)
-				}
-				return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-					Where("id = ?", hypervisorID).
-					Updates(map[string]any{"hive_id": hiveID, "name": nodeName}).Error
+				return repo.MarkJoined(ctx, db, hypervisorID, hiveID, nodeName)
 			},
 			EnqueueCapacitySync: enqueueCapacitySync,
 		}))

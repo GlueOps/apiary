@@ -125,11 +125,41 @@ func (r *FirewallRepoGorm) GetRule(ctx context.Context, id uuid.UUID) (*tenant.F
 	return &rule, nil
 }
 
+// CreateRule writes the rule, then forces Enabled if it was created disabled.
+//
+// The second statement is not belt-and-braces. GORM omits a zero value from the
+// INSERT when the field carries a `default:` tag, and FirewallRule.Enabled is
+// `default:true` — so `Create` with Enabled=false stores TRUE, and a rule an
+// operator deliberately disabled is live from the moment it is written. Verified
+// against Postgres; the same defect silently failed to cordon a hypervisor
+// elsewhere in this codebase, and here it is a packet filter.
+//
+// Create-then-update rather than Create-with-Select: a `Select("*")` also forces
+// the primary key, which fights the gen_random_uuid() default, and a field-list
+// Select leaves GORM with no id to read back. Both were tried.
 func (r *FirewallRepoGorm) CreateRule(ctx context.Context, rule *tenant.FirewallRule) error {
-	if err := r.db.WithContext(ctx).Create(rule).Error; err != nil {
-		return translateFirewallConflict(err)
-	}
-	return nil
+	// Captured BEFORE Create. GORM writes the INSERT's RETURNING values back into
+	// the struct, so after Create `rule.Enabled` reads TRUE — the column default it
+	// just applied — and a guard that consulted the struct would short-circuit and
+	// never correct anything. The struct cannot be asked what the caller wanted.
+	wanted := rule.Enabled
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(rule).Error; err != nil {
+			return translateFirewallConflict(err)
+		}
+		if wanted {
+			return nil
+		}
+		if err := tx.Model(&tenant.FirewallRule{}).Where("id = ?", rule.ID).
+			Update("enabled", false).Error; err != nil {
+			return err
+		}
+		// Keep the returned struct honest: it would otherwise say enabled while
+		// the row says disabled, and the caller renders the struct.
+		rule.Enabled = false
+		return nil
+	})
 }
 
 // UpdateRule replaces a rule wholesale.
@@ -277,11 +307,26 @@ func (r *FirewallRepoGorm) ScopeForBee(ctx context.Context, beeID uuid.UUID) (te
 	return tenant.BindingScope{HiveID: row.HiveID, SwarmID: row.SwarmID}, nil
 }
 
+// CreateBinding writes the binding, then forces Enabled if it was created
+// disabled. Same reason as CreateRule: `default:true` means GORM never sends
+// false, so a binding created disabled would apply its ruleset immediately.
 func (r *FirewallRepoGorm) CreateBinding(ctx context.Context, b *tenant.FirewallBinding) error {
-	if err := r.db.WithContext(ctx).Create(b).Error; err != nil {
-		return translateFirewallConflict(err)
-	}
-	return nil
+	wanted := b.Enabled
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(b).Error; err != nil {
+			return translateFirewallConflict(err)
+		}
+		if wanted {
+			return nil
+		}
+		if err := tx.Model(&tenant.FirewallBinding{}).Where("id = ?", b.ID).
+			Update("enabled", false).Error; err != nil {
+			return err
+		}
+		b.Enabled = false
+		return nil
+	})
 }
 
 func (r *FirewallRepoGorm) UpdateBinding(ctx context.Context, id uuid.UUID, priority int, enabled bool) error {

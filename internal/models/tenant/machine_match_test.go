@@ -113,6 +113,11 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	}
 	one := named("hv7", nil)
 	two := named("hv7", nil)
+	// Not yet in a cluster: there is no cluster for a domain to contradict, which
+	// is what makes adoption from a fully qualified address safe here. The
+	// clustered case is covered by TestMatchMachineByAddressRefusesACrossClusterAdoption.
+	one.HiveID = nil
+	two.HiveID = nil
 
 	if m := MatchMachineByAddress([]Hypervisor{one}, "hv7.example.com"); m == nil || m.ID != one.ID {
 		t.Fatal("a single discovered node matching the enrolling host's name must be adopted")
@@ -134,5 +139,44 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	if m := MatchMachineByAddress([]Hypervisor{one}, "10.0.0.7"); m != nil {
 		t.Fatal("an IP address yields no node name, so it must adopt nothing rather than " +
 			"matching on the first octet")
+	}
+}
+
+func TestMatchMachineByAddressRefusesACrossClusterAdoption(t *testing.T) {
+	// The hole the ambiguity rule does not close. `hv5.dc2.example.com` truncates
+	// to `hv5`, and when the only discovered `hv5` is in dc1 that is UNAMBIGUOUS
+	// by name — so it adopted, and the agent's credential landed on the record for
+	// a physically different host in another cluster.
+	//
+	// The domain is evidence the candidate cannot corroborate. Refusing costs a
+	// duplicate row an operator can merge, which this package prefers to a wrong
+	// adoption.
+	dc1 := uuid.New()
+	name := "hv5"
+	candidates := []Hypervisor{{ID: uuid.New(), HiveID: &dc1, Name: &name}}
+
+	if m := MatchMachineByAddress(candidates, "hv5.dc2.example.com"); m != nil {
+		t.Fatal("a fully qualified address must not adopt a machine matched on its first " +
+			"label alone — that is how an agent lands on a host in another cluster")
+	}
+	// A bare node name still adopts: that carries no contradicting evidence.
+	if m := MatchMachineByAddress(candidates, "hv5"); m == nil {
+		t.Fatal("a bare node name must still adopt")
+	}
+}
+
+func TestMatchMachineByAddressRequiresARecordedAddressToAgree(t *testing.T) {
+	// A machine onboarded by address keeps it, so when one is present it is the
+	// strongest corroboration available.
+	name := "hv5"
+	candidates := []Hypervisor{
+		{ID: uuid.New(), Name: &name, Address: "10.0.0.9"},
+	}
+	if m := MatchMachineByAddress(candidates, "hv5"); m != nil {
+		t.Fatal("a candidate whose recorded address disagrees must not be adopted")
+	}
+	byAddr := []Hypervisor{{ID: uuid.New(), Name: &name, Address: "hv5"}}
+	if m := MatchMachineByAddress(byAddr, "hv5"); m == nil {
+		t.Fatal("a candidate whose recorded address agrees must be adopted")
 	}
 }

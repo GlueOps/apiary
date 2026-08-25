@@ -123,6 +123,42 @@ echo "APIARY_DIRS=$dirs"
 	return b, nil
 }
 
+// ReadNodeName asks the host what it calls itself.
+//
+// Authoritative, and the reason it exists is that guessing does not work. The
+// node name was previously derived from the machine's ADDRESS — its first label
+// — which yields "" for an IP literal, and Proxmox metal is routinely recorded by
+// IP. An empty name broke arrival twice over: ReadJoinBlockers filters
+// /etc/pve/nodes against it, so the node's OWN directory read as a former peer's
+// and the join was refused before it started; and MarkJoined refuses to record
+// membership without one, so a join that did succeed could not be written down.
+//
+// A Proxmox node name is the short hostname, and pmxcfs creates
+// /etc/pve/nodes/<that name> for it. `hostname -s` is the direct answer; the
+// pmxcfs directory is not consulted because a machine mid-departure legitimately
+// carries a former peer's directory too.
+func ReadNodeName(ctx context.Context, r Runner) (string, error) {
+	out, err := r.Run(ctx, `echo "APIARY_NODE=$(hostname -s 2>/dev/null || hostname)"`)
+	if err != nil {
+		return "", fmt.Errorf("arrive: read the node's own name: %w (%s)", err, strings.TrimSpace(out))
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "APIARY_NODE="); ok {
+			name := strings.TrimSpace(v)
+			if name == "" {
+				break
+			}
+			// Guard the value that reaches an rm -rf path and a database column.
+			if strings.ContainsAny(name, "/ \t") {
+				return "", fmt.Errorf("arrive: the host reports an unusable node name %q", name)
+			}
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("arrive: the host did not report a node name (output: %q)",
+		strings.TrimSpace(out))
+}
+
 // ReadHostKeys returns a host's SSH host public keys, read over the control
 // plane's OWN authenticated session to that host.
 //

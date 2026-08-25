@@ -20,11 +20,12 @@ import (
 // rulesets interleave arbitrarily and the same rows render as different
 // policies on different runs.
 //
-// Ties resolve by age, then by id. Age is what a person would guess, and the id
-// is there so that two rows created in the same transaction — which share a
-// timestamp — still have exactly one order. A remaining tie would mean the
-// digest changes between renders of unchanged data, and every bee in the hive
-// would re-apply a ruleset that did not change.
+// Binding order is CompareBindingsForRender's, in full — priority, then scope
+// specificity, then age, then id. Rule order inside one ruleset resolves ties by
+// age then id for the same reason: two rows created in the same transaction
+// share a timestamp, and a remaining tie would change the rendered digest
+// between renders of unchanged data, making every bee in the hive re-apply a
+// ruleset that did not change.
 //
 // Disabled bindings and disabled rules are dropped here rather than filtered by
 // the caller, so that "enabled" means the same thing everywhere it is asked.
@@ -35,15 +36,15 @@ func OrderedRules(bindings []FirewallBinding, rulesByRuleset map[uuid.UUID][]Fir
 			active = append(active, b)
 		}
 	}
-	slices.SortStableFunc(active, func(a, b FirewallBinding) int {
-		if c := cmp.Compare(a.Priority, b.Priority); c != 0 {
-			return c
-		}
-		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.ID.String(), b.ID.String())
-	})
+	// CompareBindingsForRender, not a comparator written out again here. This
+	// function is what actually renders the policy, and it used to carry its own
+	// copy of the ordering that was missing the scope-rank tie-break the
+	// repository's ORDER BY and CompareBindingsForRender both apply. Since every
+	// binding defaults to priority 100, that tie-break decides the common case:
+	// the rendered policy put a year-old org-wide binding above a swarm binding
+	// made this morning, while every list the operator reads ordered them the
+	// other way round. Two orderings meant to agree, expressed twice.
+	slices.SortStableFunc(active, CompareBindingsForRender)
 
 	out := make([]FirewallRule, 0)
 	for _, b := range active {

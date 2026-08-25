@@ -137,3 +137,63 @@ func TestOrderedRulesHandlesABindingWithNoRules(t *testing.T) {
 
 	eq(t, names(OrderedRules(bindings, rules)), []string{"only"})
 }
+
+// OrderedRules is what actually renders the policy a host enforces, and it has
+// to agree with CompareBindingsForRender — the comparator every list the
+// operator reads is ordered by. It once carried its own copy of the ordering
+// that omitted the scope-rank tie-break, so a year-old org-wide binding rendered
+// above a swarm binding made this morning while the UI showed the reverse. Every
+// binding defaults to priority 100, so this tie is the common case, not an edge.
+func TestOrderedRulesUsesTheOneBindingComparator(t *testing.T) {
+	rsOrg, rsSwarm := uuid.New(), uuid.New()
+	hive, swarm := uuid.New(), uuid.New()
+	old := time.Now().UTC().Add(-365 * 24 * time.Hour)
+	recent := time.Now().UTC()
+
+	bindings := []FirewallBinding{
+		// Same priority — the default — so only the tie-break separates them.
+		{ID: uuid.New(), RulesetID: rsOrg, Priority: 100, Enabled: true, CreatedAt: old},
+		{ID: uuid.New(), RulesetID: rsSwarm, Priority: 100, Enabled: true, CreatedAt: recent,
+			HiveID: &hive, SwarmID: &swarm},
+	}
+	rules := map[uuid.UUID][]FirewallRule{
+		rsOrg:   {{ID: uuid.New(), Name: "org", Enabled: true, Position: 1}},
+		rsSwarm: {{ID: uuid.New(), Name: "swarm", Enabled: true, Position: 1}},
+	}
+
+	// The more specific binding renders first, exactly as CompareBindingsForRender
+	// and the repository's ORDER BY CASE both rank it.
+	eq(t, names(OrderedRules(bindings, rules)), []string{"swarm", "org"})
+
+	// And stated as the invariant rather than one example: whatever the comparator
+	// says about two bindings, the rendered order must say the same.
+	sorted := slices.Clone(bindings)
+	slices.SortStableFunc(sorted, CompareBindingsForRender)
+	want := make([]string, 0, len(sorted))
+	for _, b := range sorted {
+		for _, r := range rules[b.RulesetID] {
+			want = append(want, r.Name)
+		}
+	}
+	eq(t, names(OrderedRules(bindings, rules)), want)
+}
+
+// Priority still outranks specificity. The tie-break must not become the primary
+// key, or an org-wide "drop bogons" ruleset can no longer be put above
+// everything — which is the reason priority is an explicit operator knob.
+func TestOrderedRulesKeepsPriorityAboveSpecificity(t *testing.T) {
+	rsOrg, rsSwarm := uuid.New(), uuid.New()
+	hive, swarm := uuid.New(), uuid.New()
+	now := time.Now().UTC()
+
+	bindings := []FirewallBinding{
+		{ID: uuid.New(), RulesetID: rsSwarm, Priority: 20, Enabled: true, CreatedAt: now,
+			HiveID: &hive, SwarmID: &swarm},
+		{ID: uuid.New(), RulesetID: rsOrg, Priority: 10, Enabled: true, CreatedAt: now},
+	}
+	rules := map[uuid.UUID][]FirewallRule{
+		rsOrg:   {{ID: uuid.New(), Name: "org", Enabled: true, Position: 1}},
+		rsSwarm: {{ID: uuid.New(), Name: "swarm", Enabled: true, Position: 1}},
+	}
+	eq(t, names(OrderedRules(bindings, rules)), []string{"org", "swarm"})
+}
