@@ -1,6 +1,0 @@
-[tools]
-gh = "latest"
-# Pinned, not "latest": a scanner that changes its rules underneath you turns a
-# green history red on an unrelated commit, and the allowlists in .gitleaks.toml
-# are written against this version's default ruleset.
-gitleaks = "8.30.1"
