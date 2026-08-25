@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -174,5 +176,58 @@ func TestStartingATaskPreservesAPhaseItAlreadyReached(t *testing.T) {
 	if got == nil || got.Phase != "rebooting" {
 		t.Fatalf("phase = %q, want %q — the agent has forgotten it already rebooted and will "+
 			"upgrade and reboot again", got.Phase, "rebooting")
+	}
+}
+
+// The agent owns its state directory, because the two install paths disagree
+// about who creates it.
+//
+// The onboarding job creates /var/lib/apiary-agent before uploading anything. A
+// hand install — copy the binary, run `apiary-agent enrol` — creates nothing,
+// and that is the path the packaging README documents. It failed with
+// "store: apply schema: unable to open database file (14)", which names neither
+// the path nor the missing directory: sql.Open is lazy, so the error surfaces
+// from the first query, far from its cause.
+func TestOpenCreatesItsStateDirectory(t *testing.T) {
+	// Two levels deep, so a fix that only handled a missing leaf would still fail.
+	dir := filepath.Join(t.TempDir(), "var", "lib", "apiary-agent")
+	path := filepath.Join(dir, "state.db")
+
+	st, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open must create the directory it is given a path inside: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("the state directory was not created: %v", err)
+	}
+	// 0700: the database holds the agent's enrolment credential, and nothing but
+	// root needs to traverse to it.
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("state directory mode = %o, want 700; it holds the enrolment credential", perm)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the database file was not created: %v", err)
+	}
+}
+
+// A path that cannot be created must say so, naming the directory. The point of
+// the change is that the operator learns what is wrong from the message.
+func TestOpenNamesTheDirectoryItCannotCreate(t *testing.T) {
+	// A file where a directory needs to be: MkdirAll fails with ENOTDIR.
+	base := t.TempDir()
+	blocker := filepath.Join(base, "blocked")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Open(context.Background(), filepath.Join(blocker, "state.db"))
+	if err == nil {
+		t.Fatal("opening a state file under a plain file must fail")
+	}
+	if !strings.Contains(err.Error(), blocker) {
+		t.Errorf("the error must name the directory it could not create, got %q", err)
 	}
 }
