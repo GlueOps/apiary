@@ -65,7 +65,7 @@ jobs:
       # on pull requests instead.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Enable corepack
         run: corepack enable

@@ -213,7 +213,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       # openapi-generator-cli is a JVM tool behind an npm wrapper. This is the
       # dependency that made running generation at release time expensive, and the
@@ -263,7 +263,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Enable corepack
         run: corepack enable
       - run: yarn install --immutable
@@ -283,7 +283,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Enable corepack
         run: corepack enable
       - run: yarn install --immutable
