@@ -93,6 +93,25 @@ var generateSdkCmd = &cobra.Command{
 		}
 		cfg.FrontendMode = "none"
 
+		// Pinned for the same reason as above: generation must depend on the code,
+		// not on the .env of whoever ran it.
+		cfg.BindHost = "127.0.0.1"
+		cfg.BindPort = "8080"
+		cfg.BaseURL = "http://localhost:8080"
+
+		// THE SPEC'S SERVER URL IS A PUBLISHED ARTIFACT, NOT A LOCAL SETTING.
+		//
+		// config.Load() reads .env, so whatever port a developer happens to run on
+		// was baked into the committed TypeScript client — a local 8282 shipped as
+		// the generated client's baseUrl, while CI, which has no .env, regenerated
+		// it as 8080. The "generated artifacts are current" check then failed for
+		// everyone whose environment differed from the last person to regenerate,
+		// with a diff that looks like nobody's change. Pinned here so the output
+		// depends only on the code.
+		cfg.BindHost = "127.0.0.1"
+		cfg.BindPort = "8080"
+		cfg.BaseURL = "http://localhost:8080"
+
 		if strings.TrimSpace(cfg.JWTSecret) == "" {
 			cfg.JWTSecret = "spec-only-secret"
 		}

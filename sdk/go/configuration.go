@@ -96,7 +96,7 @@ func NewConfiguration() *Configuration {
 		Debug:            false,
 		Servers:          ServerConfigurations{
 			{
-				URL: "http://127.0.0.1:8282",
+				URL: "http://127.0.0.1:8080",
 				Description: "API Server (local)",
 			},
 		},

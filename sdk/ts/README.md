@@ -56,7 +56,7 @@ example().catch(console.error);
 
 ### API Endpoints
 
-All URIs are relative to *http://127.0.0.1:8282*
+All URIs are relative to *http://127.0.0.1:8080*
 
 | Class | Method | HTTP request | Description
 | ----- | ------ | ------------ | -------------
