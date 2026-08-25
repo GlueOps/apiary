@@ -1,0 +1,95 @@
+title = "APIary secret scanning"
+
+# Built-in rules, plus the allowlists below. Nothing is disabled: an allowlist
+# entry here exempts a specific VALUE or a file that can only ever hold hashes,
+# never "test files" or "the internal directory" wholesale. A path-shaped
+# exemption is what turns a scanner into decoration — the moment somewhere is
+# exempt, that is where a real credential goes unseen. Every entry below names
+# what it excuses and why it cannot be a secret.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Atlas migration integrity hashes. The whole file is generated checksums over the
+migration SQL — `atlas migrate hash` rewrites it — and it holds nothing else, so
+the path is the right granularity here rather than a value.
+"""
+paths = ['''(^|/)atlas\.sum$''']
+
+[[allowlists]]
+description = """
+HKDF info parameters, not key material.
+
+These are public domain-separation labels — the string that makes a key derived
+for one purpose differ from a key derived for another. They are compiled into
+the binary, they appear in the test that pins them, and they are deliberately
+frozen: renaming one makes every credential sealed under it permanently
+unreadable. Matched by shape rather than listed individually so a new purpose
+does not have to be added here to keep the scan quiet, which is safe because the
+shape is a fixed public prefix, not an entropy pattern.
+"""
+regexTarget = "line"
+regexes = ['''apiary/[a-z]+/[a-z0-9-]+/v[0-9]+''']
+
+[[allowlists]]
+description = """
+Fixtures in the tests that prove secrets are redacted.
+
+The values are shaped like real ones ON PURPOSE — a redaction test fed an
+obviously-fake value proves nothing about the real thing — and each carries
+`do-not-log` in its own text. That marker is the allowlist: it exempts values
+that announce themselves as fixtures, and it cannot accidentally cover a real
+credential, because a real one would not contain it.
+"""
+regexTarget = "line"
+regexes = ['''do-not-log''']
+
+[[allowlists]]
+description = """
+The base64 companion to the above. It decodes to
+`master-key-do-not-log-000000000`, so the do-not-log marker is real but hidden
+by the encoding — which is the point of the fixture: it is shaped exactly like a
+base64 master key. Listed as a literal because matching it by shape would mean
+allowlisting every base64 blob.
+"""
+regexes = ['''bWFzdGVyLWtleS1kby1ub3QtbG9nLTAwMDAwMDAwMA==''']
+
+[[allowlists]]
+description = """
+A synthetic Proxmox API token in the agent's token-format tests. The UUID half
+is structurally impossible as a generated value — `0000-4000-8000-` followed by
+`1234567890ab` — and the tests it appears in assert how a token string is parsed
+and rejected, never that one authenticates.
+"""
+regexes = ['''7d6f1a2e-0000-4000-8000-1234567890ab''']
+
+[[allowlists]]
+description = """
+The e-mail verification token in TestQueuedEmailNeverPutsTheTokenInTheJobInClear.
+The test seals an e-mail body and asserts the token does NOT reach the database
+in clear, so it must hold a token-shaped literal to search for. Listed as a
+literal so that any OTHER hex string of this shape still trips the scan.
+"""
+regexes = ['''5f3c9d2ae1b74c08a6d1e9f4b7c2a0d3''']
+
+[[allowlists]]
+description = """
+HKDF golden vectors from TestUCRDeriveKeyIsPinnedToItsExactConstruction.
+
+These are the derived bytes for each purpose over a PUBLISHED test master key —
+32 repeated 0x5A bytes, defined two hundred lines above them — so anyone can
+recompute them and they say nothing about the real ENCRYPTION_MASTER_KEY. They
+exist because pinning the purpose strings is not enough: a change to the HKDF
+construction itself re-keys the whole deployment and orphans every stored
+ciphertext, and only pinned output catches that.
+
+Listed as literals rather than by shape, deliberately. Adding a purpose means
+adding its vector here too, and that friction is the point — changing these
+values IS a re-keying event, and it should not be possible to do it quietly.
+"""
+regexes = [
+  '''286b0330aca6cd8e755dcab260601cf84211a013882cc825713517ec7dd32e5f''',
+  '''884d1b22546d0ebbdba748c0de1f31010a515e178cfe4727b02fcbba82ea3912''',
+  '''9aee04c51e3dc16e0e0a41711d5bdb5cbf98009e6cbbec21e10ee96890eb2d12''',
+]
