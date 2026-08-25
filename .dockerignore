@@ -1,0 +1,47 @@
+# Everything is excluded, then the build inputs are added back.
+#
+# Deny-by-default, not a list of things to skip. The Dockerfile's build stage
+# does `COPY . .`, and with an allow-list the failure mode of forgetting an entry
+# is a build error naming the missing file. With a deny-list it is a secret
+# silently baked into an image layer — which is what happened here: with no
+# .dockerignore at all, the context was 731MB and included .env (the real
+# ENCRYPTION_MASTER_KEY, JWT_SECRET, database password and Proxmox token),
+# .dragon-buddy/ and docs/security/. The final stage copies only the binary, but
+# layers are extractable: `docker history` and `docker save` both reach them, so
+# anything pushed to a registry ships those credentials.
+*
+
+# ---- Go: the workspace and all four modules --------------------------------
+!go.work
+!go.work.sum
+!go.mod
+!go.sum
+!main.go
+!cmd/
+!internal/
+!pkg/
+!sdk/go/
+!agent/
+!tools/
+
+# ---- Frontend --------------------------------------------------------------
+# .yarnrc.yml carries `nodeLinker: node-modules`; without it Yarn 4 falls back to
+# PnP inside the image and resolves differently from every developer machine.
+# package.json carries `packageManager`, which is what corepack reads to pick
+# Yarn 4 over the Yarn 1 the node image ships.
+!package.json
+!yarn.lock
+!.yarnrc.yml
+!ui/
+!sdk/ts/
+
+# ---- Re-excluded even though the paths above allow them ---------------------
+# Generated or machine-local, and every one of them either bloats the context or
+# would overwrite something the build produces itself.
+**/node_modules
+**/.yarn
+**/dist
+internal/api/webdist
+bin/
+*.test
+.git
