@@ -134,6 +134,30 @@ func runWorker() error {
 		// nothing is processing the queue until Start. The nil check therefore
 		// guards a wiring mistake, not a race — the same deferred-closure shape the
 		// capacity sync fan-out already uses.
+		// The same insert, scheduled rather than immediate.
+		//
+		// Arrival uses this because Proxmox has not populated /cluster/resources
+		// stats for a node at the instant it joins: an immediate sync records zero
+		// cores and zero memory and stamps last_synced_at, so the figures read as
+		// observed rather than missing.
+		//
+		// It must be the ONLY sync arrival enqueues. SyncHiveCapacityArgs is unique
+		// ByArgs across five states including scheduled, and River reports a unique
+		// collision as a successful insert carrying UniqueSkippedAsDuplicate rather
+		// than an error — so pairing this with an immediate enqueue would drop one
+		// of them silently, with nothing to see in a log.
+		enqueueCapacitySyncAfter := func(ctx context.Context, orgID, hiveID uuid.UUID,
+			after time.Duration) error {
+			if riverClient == nil {
+				return fmt.Errorf("capacity sync trigger: the river client is not ready")
+			}
+			_, err := riverClient.Insert(ctx, jobs.SyncHiveCapacityArgs{
+				OrganizationID: orgID.String(),
+				HiveID:         hiveID.String(),
+			}, &river.InsertOpts{ScheduledAt: time.Now().Add(after)})
+			return err
+		}
+
 		enqueueCapacitySync := func(ctx context.Context, orgID, hiveID uuid.UUID) error {
 			if riverClient == nil {
 				return fmt.Errorf("capacity sync trigger: the river client is not ready")
@@ -246,7 +270,9 @@ func runWorker() error {
 				}
 				return repo.MarkJoined(ctx, db, hypervisorID, hiveID, nodeName)
 			},
-			EnqueueCapacitySync: enqueueCapacitySync,
+			// The DELAYED one, and only it — see enqueueCapacitySyncAfter for why
+			// pairing the two would silently drop one.
+			EnqueueCapacitySyncAfter: enqueueCapacitySyncAfter,
 		}))
 
 		// Capacity sync. Feeds ObservedGuests, which the departure and arrival

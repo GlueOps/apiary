@@ -201,10 +201,37 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 					ObservedForeignRAMGBUsed:  obs.ForeignRAMGBUsed,
 					ObservedForeignDiskGBUsed: obs.ForeignDiskGBUsed,
 					LastSyncedAt:              &now,
-					Schedulable:               true,
 				}
 				if err := tx.Create(&h).Error; err != nil {
 					return fmt.Errorf("create hypervisor %q: %w", name, err)
+				}
+				// NEW CAPACITY IS NOT SCHEDULABLE CAPACITY.
+				//
+				// This function's job is to observe what a cluster has. Whether
+				// that capacity may be USED is a different question with a
+				// different owner, and discovering a host answers only the first.
+				// Writing true here answered both, on the strength of having seen
+				// the node exist.
+				//
+				// Same rule as arrival, and the same column: an operator enables a
+				// host, having seen what was observed on it. Until this changed,
+				// the identical machine ended up in opposite states depending on
+				// whether the control plane met it by MOVING it or by FINDING it —
+				// and finding is the weaker evidence of the two, since nothing has
+				// validated that host at all.
+				//
+				// A SECOND STATEMENT, because the first cannot express it. GORM
+				// omits a zero value from an INSERT for any field carrying a
+				// `default:` tag, and Schedulable carries `default:true` — so
+				// Schedulable:false in the struct above stores TRUE. Verified
+				// against Postgres, not inferred.
+				//
+				// Only on create. The update path deliberately never writes this
+				// column, so a host an operator has already enabled stays enabled
+				// through every subsequent sync.
+				if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", h.ID).
+					Update("schedulable", false).Error; err != nil {
+					return fmt.Errorf("cordon newly discovered hypervisor %q: %w", name, err)
 				}
 			}
 			written++

@@ -81,3 +81,4 @@ internal/api/webdist/*
 ui/playwright-report/
 ui/test-results/
 ui/e2e/__screenshots__/
+session.txt
