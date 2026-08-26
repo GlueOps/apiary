@@ -92,3 +92,9 @@ mise.lock
 # hosts with no route to the internet. Built artifacts, not sources.
 internal/agentdist/dist/*
 !internal/agentdist/dist/.gitkeep
+
+# sdk/ts is openapi-generator output that nothing publishes and nothing
+# imports — see the note in renovate.json5. Regenerate with `go run . generate
+# sdk`. sdk/go stays tracked: Go modules are fetched from the repository, so a
+# consumer of sdk/go needs it committed. Nothing fetches sdk/ts that way.
+sdk/ts/
