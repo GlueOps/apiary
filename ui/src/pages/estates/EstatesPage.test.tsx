@@ -218,3 +218,60 @@ describe('EstatesPage — the client secret path', () => {
     }
   });
 });
+
+/**
+ * The register form and the rotate dialog write the same value to the same
+ * column, so they have to ask for it the same way.
+ *
+ * They did not. Register offered no example at all and said only "Not secret.
+ * This is what gets fingerprinted" — which explains what happens to the value,
+ * not why it is required. Rotate had a worked example and a proper explanation,
+ * but hard-coded the PROXMOX one, so an AWS credential was shown
+ * `root@pam!apiary` as its example.
+ *
+ * This is not cosmetic. A Proxmox token id is `user@realm!tokenname`, a shape
+ * nobody guesses, and a credential stored without it authenticates against
+ * nothing: the capacity sync fails with "the API token id is unknown and the
+ * secret alone cannot authenticate", a long way from the form that accepted it.
+ */
+describe('EstatesPage — the identifying half is asked for the same way everywhere', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('access_token', 'a-bearer-token');
+    stubFetch({ list: { status: 200, body: { estates: [] } } });
+  });
+
+  it('shows a worked example for the selected provider, not a generic box', async () => {
+    render(<EstatesPage />);
+    await screen.findByText(/no credentials yet/i);
+
+    // aws is the default provider in this form.
+    const identity = screen.getByLabelText(/access key id/i);
+    expect(identity).toHaveAttribute('placeholder', 'AKIAIOSFODNN7EXAMPLE');
+  });
+
+  it('explains why the field is required, not only what is done with it', async () => {
+    render(<EstatesPage />);
+    await screen.findByText(/no credentials yet/i);
+
+    // The old copy said only that the value is fingerprinted. A field whose
+    // stated purpose is bookkeeping is one people leave empty.
+    expect(
+      screen.getByText(/cannot authenticate at all, whatever the secret is/i),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the provider-specific example when the provider changes', async () => {
+    const user = userEvent.setup();
+    render(<EstatesPage />);
+    await screen.findByText(/no credentials yet/i);
+
+    // A Base UI combobox, not a native <select>: open the listbox, then pick.
+    await user.click(screen.getByLabelText(/^provider$/i));
+    await user.click(await screen.findByRole('option', { name: /proxmox/i }));
+
+    // The label changes with the provider, and so must the example: a Proxmox
+    // token id looks nothing like an AWS access key.
+    const identity = await screen.findByLabelText(/token id/i);
+    expect(identity).toHaveAttribute('placeholder', 'root@pam!apiary');
+  });
+});

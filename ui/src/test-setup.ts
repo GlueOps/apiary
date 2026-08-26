@@ -1,3 +1,10 @@
+// jest-dom's matchers, registered once here rather than imported per file.
+//
+// Without them `toBeInTheDocument` and `toHaveAttribute` are not Chai
+// properties, and vitest reports "Invalid Chai property" — which reads like a
+// broken assertion rather than a missing import, and sends whoever hits it
+// looking at the test instead of at the setup.
+import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
