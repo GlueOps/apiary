@@ -55,7 +55,7 @@ import {
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { StatusBadge, relative } from './bee-table';
-import { DrainBadge, Hint, LoadError, RefusalList, capacityLabel } from './drain';
+import { DrainBadge, Hint, LoadError, RefusalList, RemedyCard, capacityLabel } from './drain';
 
 /**
  * Pulls the message out of a 409 refusal.
@@ -182,6 +182,13 @@ export const Hypervisors = () => {
   });
 
   const nodes = hypervisors.data?.hypervisors ?? [];
+
+  // Every refusal on the page, for the remedy card at the bottom.
+  //
+  // Collected here rather than inside each row because the fix for a reason is
+  // the same wherever it appears: rendering it per host repeats the same
+  // paragraph down the page and makes every row wide enough to scroll sideways.
+  const allRefusals = nodes.flatMap((n) => n.departure_refusals ?? []);
   const strays = fleetless.data?.hosts ?? [];
   const hiveList = hives.data?.hives ?? [];
 
@@ -616,6 +623,8 @@ export const Hypervisors = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RemedyCard refusals={allRefusals} />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { RefusalView } from '@/sdk';
 
 /**
@@ -66,59 +66,85 @@ export function RefusalList({
 }) {
   if (refusals.length === 0) return null;
 
-  // Remedies are collected into their own block below the reasons.
-  //
-  // The reason and the fix are different sentences with different audiences.
-  // Nobody needs "401 means send credentials" repeated inline with every 401 —
-  // they need it once, where they are looking for what to do. Inline, the fix
-  // also makes each row long enough to scroll sideways, which is how the fix
-  // ends up being the half somebody trims away.
-  const remedies = refusals.map((r) => r.remedy).filter((x): x is string => Boolean(x));
-
   return (
-    <div className="space-y-2">
-      <ul className="space-y-1.5 text-xs">
-        {refusals.map((r) => (
-          <li key={r.code} className="flex gap-2">
-            <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
-            <span className="text-muted-foreground">
-              {r.detail}
-              {/* drain_unknown is the one refusal an operator resolves by doing
+    <ul className="space-y-1.5 text-xs">
+      {refusals.map((r) => (
+        <li key={r.code} className="flex gap-2">
+          <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
+          <span className="text-muted-foreground">
+            {r.detail}
+            {/* drain_unknown is the one refusal an operator resolves by doing
                 nothing to the host at all, so it gets the action inline rather
                 than leaving them to work out that a sync is what is wanted. */}
-              {r.code === 'drain_unknown' && onSync ? (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    onClick={onSync}
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Sync this cluster now
-                  </button>
-                </>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ul>
+            {r.code === 'drain_unknown' && onSync ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={onSync}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  Sync this cluster now
+                </button>
+              </>
+            ) : null}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
-      {remedies.length > 0 ? (
-        <div className="rounded-md border border-border/60 bg-muted/40 p-2">
-          <p className="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            To fix
-          </p>
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {remedies.map((remedy) => (
-              <li key={remedy} className="flex gap-2">
-                <span aria-hidden>·</span>
-                <span>{remedy}</span>
-              </li>
+/**
+ * Every distinct refusal on the page, with its remedy, once.
+ *
+ * The remedies were briefly rendered under each machine's own list of reasons,
+ * which put the same paragraphs beside every host that shared a problem — a
+ * fleet where nothing is cordoned repeats "cordon it" per node, and each row
+ * grows wide enough to scroll sideways. The REASON is about one machine and
+ * belongs on its row; the FIX for a reason is the same wherever it appears, so
+ * it belongs once, at the bottom, where somebody goes looking for what to do.
+ *
+ * Keyed by CODE rather than by message. Two hosts refused under the same rule
+ * carry details differing only in their numbers, and one row per number is the
+ * repetition this exists to remove. The detail shown is the first one seen,
+ * which reads as an example of the rule rather than a claim about one host.
+ */
+export function RemedyCard({ refusals }: { refusals: RefusalView[] }) {
+  const byCode = new Map<string, RefusalView>();
+  for (const r of refusals) {
+    if (r.remedy && !byCode.has(r.code)) byCode.set(r.code, r);
+  }
+  if (byCode.size === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">What is blocking these hosts</CardTitle>
+        <CardDescription>
+          Each reason appears once, whichever hosts it applies to. The hosts themselves are marked
+          above.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th className="w-1/3 pr-4 pb-2 font-medium">Detail</th>
+              <th className="pb-2 font-medium">Remedy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...byCode.values()].map((r) => (
+              <tr key={r.code} className="border-b align-top last:border-0">
+                <td className="py-2 pr-4 text-muted-foreground">{r.detail}</td>
+                <td className="py-2">{r.remedy}</td>
+              </tr>
             ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 
