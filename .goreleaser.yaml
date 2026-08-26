@@ -173,11 +173,21 @@ checksum:
 # places to keep a tag string in step.
 dockers_v2:
   - id: apiary
-    # BOTH binaries. The agent ships inside the control-plane image because the
-    # onboarding job uploads it to a hypervisor over SSH — see the Dockerfile.
+    # The SERVER only. The agent used to be copied in beside it, on the reasoning
+    # that onboarding uploads it to a hypervisor over SSH — which is true, but it
+    # reads the copy EMBEDDED in the server binary (internal/agentdist), not a
+    # file in the image. Nothing ever opened /usr/local/share/apiary/apiary-agent.
+    #
+    # It was also the weaker copy: an image is built per platform, so it carried
+    # one architecture, while the embedded set carries every architecture the
+    # control plane can onboard. An amd64 image could not have served an arm64
+    # node from that file even if something had read it.
+    #
+    # The agent is still a released ARTIFACT — see its build entry — so an
+    # operator onboarding by hand downloads exactly the binary the control plane
+    # would have installed and checks it against checksums.txt.
     ids:
       - apiary
-      - apiary-agent
     dockerfile: Dockerfile
     images:
       - ghcr.io/glueops/apiary

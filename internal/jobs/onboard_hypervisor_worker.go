@@ -42,8 +42,11 @@ func (w *OnboardHypervisorWorker) Work(ctx context.Context, job *river.Job[Onboa
 	// value, so there would be nothing to pass even when it is set. The job asks
 	// the host, which is the authority on its own identity. See ReadMachineID.
 
+	hvID, _ := uuid.Parse(job.Args.HypervisorID)
+
 	err = Onboard(ctx, w.deps, OnboardInput{
 		OrganizationID: orgID,
+		HypervisorID:   hvID,
 		Address:        job.Args.Address,
 		User:           job.Args.User,
 		MachineID:      job.Args.MachineID,

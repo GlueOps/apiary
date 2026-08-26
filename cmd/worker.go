@@ -178,6 +178,13 @@ func runWorker() error {
 			return err
 		}
 
+		// One inventory service, constructed before the workers that use it. It
+		// resolves a fleet's Proxmox credential, which onboarding needs to hand the
+		// agent a token and the capacity sync needs to observe the cluster — the
+		// same credential, read the same way, so the two cannot disagree about
+		// which token a fleet uses.
+		inventory := service.NewProxmoxInventoryService(tenants, repo.DefaultProviderScopes)
+
 		river.AddWorker(workers, jobs.NewOnboardHypervisorWorker(jobs.OnboardDeps{
 			FleetKey: func(ctx context.Context, orgID uuid.UUID) (string, []byte, error) {
 				k, err := sshKeys.ActiveFleetKey(ctx, orgID)
@@ -213,6 +220,16 @@ func runWorker() error {
 				return jobs.AgentBundle{Binary: bin}, nil
 			},
 			BaseURL: cfg.BaseURL,
+			// The machine's fleet credential. Resolved at onboarding time rather
+			// than captured, because which fleet a machine belongs to is a fact
+			// about the row and changes when it migrates.
+			ProxmoxCredential: func(ctx context.Context, orgID, hvID uuid.UUID) (jobs.ProxmoxCredential, error) {
+				tokenID, secret, apiURL, err := inventory.AgentProxmoxCredential(ctx, orgID, hvID)
+				if err != nil {
+					return jobs.ProxmoxCredential{}, err
+				}
+				return jobs.ProxmoxCredential{TokenID: tokenID, Secret: secret, APIURL: apiURL}, nil
+			},
 			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID, onboardErr error) (bool, error) {
 				db, err := fleetRepoFor(ctx, orgID)
 				if err != nil {
@@ -314,7 +331,6 @@ func runWorker() error {
 		// Capacity sync. Feeds ObservedGuests, which the departure and arrival
 		// gates read — without it every observation is absent, the drain state is
 		// unknown, and every departure refuses. Safe, but not a working system.
-		inventory := service.NewProxmoxInventoryService(tenants, repo.DefaultProviderScopes)
 		syncDeps := jobs.CapacitySyncDeps{
 			Inventory: inventory.Inventory,
 			TenantDB:  fleetRepoFor,
