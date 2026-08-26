@@ -383,6 +383,20 @@ export const Hypervisors = () => {
                               Depart
                             </Button>
                           </div>
+                          {n.last_operation_error ? (
+                            <div className="text-left">
+                              <p className="text-xs font-medium text-destructive">
+                                Last {n.last_operation || 'operation'} failed
+                                {n.last_operation_at ? ` ${relative(n.last_operation_at)}` : ''}
+                              </p>
+                              <p
+                                className="max-w-md text-xs break-words text-muted-foreground"
+                                title={n.last_operation_error}
+                              >
+                                {n.last_operation_error}
+                              </p>
+                            </div>
+                          ) : null}
                           {(n.departure_refusals?.length ?? 0) > 0 ? (
                             <div className="text-left">
                               <RefusalList

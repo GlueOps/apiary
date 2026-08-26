@@ -157,6 +157,12 @@ type EnrolInput struct {
 	MachineID      string
 	Hostname       string
 	AgentVersion   string
+
+	// PeerAddress is where the enrolment request came from. See
+	// repo.preferredAddress: an agent knows its hostname and not how the control
+	// plane reaches it, and the address of the request that just arrived is the
+	// one candidate that is reachable by demonstration.
+	PeerAddress string
 }
 
 type EnrolResult struct {
@@ -222,6 +228,7 @@ func (s *FleetService) Enrol(ctx context.Context, in EnrolInput) (*EnrolResult, 
 		// differently and the lookup could never match.
 		MachineID:    tenant.MachineIDDigest(machine),
 		Address:      host,
+		PeerAddress:  in.PeerAddress,
 		AgentVersion: strings.TrimSpace(in.AgentVersion),
 		APIKeyID:     minted.Key.ID,
 		Now:          now,

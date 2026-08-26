@@ -356,6 +356,24 @@ type Hypervisor struct {
 	// retrying past.
 	ProvisioningError string `gorm:"type:text;not null;default:''" json:"provisioning_error,omitempty"`
 
+	// LastOperationError is why the last fleet operation on this machine failed,
+	// and LastOperationAt is when.
+	//
+	// Separate from ProvisioningError because they answer different questions.
+	// Provisioning is a workflow with its own state column, and a failure there
+	// leaves the machine in `failed` where an operator can see it. A DEPARTURE has
+	// no state column: the job either succeeds and the machine leaves its cluster,
+	// or it fails and River retries it on a backoff — invisibly, because nothing
+	// on the machine records that anything was attempted.
+	//
+	// That is not hypothetical. A departure repeatedly failed with `lookup pve2:
+	// no such host` while the operator, seeing a cordoned and drained node that
+	// would not leave, had no way to learn the reason existed. A retryable job in
+	// a queue nobody reads is the same as no job at all.
+	LastOperationError string     `gorm:"type:text;not null;default:''" json:"last_operation_error,omitempty"`
+	LastOperation      string     `gorm:"type:varchar(64);not null;default:''" json:"last_operation,omitempty"`
+	LastOperationAt    *time.Time `gorm:"type:timestamptz" json:"last_operation_at,omitempty"`
+
 	ProvisioningStartedAt *time.Time `gorm:"type:timestamptz" json:"provisioning_started_at,omitempty"`
 
 	CreatedAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at" format:"date-time"`

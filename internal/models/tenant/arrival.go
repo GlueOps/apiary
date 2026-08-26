@@ -18,8 +18,32 @@ const (
 
 // ArrivalRefusal is one reason a host may not join a hive.
 type ArrivalRefusal struct {
-	Code   string
+	// Code identifies the rule. It is the stable half — like an HTTP status, it
+	// is what a client switches on and what an operator learns to recognise.
+	Code string
+
+	// Detail states WHAT IS WRONG, and names the offending number where there is
+	// one. "3 guests are still on this node" is actionable; "not drained" sends
+	// somebody to the provider's UI to work out why.
+	//
+	// Terse on purpose. It sits in a table cell beside a machine, and a paragraph
+	// there is a paragraph nobody reads and a row that scrolls sideways.
 	Detail string
+
+	// Remedy states WHAT TO DO, separately.
+	//
+	// Separate because it is a different kind of sentence with a different
+	// audience and a different place on screen. Nobody needs "401 means send
+	// credentials" inline with every 401; they need it once, where they are
+	// looking for what to do next. Folding the two together makes the common case
+	// — an operator who already knows this rule — read the same instruction every
+	// time, and makes the message too long to render beside the thing it is about.
+	//
+	// It is also the half that is easy to lose. Trimming a message for width
+	// takes the remedy first, because the statement of the problem feels like the
+	// important part — and then the non-obvious step goes with it. Giving it its
+	// own field means shortening the message cannot silently delete it.
+	Remedy string
 }
 
 func (r ArrivalRefusal) Error() string { return r.Code + ": " + r.Detail }

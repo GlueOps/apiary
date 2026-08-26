@@ -65,32 +65,60 @@ export function RefusalList({
   onSync?: () => void;
 }) {
   if (refusals.length === 0) return null;
+
+  // Remedies are collected into their own block below the reasons.
+  //
+  // The reason and the fix are different sentences with different audiences.
+  // Nobody needs "401 means send credentials" repeated inline with every 401 —
+  // they need it once, where they are looking for what to do. Inline, the fix
+  // also makes each row long enough to scroll sideways, which is how the fix
+  // ends up being the half somebody trims away.
+  const remedies = refusals.map((r) => r.remedy).filter((x): x is string => Boolean(x));
+
   return (
-    <ul className="space-y-1.5 text-xs">
-      {refusals.map((r) => (
-        <li key={r.code} className="flex gap-2">
-          <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
-          <span className="text-muted-foreground">
-            {r.detail}
-            {/* drain_unknown is the one refusal an operator resolves by doing
+    <div className="space-y-2">
+      <ul className="space-y-1.5 text-xs">
+        {refusals.map((r) => (
+          <li key={r.code} className="flex gap-2">
+            <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
+            <span className="text-muted-foreground">
+              {r.detail}
+              {/* drain_unknown is the one refusal an operator resolves by doing
                 nothing to the host at all, so it gets the action inline rather
                 than leaving them to work out that a sync is what is wanted. */}
-            {r.code === 'drain_unknown' && onSync ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  onClick={onSync}
-                  className="underline underline-offset-2 hover:text-foreground"
-                >
-                  Sync this cluster now
-                </button>
-              </>
-            ) : null}
-          </span>
-        </li>
-      ))}
-    </ul>
+              {r.code === 'drain_unknown' && onSync ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    onClick={onSync}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Sync this cluster now
+                  </button>
+                </>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {remedies.length > 0 ? (
+        <div className="rounded-md border border-border/60 bg-muted/40 p-2">
+          <p className="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            To fix
+          </p>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {remedies.map((remedy) => (
+              <li key={remedy} className="flex gap-2">
+                <span aria-hidden>·</span>
+                <span>{remedy}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -15,6 +15,9 @@ Name | Type | Description | Notes
 **HiveId** | Pointer to **string** |  | [optional] 
 **HiveName** | Pointer to **string** |  | [optional] 
 **Id** | **string** |  | 
+**LastOperation** | Pointer to **string** | Which operation this outcome belongs to, e.g. depart. | [optional] 
+**LastOperationAt** | Pointer to **time.Time** |  | [optional] 
+**LastOperationError** | Pointer to **string** | Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed. | [optional] 
 **LastSyncedAt** | Pointer to **time.Time** |  | [optional] 
 **Name** | Pointer to **string** | The provider&#39;s node name, not a hostname we chose. Absent until this machine joins a cluster. | [optional] 
 **ObservationStale** | **bool** |  | 
@@ -304,6 +307,81 @@ and a boolean to check if the value has been set.
 
 SetId sets Id field to given value.
 
+
+### GetLastOperation
+
+`func (o *HypervisorView) GetLastOperation() string`
+
+GetLastOperation returns the LastOperation field if non-nil, zero value otherwise.
+
+### GetLastOperationOk
+
+`func (o *HypervisorView) GetLastOperationOk() (*string, bool)`
+
+GetLastOperationOk returns a tuple with the LastOperation field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetLastOperation
+
+`func (o *HypervisorView) SetLastOperation(v string)`
+
+SetLastOperation sets LastOperation field to given value.
+
+### HasLastOperation
+
+`func (o *HypervisorView) HasLastOperation() bool`
+
+HasLastOperation returns a boolean if a field has been set.
+
+### GetLastOperationAt
+
+`func (o *HypervisorView) GetLastOperationAt() time.Time`
+
+GetLastOperationAt returns the LastOperationAt field if non-nil, zero value otherwise.
+
+### GetLastOperationAtOk
+
+`func (o *HypervisorView) GetLastOperationAtOk() (*time.Time, bool)`
+
+GetLastOperationAtOk returns a tuple with the LastOperationAt field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetLastOperationAt
+
+`func (o *HypervisorView) SetLastOperationAt(v time.Time)`
+
+SetLastOperationAt sets LastOperationAt field to given value.
+
+### HasLastOperationAt
+
+`func (o *HypervisorView) HasLastOperationAt() bool`
+
+HasLastOperationAt returns a boolean if a field has been set.
+
+### GetLastOperationError
+
+`func (o *HypervisorView) GetLastOperationError() string`
+
+GetLastOperationError returns the LastOperationError field if non-nil, zero value otherwise.
+
+### GetLastOperationErrorOk
+
+`func (o *HypervisorView) GetLastOperationErrorOk() (*string, bool)`
+
+GetLastOperationErrorOk returns a tuple with the LastOperationError field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetLastOperationError
+
+`func (o *HypervisorView) SetLastOperationError(v string)`
+
+SetLastOperationError sets LastOperationError field to given value.
+
+### HasLastOperationError
+
+`func (o *HypervisorView) HasLastOperationError() bool`
+
+HasLastOperationError returns a boolean if a field has been set.
 
 ### GetLastSyncedAt
 

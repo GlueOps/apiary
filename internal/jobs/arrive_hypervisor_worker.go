@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -42,6 +43,17 @@ func (w *ArriveHypervisorWorker) Work(ctx context.Context, job *river.Job[Arrive
 		TargetHiveID:   hiveID,
 		Links:          job.Args.Links,
 	})
+
+	// Recorded against the MACHINE, success or failure, before anything is
+	// returned to River — the same reasoning as the departure's. An arrival has
+	// no state column of its own, so a failure is a retryable row in a queue and
+	// nothing on screen: the operator sees a host that simply never joins.
+	if w.deps.RecordOutcome != nil {
+		if recErr := w.deps.RecordOutcome(ctx, orgID, hypID, "join", err); recErr != nil {
+			slog.ErrorContext(ctx, "could not record the arrival outcome",
+				"hypervisor_id", hypID, "error", recErr)
+		}
+	}
 
 	// Cancelled rather than retried, for the same reason as a departure refusal:
 	// it is a decision about the current state of the host, and a backoff loop

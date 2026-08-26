@@ -58,6 +58,35 @@ type DepartHypervisorArgs struct {
 
 func (DepartHypervisorArgs) Kind() string { return "fleet.depart_hypervisor" }
 
+// InsertOpts makes a departure unique per machine while one is outstanding.
+//
+// Without it every click queues another job. An operator watching a cordoned,
+// drained node that will not leave clicks Depart again — reasonably — and gets a
+// second concurrent `pvecm delnode` against the same node. On a small cluster
+// delnode is not something to run twice at once: it strands the survivor
+// read-only and leaves a lock that blocks every retry, which is a worse
+// situation than the one the operator was trying to fix.
+//
+// All four of River's REQUIRED states plus retryable. A ByState missing any of
+// available, pending, running or scheduled is rejected at insert — silently, for
+// a periodic job — and retryable is included because a departure that failed and
+// is waiting to retry is still outstanding: queueing a second one alongside it
+// is exactly the collision this prevents.
+func (DepartHypervisorArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
 // ArriveHypervisorArgs adds one standalone host to a hive.
 //
 // Identified by HYPERVISOR id, the same as departure. It used to be identified by
@@ -84,6 +113,32 @@ type ArriveHypervisorArgs struct {
 }
 
 func (ArriveHypervisorArgs) Kind() string { return "fleet.arrive_hypervisor" }
+
+// InsertOpts makes an arrival unique per machine while one is outstanding.
+//
+// The same reasoning as the departure's, and a sharper edge. An operator
+// watching a host that has not joined clicks Join again, and a second concurrent
+// `pvecm add` against the same node is worse than a second delnode: the joining
+// node rewrites its own corosync configuration and its keyring during a join,
+// and two runs interleaving there produce a node that is a member of nothing and
+// cannot be reached by the key that used to work.
+//
+// Retryable is included, because an arrival that failed and is waiting to retry
+// is still outstanding — a second one queued alongside it is the collision.
+func (ArriveHypervisorArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
 
 // SyncHiveCapacityArgs refreshes one hive's capacity observations from its
 // provider API.

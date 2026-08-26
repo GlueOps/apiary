@@ -21,7 +21,7 @@ import (
 // breaks the cluster it is leaving.
 const DefaultHiveMinimumNodes = 3
 
-// MinimumNodes is the smallest node count a departure may be started FROM, not
+// EffectiveMinimumNodes is the smallest node count a departure may be started FROM, not
 // the count it may leave behind.
 //
 // Stated that way round because it is the number an operator can check before
@@ -51,11 +51,32 @@ const (
 
 // DepartureRefusal is one reason a host may not leave its hive.
 type DepartureRefusal struct {
+	// Code identifies the rule. It is the stable half — like an HTTP status, it
+	// is what a client switches on and what an operator learns to recognise.
 	Code string
-	// Detail is written for the operator who has to fix it, and names the
-	// offending number. "3 guests are still on this node" is actionable; "not
-	// drained" sends them to the provider's UI to work out why.
+
+	// Detail states WHAT IS WRONG, and names the offending number where there is
+	// one. "3 guests are still on this node" is actionable; "not drained" sends
+	// somebody to the provider's UI to work out why.
+	//
+	// Terse on purpose. It sits in a table cell beside a machine, and a paragraph
+	// there is a paragraph nobody reads and a row that scrolls sideways.
 	Detail string
+
+	// Remedy states WHAT TO DO, separately.
+	//
+	// Separate because it is a different kind of sentence with a different
+	// audience and a different place on screen. Nobody needs "401 means send
+	// credentials" inline with every 401; they need it once, where they are
+	// looking for what to do next. Folding the two together makes the common case
+	// — an operator who already knows this rule — read the same instruction every
+	// time, and makes the message too long to render beside the thing it is about.
+	//
+	// It is also the half that is easy to lose. Trimming a message for width
+	// takes the remedy first, because the statement of the problem feels like the
+	// important part — and then the non-obvious step goes with it. Giving it its
+	// own field means shortening the message cannot silently delete it.
+	Remedy string
 }
 
 func (r DepartureRefusal) Error() string { return r.Code + ": " + r.Detail }
@@ -100,7 +121,8 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 	if req.Hypervisor.HiveID == nil || req.HiveNodeCount == 0 {
 		return []DepartureRefusal{{
 			Code:   RefuseNotAMember,
-			Detail: "this host does not belong to a hive, so there is nothing to depart from",
+			Detail: "this host does not belong to a cluster",
+			Remedy: "Nothing to do — it is already standalone.",
 		}}
 	}
 
@@ -111,20 +133,20 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 	if min := req.Hive.EffectiveMinimumNodes(); req.HiveNodeCount < min {
 		out = append(out, DepartureRefusal{
 			Code: RefuseHiveTooSmall,
-			Detail: fmt.Sprintf(
-				"hive %q has %d node(s) and the departure minimum is %d; removing a node from a "+
-					"hive this small loses quorum part-way through and leaves the remaining "+
-					"node(s) read-only with guests unmanageable. Add a node, or lower the hive's "+
-					"minimum_nodes deliberately if this is a test fleet",
+			Detail: fmt.Sprintf("hive %q has %d node(s) and the departure minimum is %d",
 				req.Hive.Name, req.HiveNodeCount, min),
+			Remedy: "Add a node, or lower this fleet's minimum deliberately if it is a test " +
+				"cluster. Removing a node from a cluster this small loses quorum part-way " +
+				"through and leaves the survivors read-only with their guests unmanageable.",
 		})
 	}
 
 	if !req.Drain.Cordoned {
 		out = append(out, DepartureRefusal{
-			Code: RefuseNotCordoned,
-			Detail: "this host still accepts placements; cordon it first (schedulable=false) so " +
-				"the oracle stops landing new guests on a node that is about to leave",
+			Code:   RefuseNotCordoned,
+			Detail: "this host still accepts placements",
+			Remedy: "Cordon it, so the oracle stops landing new guests on a node that is " +
+				"about to leave.",
 		})
 	}
 
@@ -136,10 +158,10 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 		// workloads all along.
 		out = append(out, DepartureRefusal{
 			Code: RefuseDrainUnknown,
-			Detail: fmt.Sprintf(
-				"the last capacity sync for this node is %s old, which is too stale to tell "+
-					"whether it is empty; refusing rather than assuming. Run a sync and retry",
-				req.Drain.ObservationAge.Truncate(time.Second)),
+			Detail: fmt.Sprintf("the last capacity sync for this node is %s old, too stale to "+
+				"tell whether it is empty", req.Drain.ObservationAge.Truncate(time.Second)),
+			Remedy: "Run a sync and retry. Refusing rather than assuming: a node that looks " +
+				"empty in a stale observation may not be.",
 		})
 	default:
 		// Reported separately even though both mean "not empty". They are
@@ -150,21 +172,23 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 		if req.Drain.ObservedGuests > 0 {
 			out = append(out, DepartureRefusal{
 				Code: RefuseGuestsPresent,
-				Detail: fmt.Sprintf(
-					"the provider reports %d guest(s) on this node, STOPPED ONES INCLUDED — a "+
-						"stopped guest blocks a cluster join just as a running one does. Move or "+
-						"delete them, then let a sync observe the result",
-					req.Drain.ObservedGuests),
+				Detail: fmt.Sprintf("the provider reports %d guest(s) on this node, "+
+					"stopped ones included", req.Drain.ObservedGuests),
+				// The second sentence is the non-obvious half and the reason this
+				// field exists. Delete the guests and retry immediately and the gate
+				// refuses again, because it reads the last observation rather than
+				// the provider — and the operator concludes the gate is broken.
+				Remedy: "Move or delete them, then wait for a sync to observe the result. " +
+					"A stopped guest blocks a cluster join exactly as a running one does.",
 			})
 		}
 		if req.Drain.HeldPlacements > 0 {
 			out = append(out, DepartureRefusal{
 				Code: RefusePlacementsHeld,
-				Detail: fmt.Sprintf(
-					"%d placement(s) on this node still hold capacity (pending or active); "+
-						"release them, or the ledger will keep this node's capacity committed "+
-						"after it has left the hive",
-					req.Drain.HeldPlacements),
+				Detail: fmt.Sprintf("%d placement(s) on this node still hold capacity "+
+					"(pending or active)", req.Drain.HeldPlacements),
+				Remedy: "Release them here, not with the provider's tooling — otherwise the " +
+					"ledger keeps this node's capacity committed after it has left.",
 			})
 		}
 	}

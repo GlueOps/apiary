@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
@@ -43,9 +44,16 @@ type EnrolBeeInput struct {
 	// exactly one.
 	MachineID string
 
-	// Address is how the control plane reaches this machine. It lands on the
-	// MACHINE record, not on the agent: reinstalling an agent does not move a box.
-	Address      string
+	// Address is what the AGENT calls itself — its hostname. Kept as the weakest
+	// of the three candidates in preferredAddress, because an agent knows what it
+	// calls itself and not how anybody else reaches it.
+	Address string
+
+	// PeerAddress is where this enrolment request actually came from, as resolved
+	// by the trusted-proxy configuration. Reachable by demonstration rather than
+	// by assumption, which is why it outranks the hostname.
+	PeerAddress string
+
 	AgentVersion string
 
 	// APIKeyID is the agent-scoped key minted for this host during enrolment.
@@ -109,6 +117,40 @@ type EnrolBeeResult struct {
 	ReplacedKeyID *uuid.UUID
 }
 
+// preferredAddress picks how the control plane should reach a machine.
+//
+// Order: the peer address, then what is already stored, then the hostname.
+//
+// THE PEER ADDRESS IS FIRST because it is the only candidate that is reachable
+// by demonstration — the enrolment request arrived from it. That also keeps a
+// machine that genuinely MOVED from being pinned to a stale address, which is
+// what re-enrolment is for.
+//
+// THE HOSTNAME IS LAST, and this is the fix. The address used to be refreshed
+// from it on every enrolment, on the reasoning that the agent which just spoke
+// to us is the most current source. The reasoning is wrong in one specific way:
+// an agent knows what it CALLS ITSELF and has no idea how anybody else reaches
+// it. A Proxmox node calls itself "pve2", which resolves on the cluster network
+// and nowhere else — so every departure failed with `lookup pve2: no such host`,
+// retried on a backoff, and reported nothing. It is kept as a last resort for
+// deployments where the hostname genuinely is the name the control plane uses,
+// and it can only ever fill an address that is empty.
+//
+// The caveat worth stating: behind a NAT the peer address is the gateway rather
+// than the host. That is not this fleet's shape — a control plane reaches
+// hypervisors directly or it cannot manage them at all — and an operator who
+// needs something else declares it, which the next enrolment from the same host
+// then confirms rather than contradicts.
+func preferredAddress(existing, peer, hostname string) string {
+	if p := strings.TrimSpace(peer); p != "" {
+		return p
+	}
+	if e := strings.TrimSpace(existing); e != "" {
+		return e
+	}
+	return strings.TrimSpace(hostname)
+}
+
 func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*EnrolBeeResult, error) {
 	var out tenant.Bee
 	var replaced *uuid.UUID
@@ -118,13 +160,27 @@ func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*EnrolB
 			return err
 		}
 
-		// The address is refreshed on every enrolment: it is how the machine is
-		// reached, it legitimately changes, and the agent that just spoke to us is
-		// the most current source for it. A named-column update rather than a
-		// struct save, so nothing else on the row is written by accident.
-		if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", machine.ID).
-			Updates(map[string]any{"address": in.Address, "updated_at": in.Now}).Error; err != nil {
-			return fmt.Errorf("record the machine's address: %w", err)
+		// The address is how the CONTROL PLANE reaches this machine, and only some
+		// of what arrives at enrolment is evidence of that.
+		//
+		// It used to be refreshed from the agent's own hostname on every enrolment,
+		// on the reasoning that the agent which just spoke to us is the most
+		// current source. The reasoning is wrong in one specific way: an agent
+		// knows what it calls itself and has no idea how anybody else reaches it.
+		// A Proxmox node calls itself "pve2", which resolves on the cluster network
+		// and nowhere else — so every departure and every reprovision failed with
+		// `lookup pve2: no such host`, retried on a backoff, and reported nothing.
+		//
+		// So the order is: an address an operator DECLARED is authoritative and is
+		// never overwritten; otherwise the peer address of this very request, which
+		// is reachable by demonstration — the packet came from it; and the hostname
+		// only as a last resort, for a deployment where it is genuinely the name
+		// the control plane uses.
+		if addr := preferredAddress(machine.Address, in.PeerAddress, in.Address); addr != machine.Address {
+			if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", machine.ID).
+				Updates(map[string]any{"address": addr, "updated_at": in.Now}).Error; err != nil {
+				return fmt.Errorf("record the machine's address: %w", err)
+			}
 		}
 
 		// Re-enrolment replaces the credential and clears any stale declared

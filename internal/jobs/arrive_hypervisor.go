@@ -18,6 +18,11 @@ var ErrArrivalRefused = errors.New("arrive: refused by a precondition")
 
 // ArriveDeps is what arrival needs from the rest of the system.
 type ArriveDeps struct {
+	// RecordOutcome stores why this arrival failed, or clears it on success. A
+	// dependency for the same reason as the departure's: this package keeps
+	// needing no tenant database handle of its own.
+	RecordOutcome func(ctx context.Context, orgID, hypervisorID uuid.UUID, operation string, err error) error
+
 	FleetKey  func(ctx context.Context, orgID uuid.UUID) (pub string, priv []byte, err error)
 	Snapshot  func(ctx context.Context, orgID, hypervisorID, hiveID uuid.UUID) (ArrivalSnapshot, error)
 	NewRunner func(addr, user string, priv []byte) (Runner, error)

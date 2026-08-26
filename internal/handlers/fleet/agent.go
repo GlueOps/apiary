@@ -223,6 +223,7 @@ func RegisterPublic(hapi huma.API, deps *app.Deps) error {
 			MachineID:      in.Body.MachineID,
 			Hostname:       in.Body.Hostname,
 			AgentVersion:   in.Body.AgentVersion,
+			PeerAddress:    apimiddleware.ClientIPFromContext(ctx),
 		})
 		if err != nil {
 			return nil, mapErr(ctx, err)

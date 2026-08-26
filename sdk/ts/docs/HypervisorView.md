@@ -17,6 +17,9 @@ Name | Type
 `hiveId` | string
 `hiveName` | string
 `id` | string
+`lastOperation` | string
+`lastOperationAt` | Date
+`lastOperationError` | string
 `lastSyncedAt` | Date
 `name` | string
 `observationStale` | boolean
@@ -46,6 +49,9 @@ const example = {
   "hiveId": null,
   "hiveName": null,
   "id": null,
+  "lastOperation": null,
+  "lastOperationAt": null,
+  "lastOperationError": null,
   "lastSyncedAt": null,
   "name": null,
   "observationStale": null,

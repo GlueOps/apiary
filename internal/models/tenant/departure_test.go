@@ -195,11 +195,22 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		}
 		for _, r := range rs {
 			if r.Code == RefuseGuestsPresent {
-				if !strings.Contains(r.Detail, "STOPPED") {
-					t.Error("the message must say stopped guests count — that is the non-obvious half")
-				}
 				if !strings.Contains(r.Detail, "2") {
 					t.Error("the message must name the count the operator has to clear")
+				}
+				// Checked across BOTH fields. That stopped guests count is the
+				// non-obvious half, and which of the two halves carries it is a
+				// presentation choice — losing it altogether is not. Asserting only
+				// on Detail would have made moving it to Remedy look like a
+				// regression, and asserting on neither is how it gets trimmed away
+				// the next time somebody shortens a message for width.
+				if !strings.Contains(r.Detail+" "+r.Remedy, "stopped") {
+					t.Error("neither the message nor the remedy says stopped guests count — " +
+						"that is the non-obvious half, and it is the half that gets trimmed")
+				}
+				if r.Remedy == "" {
+					t.Error("no remedy: an operator told only that guests are present has to " +
+						"guess that a sync must observe the result before retrying")
 				}
 			}
 		}

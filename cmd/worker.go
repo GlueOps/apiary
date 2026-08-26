@@ -226,6 +226,14 @@ func runWorker() error {
 		// standalone. Shares the fleet key with onboarding, and for the same
 		// reason — it needs SSH to the metal, on two hosts rather than one.
 		river.AddWorker(workers, jobs.NewDepartHypervisorWorker(jobs.DepartDeps{
+			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID,
+				operation string, opErr error) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.RecordOperationOutcome(ctx, db, hvID, operation, opErr)
+			},
 			FleetKey: func(ctx context.Context, orgID uuid.UUID) (string, []byte, error) {
 				k, err := sshKeys.ActiveFleetKey(ctx, orgID)
 				if err != nil {
@@ -262,6 +270,14 @@ func runWorker() error {
 		// departure, and a separate job on purpose — a migration is a departure
 		// and then an arrival, with a real fleetless state between them.
 		river.AddWorker(workers, jobs.NewArriveHypervisorWorker(jobs.ArriveDeps{
+			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID,
+				operation string, opErr error) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.RecordOperationOutcome(ctx, db, hvID, operation, opErr)
+			},
 			FleetKey: func(ctx context.Context, orgID uuid.UUID) (string, []byte, error) {
 				k, err := sshKeys.ActiveFleetKey(ctx, orgID)
 				if err != nil {
