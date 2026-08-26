@@ -97,12 +97,28 @@ func TestDepartStepsAgainstALiveCluster(t *testing.T) {
 	}
 	t.Logf("ok  the departing node holds %d key(s) in the remaining cluster's keyring", before)
 
+	// How many nodes the cluster has BEFORE the removal, read from the cluster
+	// rather than assumed. This was hardcoded to 2 (expecting 1 after), which is
+	// the shape of the lab it was written against; run against a four-node
+	// cluster it failed on its own assertion having removed the node correctly,
+	// reporting a half-done removal that had in fact completed.
+	nodesBefore, err := settledNodeCount(ctx, rem)
+	if err != nil {
+		t.Fatalf("count the cluster's nodes before the removal: %v", err)
+	}
+	if nodesBefore < 2 {
+		t.Fatalf("the remaining cluster reports %d node(s), so there is nothing to depart from",
+			nodesBefore)
+	}
+	t.Logf("ok  the cluster has %d node(s) before the removal, expecting %d after",
+		nodesBefore, nodesBefore-1)
+
 	if err := StopClusterStack(ctx, dep); err != nil {
 		t.Fatalf("StopClusterStack: %v", err)
 	}
 	t.Log("ok  StopClusterStack")
 
-	if err := DelNode(ctx, rem, depName, 1); err != nil {
+	if err := DelNode(ctx, rem, depName, nodesBefore-1); err != nil {
 		t.Fatalf("DelNode: %v", err)
 	}
 	t.Log("ok  DelNode, and corosync.conf agrees")

@@ -523,8 +523,34 @@ func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor
 		t.Fatal(err)
 	}
 	drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), tenant.DrainThresholds{})
+
+	// The STATE gate, because that is what these lab tests measure: whether a real
+	// cluster's observed shape produces the right verdict. The credential
+	// disposition is not a fact about the cluster — it is an operator's answer,
+	// supplied per request — so including it here would refuse every host and make
+	// the ALLOW case, the one that distinguishes a working gate from one that
+	// refuses everything, impossible to reach. cycleGateExecuting covers it.
+	return tenant.CheckDepartureState(tenant.DepartureRequest{
+		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+	})
+}
+
+// cycleGateExecuting is the gate as a departure actually runs it: the state
+// rules plus the operator's decision about the cluster secrets this node holds.
+func cycleGateExecuting(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor,
+	disposition string) []tenant.DepartureRefusal {
+	t.Helper()
+	var held int64
+	if err := db.Model(&tenant.Placement{}).
+		Where("hypervisor_id = ? AND state IN ?", hv.ID,
+			[]string{tenant.PlacementPending, tenant.PlacementActive}).
+		Count(&held).Error; err != nil {
+		t.Fatal(err)
+	}
+	drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), tenant.DrainThresholds{})
 	return tenant.CheckDeparture(tenant.DepartureRequest{
 		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+		CredentialDisposition: disposition,
 	})
 }
 
