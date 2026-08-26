@@ -4,6 +4,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**fleetBeeAgentBinary**](FleetApi.md#fleetbeeagentbinary) | **GET** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform |
+| [**fleetBeeAgentDist**](FleetApi.md#fleetbeeagentdist) | **GET** /api/v1/agent/dist | What agent binaries this control plane can serve |
 | [**fleetBeeAppendLogs**](FleetApi.md#fleetbeeappendlogs) | **POST** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane |
 | [**fleetBeeEnrol**](FleetApi.md#fleetbeeenrol) | **POST** /api/v1/agent/enrol | Enrol a fleet agent into an organization |
 | [**fleetBeeFirewall**](FleetApi.md#fleetbeefirewall) | **GET** /api/v1/agent/firewall | Fetch the ruleset this host should enforce |
@@ -30,6 +32,149 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**sshKeysMint**](FleetApi.md#sshkeysmint) | **POST** /api/v1/ssh-keys | Mint a fleet SSH key |
 | [**sshKeysRevoke**](FleetApi.md#sshkeysrevoke) | **DELETE** /api/v1/ssh-keys/{id} | Revoke a fleet SSH key |
 
+
+
+## fleetBeeAgentBinary
+
+> string fleetBeeAgentBinary(os, arch)
+
+Download the agent binary for one platform
+
+Authenticated, even though the same bytes sit in the SPA\&#39;s embedded tree. Serving them as a static asset would hand the fleet\&#39;s agent binary to anyone who could reach the login page.  Verify the response against the sha256 from /agent/dist before running it.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetBeeAgentBinaryRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: AgentKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: AgentKeyAuth
+    apiKey: "YOUR API KEY",
+  });
+  const api = new FleetApi(config);
+
+  const body = {
+    // string
+    os: os_example,
+    // string
+    arch: arch_example,
+  } satisfies FleetBeeAgentBinaryRequest;
+
+  try {
+    const data = await api.fleetBeeAgentBinary(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **os** | `string` |  | [Defaults to `undefined`] |
+| **arch** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+**string**
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | OK |  * Content-Disposition -  <br>  * Content-Type -  <br>  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## fleetBeeAgentDist
+
+> AgentDistResponseBody fleetBeeAgentDist()
+
+What agent binaries this control plane can serve
+
+A hypervisor in a managed estate has no route to the internet, so the control plane is the only host it can fetch a new agent from. Without this an upgrade means copying a binary to every machine by hand, which is how a fleet ends up running four different versions.  An EMPTY build list is not a failure. A server compiled without agent binaries is an ordinary development build, and an agent reads it as nothing to do.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetBeeAgentDistRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: AgentKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: AgentKeyAuth
+    apiKey: "YOUR API KEY",
+  });
+  const api = new FleetApi(config);
+
+  try {
+    const data = await api.fleetBeeAgentDist();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**AgentDistResponseBody**](AgentDistResponseBody.md)
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | OK |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## fleetBeeAppendLogs

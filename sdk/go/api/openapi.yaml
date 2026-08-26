@@ -101,6 +101,86 @@ paths:
       summary: End the current impersonated session
       tags:
       - Admin
+  /api/v1/agent/dist:
+    get:
+      description: |-
+        A hypervisor in a managed estate has no route to the internet, so the control plane is the only host it can fetch a new agent from. Without this an upgrade means copying a binary to every machine by hand, which is how a fleet ends up running four different versions.
+
+        An EMPTY build list is not a failure. A server compiled without agent binaries is an ordinary development build, and an agent reads it as nothing to do.
+      operationId: fleet-bee-agent-dist
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDistResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - AgentKeyAuth: []
+        AgentKeySecret: []
+      summary: What agent binaries this control plane can serve
+      tags:
+      - Fleet
+  /api/v1/agent/dist/{os}/{arch}:
+    get:
+      description: |-
+        Authenticated, even though the same bytes sit in the SPA's embedded tree. Serving them as a static asset would hand the fleet's agent binary to anyone who could reach the login page.
+
+        Verify the response against the sha256 from /agent/dist before running it.
+      operationId: fleet-bee-agent-binary
+      parameters:
+      - explode: false
+        in: path
+        name: os
+        required: true
+        schema:
+          maxLength: 16
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: arch
+        required: true
+        schema:
+          maxLength: 16
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+          description: OK
+          headers:
+            Content-Disposition:
+              explode: false
+              schema:
+                type: string
+              style: simple
+            Content-Type:
+              explode: false
+              schema:
+                type: string
+              style: simple
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - AgentKeyAuth: []
+        AgentKeySecret: []
+      summary: Download the agent binary for one platform
+      tags:
+      - Fleet
   /api/v1/agent/enrol:
     post:
       description: "Redeems an enrolment token and returns this host's agent-scoped\
@@ -3634,6 +3714,66 @@ components:
       - seeded
       - updated_at
       - value
+    AgentBuildView:
+      additionalProperties: false
+      example:
+        arch: arch
+        os: os
+        sha256: sha256
+        size: 0
+      properties:
+        arch:
+          type: string
+        os:
+          type: string
+        sha256:
+          description: Verified by the agent before it installs anything. Without
+            it an upgrade is 'execute whatever arrived'.
+          type: string
+        size:
+          format: int64
+          type: integer
+      required:
+      - arch
+      - os
+      - sha256
+      - size
+    AgentDistResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        builds:
+        - arch: arch
+          os: os
+          sha256: sha256
+          size: 0
+        - arch: arch
+          os: os
+          sha256: sha256
+          size: 0
+        version: version
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        builds:
+          description: "Empty when this server carries no agent binaries, which is\
+            \ normal for a development build. An agent treats that as nothing to do\
+            \ rather than as a failure."
+          items:
+            $ref: "#/components/schemas/AgentBuildView"
+          nullable: true
+          type: array
+          default: null
+        version:
+          description: "The control plane's version. These binaries shipped with it,\
+            \ so an agent compares its own against this."
+          type: string
+      required:
+      - builds
+      - version
     AgentFirewallResponseBody:
       additionalProperties: false
       example:

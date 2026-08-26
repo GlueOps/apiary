@@ -4,6 +4,26 @@ generate name:
 sdk:
   go run . generate sdk
 
+# Cross-compile the agent into the control plane's distribution directory.
+#
+# A hypervisor in a managed estate has no route to the internet, so the control
+# plane is the only host it can fetch a new agent from. These binaries are
+# embedded at compile time, which means this has to run BEFORE `go build` of the
+# server — and that ordering is why it is its own recipe rather than a hook.
+#
+# linux only: the agent is a systemd service that runs as root on a hypervisor,
+# and there is no darwin host for it to run on.
+agent-dist:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  for arch in amd64 arm64; do
+    echo "  building linux/$arch"
+    ( cd agent && GOWORK=off GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
+        go build -trimpath -ldflags "-s -w" \
+        -o "../internal/agentdist/dist/apiary-agent_linux_$arch" . )
+  done
+  ls -lh internal/agentdist/dist/ | tail -n +2
+
 release:
     goreleaser build --snapshot --clean
 

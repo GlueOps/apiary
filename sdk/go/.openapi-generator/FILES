@@ -23,6 +23,8 @@ docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
 docs/AdminAPI.md
+docs/AgentBuildView.md
+docs/AgentDistResponseBody.md
 docs/AgentFirewallResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
@@ -192,6 +194,8 @@ go.sum
 model_accept_request_body.go
 model_accept_response_body.go
 model_access_rule_view.go
+model_agent_build_view.go
+model_agent_dist_response_body.go
 model_agent_firewall_response_body.go
 model_api_key_view.go
 model_arrive_request_body.go

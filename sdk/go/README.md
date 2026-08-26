@@ -118,6 +118,8 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallRulesetsUpdate**](docs/FirewallAPI.md#firewallrulesetsupdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
+*FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
+*FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
 *FleetAPI* | [**FleetBeeAppendLogs**](docs/FleetAPI.md#fleetbeeappendlogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
 *FleetAPI* | [**FleetBeeEnrol**](docs/FleetAPI.md#fleetbeeenrol) | **Post** /api/v1/agent/enrol | Enrol a fleet agent into an organization
 *FleetAPI* | [**FleetBeeFirewall**](docs/FleetAPI.md#fleetbeefirewall) | **Get** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
@@ -178,6 +180,8 @@ Class | Method | HTTP request | Description
  - [AcceptRequestBody](docs/AcceptRequestBody.md)
  - [AcceptResponseBody](docs/AcceptResponseBody.md)
  - [AccessRuleView](docs/AccessRuleView.md)
+ - [AgentBuildView](docs/AgentBuildView.md)
+ - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
  - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)

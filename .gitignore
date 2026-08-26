@@ -87,3 +87,8 @@ session.txt
 # CI pins gitleaks in .github/workflows/ci.yml, so nothing depends on this file.
 mise.toml
 mise.lock
+
+# Cross-compiled agent binaries, embedded so the control plane can serve them to
+# hosts with no route to the internet. Built artifacts, not sources.
+internal/agentdist/dist/*
+!internal/agentdist/dist/.gitkeep
