@@ -190,6 +190,15 @@ export const Hypervisors = () => {
   // paragraph down the page and makes every row wide enough to scroll sideways.
   const allRefusals = nodes.flatMap((n) => n.departure_refusals ?? []);
 
+  // Refusals by machine id, so the fleetless table can show the same badges.
+  //
+  // That table is fed by a different endpoint whose view carries no refusals,
+  // and without this a host listed there was counted in the card ("not a member
+  // · 1 host") with nothing on the page saying WHICH host — the exact gap the
+  // badges exist to close. The two lists describe the same machines, so the id
+  // is enough and no second copy of the gate has to travel.
+  const refusalsByMachine = new Map(nodes.map((n) => [n.id, n.departure_refusals ?? []]));
+
   // A cluster to offer the sync against, for the one refusal an operator
   // resolves by touching no host at all. The first configured one: a stale
   // observation is almost always fleet-wide, and offering a picker for it would
@@ -456,7 +465,10 @@ export const Hypervisors = () => {
               <TableBody>
                 {strays.map((h) => (
                   <TableRow key={h.hypervisor_id}>
-                    <TableCell className="font-medium">{h.address}</TableCell>
+                    <TableCell className="font-medium">
+                      {h.address}
+                      <RefusalBadges refusals={refusalsByMachine.get(h.hypervisor_id) ?? []} />
+                    </TableCell>
                     <TableCell>
                       {/* Absent status is not offline: it means no agent is enrolled on
                           this machine at all. Rendering the offline badge would report
