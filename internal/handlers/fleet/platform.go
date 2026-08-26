@@ -420,6 +420,28 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			spec = json.RawMessage(`{}`)
 		}
 
+		// GATED HERE, so the API, Terraform and the UI all get the same answer.
+		//
+		// The agent used to decide this alone by asking the Proxmox cluster API —
+		// which is why a dist-upgrade needed a token for a job that is entirely
+		// local. Every fact the decision needs is in this database, and refusing at
+		// creation puts the reason in front of the operator who asked instead of in
+		// a task that fails minutes later.
+		//
+		// Only dist-upgrade: it is the one kind that can interrupt what a host is
+		// running. Ping, join and evict have their own gates or none.
+		if in.Body.Kind == "fleet.host.dist-upgrade" {
+			refusals, gerr := repo.CheckUpgradeForBee(ctx, db, beeID, spec,
+				deps.Config.FleetObservationMaxAge, time.Now().UTC())
+			if gerr != nil {
+				return nil, mapErr(ctx, gerr)
+			}
+			if len(refusals) > 0 {
+				return nil, refusalConflict("this host cannot be upgraded yet",
+					refusalViews(refusals))
+			}
+		}
+
 		task := tenant.FleetTask{
 			BeeID: beeID, Kind: in.Body.Kind, Spec: datatypes.JSON(spec),
 			Status: tenant.FleetTaskPending, CreatedByID: *p.UserID,

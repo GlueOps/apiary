@@ -63,6 +63,11 @@ export const Fleet = () => {
   } | null>(null);
   const [upgradeFor, setUpgradeFor] = useState<BeeView | null>(null);
   const [allowDowntime, setAllowDowntime] = useState(false);
+  // Defaults to the choice that cannot interrupt anything. The task's own default
+  // is "if-needed", which reboots when a kernel lands — fine as a protocol
+  // default, wrong as the pre-selected answer in a dialog somebody will click
+  // through.
+  const [rebootPolicy, setRebootPolicy] = useState('never');
   const [joinFor, setJoinFor] = useState<BeeView | null>(null);
   const [joinPeer, setJoinPeer] = useState('');
   const [joinFingerprint, setJoinFingerprint] = useState('');
@@ -347,38 +352,65 @@ export const Fleet = () => {
           <DialogHeader>
             <DialogTitle>Upgrade {upgradeFor ? beeLabel(upgradeFor) : ''}</DialogTitle>
             <DialogDescription>
-              Runs apt dist-upgrade and reboots if the distribution asks for one. The agent declares
-              the expected downtime first, so the reboot is not recorded as an outage — and it
-              refuses outright if guests are still running here or if losing this node would cost
-              the cluster quorum.
+              Runs apt dist-upgrade. Whether it reboots is up to you — it was previously decided for
+              you by a default, so a routine patch could restart a hypervisor without anyone having
+              asked for it.
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={allowDowntime}
-              onChange={(e) => setAllowDowntime(e.target.checked)}
-            />
-            <span>
-              Allow guest downtime
-              <span className="block text-xs text-muted-foreground">
-                Without this the upgrade refuses while any guest is running on the hypervisor. Tick
-                it only if those guests are expected to go down with it.
+          <div className="space-y-2">
+            <Label htmlFor="upgrade-reboot">Reboot</Label>
+            <Select value={rebootPolicy} onValueChange={(v) => setRebootPolicy(String(v))}>
+              <SelectTrigger id="upgrade-reboot" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="never">Never — install packages only, keep running</SelectItem>
+                <SelectItem value="if-needed">
+                  If needed — reboot when a new kernel lands
+                </SelectItem>
+                <SelectItem value="always">Always — reboot when the upgrade finishes</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {rebootPolicy === 'never'
+                ? 'Nothing on this host is interrupted, so nothing here is gated. It keeps running the old kernel until something else restarts it.'
+                : 'The host will be unavailable while it restarts. It declares the expected downtime first, so this is not recorded as an outage — and the checks below apply.'}
+            </p>
+          </div>
+
+          {rebootPolicy === 'never' ? null : (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowDowntime}
+                onChange={(e) => setAllowDowntime(e.target.checked)}
+              />
+              <span>
+                Allow guest downtime
+                <span className="block text-xs text-muted-foreground">
+                  Without this the upgrade is refused while any guest is running here. Tick it only
+                  if those guests are expected to go down with the host.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
           <DialogFooter>
             <Button
               disabled={createTask.isPending}
               onClick={() => {
                 if (!upgradeFor) return;
                 queueTask(upgradeFor, 'fleet.host.dist-upgrade', {
-                  allow_guest_downtime: allowDowntime,
+                  // Sent explicitly, never left to the default. The default is
+                  // "if-needed", which can restart a hypervisor — and an operator
+                  // who was never asked has not agreed to that.
+                  reboot: rebootPolicy,
+                  allow_guest_downtime: rebootPolicy === 'never' ? false : allowDowntime,
                   expected_down_seconds: 900,
                 });
                 setUpgradeFor(null);
                 setAllowDowntime(false);
+                setRebootPolicy('never');
               }}
             >
               {createTask.isPending ? 'Queueing…' : 'Upgrade'}

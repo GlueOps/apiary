@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestClusterTasksRefuseWithoutAClientRatherThanPanicking.
@@ -31,10 +32,14 @@ func TestClusterTasksRefuseWithoutAClientRatherThanPanicking(t *testing.T) {
 		Phase: func(string) {},
 	}
 
+	// dist-upgrade is deliberately NOT here any more. It is a local job — apt-get
+	// and a reboot — and the control plane gates it before the task is created,
+	// so it no longer needs a Proxmox client at all. Join and evict do: they are
+	// cluster operations, and `pvecm delnode` has no local equivalent that knows
+	// the cluster's view.
 	for name, run := range map[string]func() error{
-		"dist-upgrade": func() error { return DistUpgrade(context.Background(), d, e, "", "{}") },
-		"join":         func() error { return Join(context.Background(), d, e, "{}") },
-		"evict":        func() error { return Evict(context.Background(), d, e, "{}") },
+		"join":  func() error { return Join(context.Background(), d, e, "{}") },
+		"evict": func() error { return Evict(context.Background(), d, e, "{}") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			// A panic here fails the test rather than taking the runner down, which
@@ -98,4 +103,48 @@ func TestARefusalWithNoRecordedCauseSaysOnlyWhatItKnows(t *testing.T) {
 	if strings.Contains(err.Error(), "role") || strings.Contains(err.Error(), "PVEAuditor") {
 		t.Fatalf("%q guesses at a cause it does not have", err)
 	}
+}
+
+// TestDistUpgradeNoLongerNeedsAProxmoxClient.
+//
+// It is a local job: apt-get update, apt-get dist-upgrade, and a reboot. Nothing
+// about it is orchestrated through the Proxmox API. The API was only ever used
+// for the reboot preflight, and the control plane now answers those questions
+// from facts it already holds — so a host with no token can still be patched.
+//
+// Asserted by reaching the RUNNER: with no cluster the preflight is skipped, and
+// the first thing dist-upgrade touches is apt.
+func TestDistUpgradeNoLongerNeedsAProxmoxClient(t *testing.T) {
+	t.Parallel()
+
+	var ran []string
+	d := Deps{
+		Node: "pve1",
+		Runner: runnerFunc(func(_ context.Context, _ func(string, string, ...any), name string, args ...string) error {
+			ran = append(ran, name+" "+strings.Join(args, " "))
+			return nil
+		}),
+	}
+	e := &Env{
+		Logf:    func(string, string, ...any) {},
+		Phase:   func(string) {},
+		Declare: func(context.Context, time.Duration, string) error { return nil },
+	}
+
+	// reboot: never, so the run ends after the packages and touches nothing else.
+	if err := DistUpgrade(context.Background(), d, e, "", `{"reboot":"never"}`); err != nil {
+		t.Fatalf("dist-upgrade refused without a Proxmox client: %v", err)
+	}
+
+	joined := strings.Join(ran, " | ")
+	if !strings.Contains(joined, "apt-get update") || !strings.Contains(joined, "dist-upgrade") {
+		t.Fatalf("the upgrade never ran: %v", ran)
+	}
+}
+
+// runnerFunc adapts a function to the Runner interface.
+type runnerFunc func(ctx context.Context, logf func(string, string, ...any), name string, args ...string) error
+
+func (f runnerFunc) Run(ctx context.Context, logf func(string, string, ...any), name string, args ...string) error {
+	return f(ctx, logf, name, args...)
 }

@@ -94,13 +94,23 @@ func requireCluster(d Deps) error {
 
 // ---------------------------------------------------------------- dist-upgrade
 
+// Reboot policies, named so the checks below cannot drift from the spec's
+// documented values.
+const (
+	rebootIfNeeded = "if-needed"
+	rebootAlways   = "always"
+	rebootNever    = "never"
+)
+
 type DistUpgradeSpec struct {
 	// AllowGuestDowntime permits the upgrade when guests are still running here.
 	// Default false: an operator who has not said otherwise expects a rotation to
 	// refuse rather than to drop VMs.
 	AllowGuestDowntime bool `json:"allow_guest_downtime"`
 
-	// Reboot: "if-needed" (default), "always", or "never".
+	// Reboot: "if-needed" (default), "always", or "never". The control plane's
+	// gate reads the same strings — see tenant.RebootNever — because it has to
+	// know whether a reboot is possible before it can decide anything.
 	Reboot string `json:"reboot"`
 
 	// ExpectedDownSeconds is what the host declares before rebooting. It should
@@ -116,16 +126,13 @@ type DistUpgradeSpec struct {
 // function, sees phaseRebooting, and finishes rather than upgrading again. Get
 // that wrong and a rotation loops forever on every host in the datacenter.
 func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec string) error {
-	if err := requireCluster(d); err != nil {
-		return err
-	}
 
 	var spec DistUpgradeSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
 	}
 	if spec.Reboot == "" {
-		spec.Reboot = "if-needed"
+		spec.Reboot = rebootIfNeeded
 	}
 
 	// We are back from the reboot we caused.
@@ -135,18 +142,37 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		return verifyAfterReboot(ctx, d, e)
 	}
 
-	e.Phase(phasePreflight)
-	report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
-	if err != nil {
-		return err
+	// THE PREFLIGHT IS ABOUT THE REBOOT, so it runs only when one might happen.
+	//
+	// It used to run unconditionally, which refused `reboot: never` while guests
+	// were running — a check for a reboot that never happens, blocking an upgrade
+	// that cannot disturb them. Installing packages does not interrupt a guest.
+	//
+	// And it is now BEST EFFORT rather than required. The control plane gates this
+	// before the task is created, from facts it already holds, so the decision has
+	// been made by something that knows the whole fleet. This is a second opinion
+	// with live data — worth having when the host can give one, and not worth
+	// refusing a purely local job over when it cannot. That is why a dist-upgrade
+	// no longer needs a Proxmox token at all: nothing about apt-get and a reboot
+	// is orchestrated through the API.
+	if spec.Reboot != rebootNever {
+		if d.Cluster == nil {
+			e.Logf("agent", "no Proxmox client here, so the local preflight is skipped; the "+
+				"control plane gated this upgrade before it was queued")
+		} else {
+			e.Phase(phasePreflight)
+			report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
+			if err != nil {
+				return err
+			}
+			for _, n := range report.Notes {
+				e.Logf("agent", "%s", n)
+			}
+			if err := report.err("dist-upgrade"); err != nil {
+				return err
+			}
+		}
 	}
-	for _, n := range report.Notes {
-		e.Logf("agent", "%s", n)
-	}
-	if err := report.err("dist-upgrade"); err != nil {
-		return err
-	}
-
 	e.Phase(phaseUpgrading)
 	e.Logf("agent", "updating package lists")
 	if err := d.Runner.Run(ctx, e.Logf, "apt-get", "update"); err != nil {
@@ -162,7 +188,7 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 
 	needs := rebootRequired()
 	switch {
-	case spec.Reboot == "never":
+	case spec.Reboot == rebootNever:
 		if needs {
 			e.Logf("agent", "a reboot is required but reboot=never; this host is running an old kernel")
 		}
