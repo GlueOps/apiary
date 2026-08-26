@@ -48,21 +48,42 @@
   // nobody can keep up with is a queue that stops being read. The setting above
   // cuts how many arrive; this one is what drains the rest.
   //
-  // It is only safe because CI here runs the real suite: `go test ./...` against
-  // a live Postgres, the UI unit tests, Playwright, golangci-lint, govulncheck,
-  // and a job that regenerates every artifact and fails on a diff. Green means
-  // the code was exercised, not merely that it resolved. Branch protection still
-  // requires all of it, so automerge merges only what CI already approved.
+  // platformAutomerge IS DELIBERATELY OFF, which is the opposite of the usual
+  // advice, and the reason is specific to how main is protected here.
   //
-  // platformAutomerge hands the merge to GitHub's own auto-merge rather than
-  // having Renovate merge by hand, so it happens under the same branch-protection
-  // evaluation as a human's click — including the required DCO check, which a
-  // bot-side merge would have no way to satisfy. It needs `allow_auto_merge` on
-  // the repository, which was off until 2026-08-26; with it off Renovate cannot
-  // arm anything and silently reports "Automerge: Disabled by config" in every
-  // pull request body, which is how this went unnoticed.
+  // main is governed by an org-level ruleset, not by this repository's branch
+  // protection — `gh api repos/GlueOps/apiary/branches/main/protection` returns
+  // an empty set, which is misleading. The real rules come from
+  // `gh api repos/GlueOps/apiary/rules/branches/main`, and as of 2026-08-26 they
+  // are: deletion, non_fast_forward, pull_request, workflows, copilot_code_review.
+  //
+  // There is NO required_status_checks rule, and required_approving_review_count
+  // is 0. The `workflows` rule requires exactly one workflow, and it belongs to
+  // another repository: glueops-basic-pr-checks.yml, which surfaces as the
+  // PR_CHECKS_AND_LABELS check and completes in about eleven seconds.
+  //
+  // So nothing this repository's own CI does is required to merge. `go` takes
+  // nearly seven minutes; browser tests, lint, govulncheck and the
+  // generated-artifacts job are all advisory as far as the ruleset is concerned.
+  // platformAutomerge hands the merge to GitHub, which fires as soon as the
+  // REQUIRED gates are satisfied — eleven seconds in, with the Go suite still
+  // running. That would not be automerge-when-CI-passes; it would be
+  // automerge-before-CI-runs, on precisely the changes nobody is reading.
+  //
+  // With platformAutomerge off, Renovate merges the branch itself, and it merges
+  // only when the branch status is green — which it computes from ALL checks on
+  // the branch, required or not. That is the gate this repository actually wants,
+  // and it is the only one available without changing the org ruleset.
+  //
+  // If required_status_checks is ever added to the ruleset covering main, flip
+  // platformAutomerge back on: the platform gate becomes the stronger one, and it
+  // survives Renovate being down.
+  //
+  // automergeStrategy is squash because the ruleset's allowed_merge_methods are
+  // squash and rebase only; a merge commit is refused.
   automerge: true,
-  platformAutomerge: true,
+  platformAutomerge: false,
+  automergeStrategy: "squash",
 
   packageRules: [
     {
