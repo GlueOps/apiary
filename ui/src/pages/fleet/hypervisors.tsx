@@ -55,7 +55,7 @@ import {
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { StatusBadge, relative } from './bee-table';
-import { DrainBadge, Hint, LoadError, RefusalList, RemedyCard, capacityLabel } from './drain';
+import { DrainBadge, Hint, LoadError, RemedyCard, capacityLabel } from './drain';
 
 /**
  * Pulls the message out of a 409 refusal.
@@ -189,6 +189,12 @@ export const Hypervisors = () => {
   // the same wherever it appears: rendering it per host repeats the same
   // paragraph down the page and makes every row wide enough to scroll sideways.
   const allRefusals = nodes.flatMap((n) => n.departure_refusals ?? []);
+
+  // A cluster to offer the sync against, for the one refusal an operator
+  // resolves by touching no host at all. The first configured one: a stale
+  // observation is almost always fleet-wide, and offering a picker for it would
+  // be more ceremony than the action deserves.
+  const syncableHiveId = (hives.data?.hives ?? []).find((h) => h.configured)?.id;
   const strays = fleetless.data?.hosts ?? [];
   const hiveList = hives.data?.hives ?? [];
 
@@ -404,18 +410,12 @@ export const Hypervisors = () => {
                               </p>
                             </div>
                           ) : null}
-                          {(n.departure_refusals?.length ?? 0) > 0 ? (
-                            <div className="text-left">
-                              <RefusalList
-                                refusals={n.departure_refusals ?? []}
-                                onSync={
-                                  cluster?.configured
-                                    ? () => sync.mutate({ path: { id: hiveId } })
-                                    : undefined
-                                }
-                              />
-                            </div>
-                          ) : null}
+                          {/* The reasons live in one card at the bottom of the
+                              page, not here. Repeated per host they put the same
+                              two lines beside every node that shares a problem
+                              and make every row scroll sideways. The disabled
+                              Depart button is what marks this host as blocked;
+                              the card says what is blocking it. */}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -624,7 +624,10 @@ export const Hypervisors = () => {
         </DialogContent>
       </Dialog>
 
-      <RemedyCard refusals={allRefusals} />
+      <RemedyCard
+        refusals={allRefusals}
+        onSync={syncableHiveId ? () => sync.mutate({ path: { id: syncableHiveId } }) : undefined}
+      />
     </div>
   );
 };

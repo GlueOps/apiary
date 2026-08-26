@@ -57,44 +57,6 @@ export function drainHint(state: string): string {
  * second implementation in the browser is how a button comes to be enabled for
  * an operation the server will refuse. This component only decides how to say it.
  */
-export function RefusalList({
-  refusals,
-  onSync,
-}: {
-  refusals: RefusalView[];
-  onSync?: () => void;
-}) {
-  if (refusals.length === 0) return null;
-
-  return (
-    <ul className="space-y-1.5 text-xs">
-      {refusals.map((r) => (
-        <li key={r.code} className="flex gap-2">
-          <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
-          <span className="text-muted-foreground">
-            {r.detail}
-            {/* drain_unknown is the one refusal an operator resolves by doing
-                nothing to the host at all, so it gets the action inline rather
-                than leaving them to work out that a sync is what is wanted. */}
-            {r.code === 'drain_unknown' && onSync ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  onClick={onSync}
-                  className="underline underline-offset-2 hover:text-foreground"
-                >
-                  Sync this cluster now
-                </button>
-              </>
-            ) : null}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /**
  * Every distinct refusal on the page, with its remedy, once.
  *
@@ -110,7 +72,7 @@ export function RefusalList({
  * repetition this exists to remove. The detail shown is the first one seen,
  * which reads as an example of the rule rather than a claim about one host.
  */
-export function RemedyCard({ refusals }: { refusals: RefusalView[] }) {
+export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSync?: () => void }) {
   const byCode = new Map<string, RefusalView>();
   for (const r of refusals) {
     if (r.remedy && !byCode.has(r.code)) byCode.set(r.code, r);
@@ -137,8 +99,33 @@ export function RemedyCard({ refusals }: { refusals: RefusalView[] }) {
           <tbody>
             {[...byCode.values()].map((r) => (
               <tr key={r.code} className="border-b align-top last:border-0">
-                <td className="py-2 pr-4 text-muted-foreground">{r.detail}</td>
-                <td className="py-2">{r.remedy}</td>
+                <td className="py-2 pr-4 text-muted-foreground">
+                  <span className="flex gap-2">
+                    <IconAlertTriangle
+                      className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                      aria-hidden
+                    />
+                    <span>{r.detail}</span>
+                  </span>
+                </td>
+                <td className="py-2">
+                  {r.remedy}
+                  {/* drain_unknown is the one refusal resolved by touching no
+                      host at all, so the action is offered rather than left for
+                      the operator to work out that a sync is what is wanted. */}
+                  {r.code === 'drain_unknown' && onSync ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={onSync}
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        Sync now
+                      </button>
+                    </>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
