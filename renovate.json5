@@ -1,4 +1,4 @@
-// Repository overrides for Renovate. Two settings, both fixing something that
+// Repository overrides for Renovate. Every setting here fixes something that
 // was observed rather than anticipated.
 //
 // DELIBERATELY MINIMAL, and with no `extends`. GlueOps applies its Renovate
@@ -40,4 +40,72 @@
   // for a reason a rebase could fix. Confirmed by running tidy on one of the
   // branches, which removed exactly the four stale go.sum lines Renovate left.
   postUpdateOptions: ["gomodTidy"],
+
+  // AUTOMERGE, because the alternative is what this repository already had: on
+  // 2026-08-25 twenty pull requests were open at once, every one of them green,
+  // every one waiting for somebody to click. That rate does not fall, so the
+  // queue is not a backlog to be cleared once — it is a standing tax, and a queue
+  // nobody can keep up with is a queue that stops being read. The setting above
+  // cuts how many arrive; this one is what drains the rest.
+  //
+  // It is only safe because CI here runs the real suite: `go test ./...` against
+  // a live Postgres, the UI unit tests, Playwright, golangci-lint, govulncheck,
+  // and a job that regenerates every artifact and fails on a diff. Green means
+  // the code was exercised, not merely that it resolved. Branch protection still
+  // requires all of it, so automerge merges only what CI already approved.
+  //
+  // platformAutomerge hands the merge to GitHub's own auto-merge rather than
+  // having Renovate merge by hand, so it happens under the same branch-protection
+  // evaluation as a human's click — including the required DCO check, which a
+  // bot-side merge would have no way to satisfy. It needs `allow_auto_merge` on
+  // the repository, which was off until 2026-08-26; with it off Renovate cannot
+  // arm anything and silently reports "Automerge: Disabled by config" in every
+  // pull request body, which is how this went unnoticed.
+  automerge: true,
+  platformAutomerge: true,
+
+  packageRules: [
+    {
+      // Majors are never automerged. With separateMultipleMajor off, a major
+      // update now crosses several sets of breaking changes at once — exactly the
+      // cost accepted above — so it is the one update type that must be read.
+      matchUpdateTypes: ["major"],
+      automerge: false,
+    },
+    {
+      // TYPESCRIPT IS PINNED IN THE ROOT MANIFEST ON PURPOSE.
+      //
+      // The root project is the codegen toolchain — @hey-api/openapi-ts and
+      // openapi-generator-cli — and hey-api does not work under TypeScript 7,
+      // which is a native rewrite rather than a version bump. A TS 7 update here
+      // breaks generation of ui/src/sdk, sdk/go, sdk/ts and the Terraform
+      // provider, and it breaks it at generation time, where the failure is a
+      // wrong or missing artifact rather than a red test.
+      //
+      // Scoped by FILE, not by package, because ui/package.json carries the same
+      // dependency and the SPA is free to move to 7: the two projects keep
+      // separate lockfiles precisely so their compilers can differ. That is the
+      // reason this repository is not a Yarn workspace, and it is written here
+      // because it was written nowhere else.
+      //
+      // sdk/ts/package.json is deliberately NOT in this list. It has no lockfile
+      // of its own and resolves through the root, so it is part of the same
+      // project and the root entry already covers it.
+      matchFileNames: ["package.json"],
+      matchPackageNames: ["typescript"],
+      allowedVersions: "<7",
+    },
+    {
+      // The generators themselves are updated deliberately, never automatically.
+      // They rewrite vendored code — ui/src/sdk, sdk/go, sdk/ts and the Terraform
+      // provider — so a bump is a review of the regenerated diff, not of a version
+      // number, and CI's generated-artifacts job can only prove the output is
+      // committed, not that it is right.
+      matchPackageNames: [
+        "@hey-api/openapi-ts",
+        "@openapitools/openapi-generator-cli",
+      ],
+      automerge: false,
+    },
+  ],
 }
