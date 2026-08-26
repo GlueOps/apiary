@@ -64,6 +64,25 @@ func TestDepartStepsAgainstALiveCluster(t *testing.T) {
 	}
 	t.Logf("ok  ReadNodeClientKeys: %d key(s) to prune by", len(keys))
 
+	// Fingerprinted while the node is still a member, because /etc/pve is gone
+	// the moment pve-cluster stops. These are what prove the hive's secrets were
+	// actually destroyed rather than merely disconnected from.
+	secretsBefore, err := ReadClusterSecretDigests(ctx, dep)
+	if err != nil {
+		t.Fatalf("ReadClusterSecretDigests: %v", err)
+	}
+	held := 0
+	for _, d := range secretsBefore {
+		if d != "absent" {
+			held++
+		}
+	}
+	if held == 0 {
+		t.Fatal("the departing node holds none of the cluster secrets, so this test would " +
+			"prove nothing about destroying them")
+	}
+	t.Logf("ok  ReadClusterSecretDigests: %d cluster secret(s) held before departure", held)
+
 	// Read the keyring BEFORE pruning, so "the key was removed" is a measured
 	// change rather than an assertion about a final state that may never have
 	// contained it. This is the check that was got wrong by hand: grepping for a
@@ -108,10 +127,10 @@ func TestDepartStepsAgainstALiveCluster(t *testing.T) {
 	}
 	t.Log("ok  RemoveNodeDir")
 
-	if err := MakeStandalone(ctx, dep, []string{remName}); err != nil {
+	if err := MakeStandalone(ctx, dep, []string{remName}, secretsBefore); err != nil {
 		t.Fatalf("MakeStandalone: %v", err)
 	}
-	t.Log("ok  MakeStandalone, and /etc/pve is writable")
+	t.Log("ok  MakeStandalone: standalone, /etc/pve writable, and the hive's secrets destroyed")
 
 	// The outcome that matters, checked independently of the steps that produced
 	// it: the departed node can no longer reach the cluster it left.

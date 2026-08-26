@@ -159,7 +159,7 @@ func TestCheckDepartureAllowsTheDrainedCase(t *testing.T) {
 		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
 		HiveNodeCount: 4,
 	}
-	if rs := CheckDeparture(req); len(rs) != 0 {
+	if rs := CheckDepartureState(req); len(rs) != 0 {
 		t.Fatalf("a cordoned, empty, freshly-synced node in a 4-node hive must be allowed; refused with %v", codes(rs))
 	}
 }
@@ -180,7 +180,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hypervisor.Schedulable = true
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		if !hasCode(CheckDeparture(req), RefuseNotCordoned) {
+		if !hasCode(CheckDepartureState(req), RefuseNotCordoned) {
 			t.Fatal("an uncordoned host must be refused")
 		}
 	})
@@ -189,7 +189,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hypervisor.ObservedGuests = 2
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefuseGuestsPresent) {
 			t.Fatalf("guests must block departure; got %v", codes(rs))
 		}
@@ -222,7 +222,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hypervisor.ObservedGuests = 1
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		if !hasCode(CheckDeparture(req), RefuseGuestsPresent) {
+		if !hasCode(CheckDepartureState(req), RefuseGuestsPresent) {
 			t.Fatal("one guest is still a guest")
 		}
 	})
@@ -230,7 +230,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	t.Run("exactly one held placement blocks departure", func(t *testing.T) {
 		req := base()
 		req.Drain = DrainStateAt(now, req.Hypervisor, 1, DrainThresholds{})
-		if !hasCode(CheckDeparture(req), RefusePlacementsHeld) {
+		if !hasCode(CheckDepartureState(req), RefusePlacementsHeld) {
 			t.Fatal("one held placement is still committed capacity")
 		}
 	})
@@ -242,7 +242,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hive.MinimumNodes = 0
 		req.HiveNodeCount = 2
-		if !hasCode(CheckDeparture(req), RefuseHiveTooSmall) {
+		if !hasCode(CheckDepartureState(req), RefuseHiveTooSmall) {
 			t.Fatal("MinimumNodes=0 must mean the default of 3, so a 2-node hive is refused")
 		}
 	})
@@ -250,7 +250,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	t.Run("held placements are refused separately from observed guests", func(t *testing.T) {
 		req := base()
 		req.Drain = DrainStateAt(now, req.Hypervisor, 3, DrainThresholds{})
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefusePlacementsHeld) {
 			t.Fatalf("held placements must block departure; got %v", codes(rs))
 		}
@@ -263,7 +263,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hypervisor.LastSyncedAt = ptime(now.Add(-time.Hour))
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefuseDrainUnknown) {
 			t.Fatalf("a stale observation must refuse; got %v", codes(rs))
 		}
@@ -272,7 +272,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	t.Run("a two-node hive is refused however well drained", func(t *testing.T) {
 		req := base()
 		req.HiveNodeCount = 2
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefuseHiveTooSmall) {
 			t.Fatalf("a 2-node hive must refuse: delnode loses quorum part-way; got %v", codes(rs))
 		}
@@ -282,7 +282,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hive.MinimumNodes = 0 // unset -> default 3
 		req.HiveNodeCount = 3
-		if rs := CheckDeparture(req); len(rs) != 0 {
+		if rs := CheckDepartureState(req); len(rs) != 0 {
 			t.Fatalf("exactly at the minimum must be allowed; refused with %v", codes(rs))
 		}
 	})
@@ -291,7 +291,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req := base()
 		req.Hive.MinimumNodes = 2
 		req.HiveNodeCount = 2
-		if rs := CheckDeparture(req); len(rs) != 0 {
+		if rs := CheckDepartureState(req); len(rs) != 0 {
 			t.Fatalf("an explicit minimum of 2 must permit a 2-node hive; refused with %v", codes(rs))
 		}
 	})
@@ -303,7 +303,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req.HiveNodeCount = 2
 		req.Hypervisor.ObservedGuests = 5
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefuseHiveTooSmall) || !hasCode(rs, RefuseGuestsPresent) {
 			t.Fatalf("both refusals must be reported together; got %v", codes(rs))
 		}
@@ -315,7 +315,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		req.Hypervisor.Schedulable = true
 		req.Hypervisor.LastSyncedAt = ptime(now.Add(-time.Hour))
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if len(rs) < 2 {
 			t.Fatalf("a request failing several gates must report them all; got %v", codes(rs))
 		}
@@ -324,7 +324,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	t.Run("a fleetless host reports not_a_member and nothing else", func(t *testing.T) {
 		req := base()
 		req.HiveNodeCount = 0
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if len(rs) != 1 || rs[0].Code != RefuseNotAMember {
 			t.Fatalf("want a single not_a_member refusal, got %v", codes(rs))
 		}
@@ -339,7 +339,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		// all and a worker would go and dismantle a cluster the machine is not in.
 		req := base()
 		req.Hypervisor.HiveID = nil
-		rs := CheckDeparture(req)
+		rs := CheckDepartureState(req)
 		if len(rs) != 1 || rs[0].Code != RefuseNotAMember {
 			t.Fatalf("want a single not_a_member refusal, got %v", codes(rs))
 		}
@@ -503,5 +503,67 @@ func TestProvisionedPredicateIsTheOnboardingGate(t *testing.T) {
 	if !strings.Contains(ProvisionedPredicate, OnboardProvisioned) {
 		t.Fatalf("the predicate must name OnboardProvisioned (%q), or the SQL and the Go "+
 			"state machine can drift apart with nothing to notice", OnboardProvisioned)
+	}
+}
+
+// The credential decision is the one gate an operator answers rather than fixes,
+// so it is checked at execution and deliberately absent from the preview.
+func TestCheckDepartureRequiresACredentialDecision(t *testing.T) {
+	now := time.Now()
+	h := hyp(now)
+	req := DepartureRequest{
+		Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+		Hypervisor:    h,
+		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
+		HiveNodeCount: 4,
+	}
+
+	// The preview is about the cluster, and must not report an unanswered
+	// question as a blocked cluster — a Depart control that can never enable.
+	if rs := CheckDepartureState(req); len(rs) != 0 {
+		t.Fatalf("the state preview must ignore the credential decision; refused with %v", codes(rs))
+	}
+
+	// Executing without one refuses. Not a default: rotating disrupts every API
+	// client in the fleet and accepting leaves the departed host able to mint
+	// tickets, so choosing silently would pick which of those the operator can
+	// afford.
+	if !hasCode(CheckDeparture(req), RefuseCredentialsUndecided) {
+		t.Fatalf("an unset disposition must refuse; got %v", codes(CheckDeparture(req)))
+	}
+	for _, bad := range []string{"", "  ", "yes", "true", "ROTATE"} {
+		req.CredentialDisposition = bad
+		if !hasCode(CheckDeparture(req), RefuseCredentialsUndecided) {
+			t.Fatalf("%q must not be accepted as a decision", bad)
+		}
+	}
+	for _, good := range []string{CredentialsRotate, CredentialsAcceptExposure} {
+		req.CredentialDisposition = good
+		if rs := CheckDeparture(req); len(rs) != 0 {
+			t.Fatalf("%q is a decision and must be allowed; refused with %v", good, codes(rs))
+		}
+	}
+}
+
+// A host that is not ready to leave must not also be told to answer a question
+// about credentials — the fixable list is what the operator can act on, and
+// stacking an unanswerable item onto it buries them.
+func TestCheckDepartureDoesNotAskAboutCredentialsWhileStateRefuses(t *testing.T) {
+	now := time.Now()
+	h := hyp(now)
+	h.Schedulable = true // uncordoned: a state refusal
+	req := DepartureRequest{
+		Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+		Hypervisor:    h,
+		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
+		HiveNodeCount: 4,
+	}
+
+	rs := CheckDeparture(req)
+	if !hasCode(rs, RefuseNotCordoned) {
+		t.Fatalf("expected the cordon refusal; got %v", codes(rs))
+	}
+	if hasCode(rs, RefuseCredentialsUndecided) {
+		t.Fatalf("the credential question must wait until the cluster is ready; got %v", codes(rs))
 	}
 }

@@ -116,7 +116,7 @@ func TestRemoveNodeDirRefusesUnsafeNames(t *testing.T) {
 
 func TestMakeStandaloneRefusesUnsafePeerNames(t *testing.T) {
 	r := &stubRunner{}
-	if err := MakeStandalone(context.Background(), r, []string{"hv1", "../../etc"}); err == nil {
+	if err := MakeStandalone(context.Background(), r, []string{"hv1", "../../etc"}, nil); err == nil {
 		t.Fatal("an unsafe peer name must be refused")
 	}
 	// Refused BEFORE anything runs — a partially applied standalone conversion

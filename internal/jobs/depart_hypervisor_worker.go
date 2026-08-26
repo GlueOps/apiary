@@ -32,7 +32,11 @@ func (w *DepartHypervisorWorker) Work(ctx context.Context, job *river.Job[Depart
 			job.Args.HypervisorID, err))
 	}
 
-	err = Depart(ctx, w.deps, DepartInput{OrganizationID: orgID, HypervisorID: hypID})
+	err = Depart(ctx, w.deps, DepartInput{
+		OrganizationID:        orgID,
+		HypervisorID:          hypID,
+		CredentialDisposition: job.Args.CredentialDisposition,
+	})
 
 	// Recorded against the MACHINE, success or failure, before anything is
 	// returned to River.

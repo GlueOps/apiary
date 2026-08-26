@@ -115,6 +115,18 @@ function ProvisioningBadge({ hv }: { hv: HypervisorView }) {
 
 export const Hypervisors = () => {
   const queryClient = useQueryClient();
+  // Departure asks a question before it runs, and starts with no answer chosen.
+  // The two safe answers cost different things — rotating disrupts every API
+  // client in the cluster, accepting leaves a departed host able to mint auth
+  // tickets for it — so preselecting either would be this page deciding which
+  // the operator can afford.
+  const [departFor, setDepartFor] = useState<{ id: string; address?: string } | null>(null);
+  // Typed to the API's own enum rather than string, so a third option cannot be
+  // added here without the generated SDK agreeing it exists.
+  const [departDisposition, setDepartDisposition] = useState<
+    '' | 'rotate' | 'accept-exposure'
+  >('');
+
   const [arriveFor, setArriveFor] = useState<FleetlessHostView | null>(null);
   const [arriveHive, setArriveHive] = useState('');
   const [arriveLinks, setArriveLinks] = useState<
@@ -464,7 +476,10 @@ export const Hypervisors = () => {
                                  the gate is how a button ends up enabled for
                                  something the server will refuse. */
                               disabled={depart.isPending || (n.departure_refusals?.length ?? 0) > 0}
-                              onClick={() => depart.mutate({ path: { id: n.id } })}
+                              onClick={() => {
+                                setDepartDisposition('');
+                                setDepartFor({ id: n.id, address: n.address ?? undefined });
+                              }}
                             >
                               <IconLogout className="size-4" />
                               Depart
@@ -563,6 +578,61 @@ export const Hypervisors = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={departFor !== null} onOpenChange={(open) => !open && setDepartFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave the cluster</DialogTitle>
+            <DialogDescription>
+              {departFor?.address} will be removed from its cluster and left standalone. Its copy of
+              the cluster's secrets is destroyed as it goes — but it has already read them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="credential-disposition">Cluster secrets</Label>
+            <Select
+              value={departDisposition}
+              onValueChange={(v) =>
+                setDepartDisposition((v ?? '') as '' | 'rotate' | 'accept-exposure')
+              }
+            >
+              <SelectTrigger id="credential-disposition">
+                <SelectValue placeholder="Choose what happens to them" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rotate">Rotate them — this host is not trusted</SelectItem>
+                <SelectItem value="accept-exposure">
+                  Accept the exposure — it is trusted and being redeployed
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Hint>
+              Every node shares one set of credentials, so this host holds the cluster's API tokens,
+              its ticket-signing key and its root CA. Revoking its SSH access does not revoke those:
+              with the ticket-signing key it can still authenticate as any user in the cluster it
+              left. Rotate if that matters.
+            </Hint>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDepartFor(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!departDisposition || depart.isPending}
+              onClick={() => {
+                if (!departFor || departDisposition === '') return;
+                depart.mutate({
+                  path: { id: departFor.id },
+                  body: { credential_disposition: departDisposition },
+                });
+                setDepartFor(null);
+              }}
+            >
+              Depart
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={arriveFor !== null} onOpenChange={(open) => !open && setArriveFor(null)}>
         <DialogContent>

@@ -208,6 +208,17 @@ type ReprovisionResponse struct{ Body HypervisorView }
 
 type DepartRequest struct {
 	ID string `path:"id" format:"uuid"`
+
+	// The body is REQUIRED, and carries one field with no default.
+	//
+	// A departing node has read the cluster's ticket-signing key and its root CA,
+	// because /etc/pve/priv is shared by every member. Departure destroys its
+	// copy; it cannot make it un-seen. Whether that matters is a judgement about
+	// the host, so the API asks rather than assumes — and huma rejects a request
+	// that omits it before this handler runs.
+	Body struct {
+		CredentialDisposition string `json:"credential_disposition" required:"true" enum:"rotate,accept-exposure" doc:"What to do about the cluster secrets this host has seen. \"rotate\" if the host is not trusted: it can otherwise mint auth tickets for the cluster it left. \"accept-exposure\" if it is trusted and being redeployed."`
+	}
 }
 
 type DepartResponse struct {
@@ -794,8 +805,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
 		}
 		if err := deps.Jobs.EnqueueDepartHypervisor(ctx, &workflow.DepartHypervisorArgs{
-			OrganizationID: p.OrganizationID.String(),
-			HypervisorID:   id.String(),
+			OrganizationID:        p.OrganizationID.String(),
+			HypervisorID:          id.String(),
+			CredentialDisposition: in.Body.CredentialDisposition,
 		}); err != nil {
 			return nil, mapErr(ctx, err)
 		}
@@ -1237,7 +1249,7 @@ func departureRefusals(
 	// and the whole LIST endpoint 500s, on exactly the machines an operator opened
 	// it to find.
 	if hv.HiveID == nil {
-		return tenant.CheckDeparture(tenant.DepartureRequest{Hypervisor: hv}), nil
+		return tenant.CheckDepartureState(tenant.DepartureRequest{Hypervisor: hv}), nil
 	}
 
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -1255,7 +1267,7 @@ func departureRefusals(
 			return err
 		}
 		drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), th)
-		result = tenant.CheckDeparture(tenant.DepartureRequest{
+		result = tenant.CheckDepartureState(tenant.DepartureRequest{
 			Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: int(nodes),
 		})
 		return nil
@@ -1370,7 +1382,7 @@ func buildHypervisorViews(
 			Reserved: CapacityView{
 				CPU: hv.CPUReserved, RAMGB: hv.RAMGBReserved, DiskGB: hv.DiskGBReserved,
 			},
-			DepartureRefusals: refusalViews(tenant.CheckDeparture(tenant.DepartureRequest{
+			DepartureRefusals: refusalViews(tenant.CheckDepartureState(tenant.DepartureRequest{
 				Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: nodeCountFor(counts, hv),
 			})),
 		}

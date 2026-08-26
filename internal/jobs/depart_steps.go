@@ -18,6 +18,61 @@ const (
 	cfsLockDir     = "/etc/pve/priv/lock/file-corosync_conf"
 )
 
+// clusterSecretFiles are the HIVE's secrets, not the node's. Every one of them
+// lives on pmxcfs and is therefore identical on every member, so a node that
+// leaves takes a working copy of all of them unless they are destroyed.
+//
+// authkey.key is the one that outranks the rest and is the least obvious: PVE
+// signs authentication TICKETS with it, so holding it is not one credential but
+// the ability to mint them for any user in the cluster, root@pam included. The
+// root CA key then issues certificates the cluster trusts. Beside those two, the
+// API tokens in token.cfg are the small item.
+//
+// Deliberately not /var/lib/pve-cluster/config.db: wiping that takes the node's
+// own storage.cfg and node directory with it.
+var clusterSecretFiles = []string{
+	"/etc/pve/priv/token.cfg",
+	"/etc/pve/priv/authkey.key",
+	"/etc/pve/priv/pve-root-ca.key",
+	"/etc/pve/priv/pve-root-ca.srl",
+	"/etc/pve/priv/authorized_keys",
+	"/etc/pve/priv/known_hosts",
+}
+
+// ReadClusterSecretDigests fingerprints the cluster secrets a node currently
+// holds, so their destruction can be PROVEN rather than assumed.
+//
+// Digests, never contents: this value reaches an error message and a log line,
+// and the whole point of the step it verifies is that these bytes stop existing
+// in places they should not.
+//
+// Called while the node is still a member, because two of these files are
+// regenerated afterwards — `pvecm updatecerts` mints a fresh authkey.key and CA
+// so the standalone node can serve its own API. Checking for absence would
+// therefore pass for a node that never lost them and then quietly regained the
+// SAME ones; comparing before against after is what distinguishes a rotation
+// from a no-op.
+func ReadClusterSecretDigests(ctx context.Context, r Runner) (map[string]string, error) {
+	var b strings.Builder
+	for _, f := range clusterSecretFiles {
+		fmt.Fprintf(&b, "printf '%%s ' %s; sha256sum %s 2>/dev/null | cut -d' ' -f1 || echo absent; ",
+			shellQuote(f), shellQuote(f))
+	}
+	out, err := r.Run(ctx, b.String())
+	if err != nil {
+		return nil, fmt.Errorf("depart: fingerprint the cluster secrets on the departing node: %w (%s)",
+			err, strings.TrimSpace(out))
+	}
+	got := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.Fields(strings.TrimSpace(line))
+		if len(parts) == 2 {
+			got[parts[0]] = parts[1]
+		}
+	}
+	return got, nil
+}
+
 // ReadNodeClientKeys returns the public keys a node authenticates to its peers
 // with, as authorized_keys lines.
 //
@@ -564,7 +619,7 @@ func RemoveNodeDir(ctx context.Context, r Runner, nodeName string) error {
 // `pmxcfs -l` is the load-bearing step: it runs the cluster filesystem in LOCAL
 // mode, which is the only way to delete the cluster config on a node that has no
 // quorum — and it has no quorum precisely because it was just removed.
-func MakeStandalone(ctx context.Context, r Runner, peerNames []string) error {
+func MakeStandalone(ctx context.Context, r Runner, peerNames []string, secretsBefore map[string]string) error {
 	for _, p := range peerNames {
 		if strings.TrimSpace(p) == "" || strings.ContainsAny(p, "/ ") {
 			return fmt.Errorf("depart: refusing to remove a peer directory for the unsafe name %q", p)
@@ -587,11 +642,45 @@ func MakeStandalone(ctx context.Context, r Runner, peerNames []string) error {
 	for _, p := range peerNames {
 		steps = append(steps, fmt.Sprintf("rm -rf %s", shellQuote("/etc/pve/nodes/"+p)))
 	}
+	// THE CLUSTER'S SECRETS, which this node is carrying out of the door.
+	//
+	// /etc/pve/priv is pmxcfs, so these are the HIVE's credentials and not this
+	// node's: the same token.cfg, the same authkey.key that PVE signs auth
+	// tickets with, and the same root CA private key, on every member. Removing
+	// the node from the cluster does not remove the cluster from the node.
+	//
+	// Verified on a live pair, 2026-08-26, in a departure where this node was
+	// deliberately told nothing — corosync stopped and then MASKED so it could
+	// not restart, no expected vote count ever set on it, delnode completed from
+	// the survivor. Its copies were still byte-identical to the running cluster's
+	// (token.cfg 40edfa5c…, authkey.key 21303244…, pve-root-ca.key b311e385…).
+	//
+	// Quorum is not the lever. It gates WRITES to pmxcfs; `systemctl start
+	// pve-cluster` alone mounts the tree from the local config.db and serves
+	// every byte, corosync down and unquorate. So withholding quorum from a
+	// departing node protects nothing, and only destruction does.
+	//
+	// Deleted HERE, inside the local-mode window opened above, because that is
+	// the only place it is safe: a delete from /etc/pve while the node is still a
+	// member replicates, and would strip the credentials from the cluster it is
+	// leaving. `pmxcfs -l` is what makes these writes local.
+	//
+	// Not a config.db wipe. That would take this node's own storage.cfg and node
+	// directory with it and leave a host that needs reinstalling, which is the
+	// outcome APIary's re-arrival path exists to avoid.
+	for _, f := range clusterSecretFiles {
+		steps = append(steps, fmt.Sprintf("rm -f %s", shellQuote(f)))
+	}
 	steps = append(steps,
 		"killall pmxcfs 2>/dev/null || true",
 		"sleep 2",
 		"systemctl start pve-cluster",
 		"sleep 3",
+		// A node with no CA and no ticket key cannot serve its own API. This mints
+		// it a fresh identity that shares nothing with the hive it left — which is
+		// the point: standalone, not merely disconnected.
+		"pvecm updatecerts --force 2>&1 || true",
+		"sleep 2",
 	)
 
 	for _, cmd := range steps {
@@ -608,6 +697,31 @@ func MakeStandalone(ctx context.Context, r Runner, peerNames []string) error {
 	}
 	if err := assertPmxcfsWritable(ctx, r); err != nil {
 		return fmt.Errorf("depart: standalone conversion left /etc/pve unwritable: %w", err)
+	}
+
+	// Prove the hive's secrets are gone from this node.
+	//
+	// Not optional, and not a warning. A departure that reports success while the
+	// node still holds the cluster's ticket-signing key has left behind exactly
+	// the kind of access that is visible nowhere — the same reasoning that makes
+	// the keyring prune fail the whole job rather than log a note. The difference
+	// is that a half-removed node shows up in `pvecm status`, and a retained
+	// credential shows up in nothing.
+	after, err := ReadClusterSecretDigests(ctx, r)
+	if err != nil {
+		return err
+	}
+	for _, f := range clusterSecretFiles {
+		before, had := secretsBefore[f]
+		if !had || before == "absent" {
+			continue // it never held this one; nothing to destroy
+		}
+		now, present := after[f]
+		if present && now != "absent" && now == before {
+			return fmt.Errorf("depart: %s on the departed node is still byte-identical to the "+
+				"copy it left the hive with, so the cluster's secret went with it — the node is "+
+				"detached but not disarmed", f)
+		}
 	}
 	return nil
 }

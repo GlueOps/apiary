@@ -54,6 +54,12 @@ func (OnboardHypervisorArgs) Kind() string { return "fleet.onboard_hypervisor" }
 type DepartHypervisorArgs struct {
 	OrganizationID string `json:"organization_id"`
 	HypervisorID   string `json:"hypervisor_id"`
+
+	// CredentialDisposition carries the operator's answer about the cluster
+	// secrets this node has seen. Part of the job rather than read from config,
+	// because it is a decision made about THIS departure — see
+	// tenant.CheckDeparture.
+	CredentialDisposition string `json:"credential_disposition"`
 }
 
 func (DepartHypervisorArgs) Kind() string { return "fleet.depart_hypervisor" }

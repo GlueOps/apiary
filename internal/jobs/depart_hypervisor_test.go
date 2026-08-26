@@ -170,8 +170,40 @@ func (h *harness) deps() DepartDeps {
 }
 
 func (h *harness) run() error {
-	return Depart(context.Background(), h.deps(),
-		DepartInput{OrganizationID: h.orgID, HypervisorID: h.snapshot.Hypervisor.ID})
+	return Depart(context.Background(), h.deps(), DepartInput{
+		OrganizationID: h.orgID,
+		HypervisorID:   h.snapshot.Hypervisor.ID,
+		// These tests are about the removal SEQUENCE, so they answer the
+		// credential question and move on. That the question must be answered at
+		// all is covered by the gate's own tests; leaving it unset here would make
+		// every one of them fail on the gate before reaching what it exercises.
+		CredentialDisposition: tenant.CredentialsRotate,
+	})
+}
+
+// The gate is wired into the job, not merely into the model — an unanswered
+// disposition must stop a departure before any host is touched.
+func TestDepartRefusesWithoutACredentialDecision(t *testing.T) {
+	h := newHarness(t)
+	err := Depart(context.Background(), h.deps(), DepartInput{
+		OrganizationID: h.orgID,
+		HypervisorID:   h.snapshot.Hypervisor.ID,
+	})
+	if err == nil {
+		t.Fatal("a departure with no credential decision must be refused")
+	}
+	if !errors.Is(err, ErrDepartureRefused) {
+		t.Fatalf("must be a policy refusal, not a failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), tenant.RefuseCredentialsUndecided) {
+		t.Fatalf("the refusal must name the code, got %v", err)
+	}
+	// The gate runs before either SSH session is opened, so a refused departure
+	// must leave both hosts untouched — no stopped cluster stack on a node that
+	// is then not going anywhere.
+	if len(h.log) != 0 {
+		t.Fatalf("nothing may reach either host before the gate passes; ran %v", h.log)
+	}
 }
 
 func indexOf(log []string, substr string) int {
