@@ -12,35 +12,54 @@ project_name: apiary
 
 before:
   hooks:
-    # ONLY the UI build belongs here. Its output (internal/api/webdist) is
-    # gitignored and embedded at compile time, so it has to be produced fresh and
-    # it cannot dirty the tree.
+    # NOTHING HERE MAY WRITE A TRACKED FILE.
     #
-    # `go run . generate sdk` and `go mod tidy` used to run here and were removed
-    # deliberately. Both rewrite TRACKED files — docs/openapi.json, ui/src/sdk,
-    # sdk/go, sdk/ts, terraform-provider-apiary, go.mod, go.sum — and goreleaser's
-    # validate step refuses to release from a dirty working tree. That only ever
-    # worked because the generators are version-pinned and reproduce byte-identical
-    # output; the first time they did not, the release would fail AFTER the tag was
-    # pushed, and the version guards in this repo refuse to re-cut a tagged version.
+    # goreleaser validates that the working tree is clean, and it does so AFTER
+    # the tag has been pushed. A hook that rewrites a tracked file therefore
+    # fails the release at the one moment it cannot be retried: the version
+    # guards in this repo refuse to re-cut a tagged version, so recovering means
+    # deleting a published release.
     #
-    # Generated output is now verified on pull requests instead (see
-    # .github/workflows/ci.yml), so drift fails a PR rather than a release.
+    # `go run . generate sdk`, `go mod tidy` and `cd agent && go mod tidy` were
+    # here and are gone for exactly that reason. Between them they rewrite
+    # docs/openapi.json, ui/src/sdk, sdk/go, sdk/ts, terraform-provider-apiary,
+    # go.mod, go.sum and agent/go.sum — every one of them tracked. It only ever
+    # worked because the generators are version-pinned and reproduce
+    # byte-identical output; the first time they did not, the release would fail
+    # after the tag existed.
+    #
+    # Drift is caught on PULL REQUESTS instead, by the "generated artifacts are
+    # committed and current" job in .github/workflows/ci.yml, which runs the same
+    # generators and fails if anything moved. That is the same check, at the one
+    # time it can still be fixed for free.
+    #
+    # What remains produces only GITIGNORED output, so it cannot dirty the tree:
+
+    # The SPA. Its output (internal/api/webdist) is embedded at compile time, so
+    # it has to exist before the server build runs.
     - yarn --cwd ui/ build
+
     # The agent, cross-compiled into internal/agentdist/dist so the SERVER can
     # serve it. A hypervisor in a managed estate has no route to the internet, so
     # the control plane is the only host it can fetch an upgrade from.
     #
-    # It belongs in a hook and not only in the build entry below, because these
-    # bytes are EMBEDDED at compile time: the server build reads the directory,
-    # so the binaries have to exist before it runs. The build entry still exists
-    # and still produces the released artifacts — this is a second, earlier copy
-    # for embedding, and it is stripped rather than stamped because nothing reads
-    # a version out of it. The catalogue reports the SERVER's version, which is
-    # what these shipped with.
+    # A hook and not only the build entry below, because these bytes are EMBEDDED:
+    # the server build reads the directory, so they have to exist first. The build
+    # entry still produces the released artifacts; this is an earlier copy for
+    # embedding.
     #
-    # Output is gitignored, like the UI build above, so it cannot dirty the tree
-    # and fail goreleaser's validate step after a tag has been pushed.
+    # `just agent-dist` rather than an inline `go build`, so the flags live in one
+    # place. An inline copy drifts, and the way it drifts is silent: `go build -X`
+    # on a symbol that is not in the binary is not an error, so a stamp aimed at
+    # the wrong path leaves every agent reporting "dev" with nothing to say why.
+    #
+    # ORDER-INDEPENDENT, which is the reason this output is not under
+    # internal/api/webdist. The SPA build empties its own output directory
+    # (emptyOutDir), so anything of ours living there has to be produced after it
+    # — a correct release would then depend on the order of two lines in this
+    # list, with nothing enforcing it and a silent empty catalogue when it is
+    # wrong. Verified: running this hook before the SPA build leaves both binaries
+    # intact.
     - just agent-dist
 
 builds:
