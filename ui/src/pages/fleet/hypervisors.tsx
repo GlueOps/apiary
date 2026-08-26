@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   IconLogout,
@@ -121,11 +121,34 @@ export const Hypervisors = () => {
     { number: number; address: string; priority: string }[]
   >([{ number: 0, address: '', priority: '' }]);
 
-  const hypervisors = useQuery(fleetHypervisorsListOptions());
-  const fleetless = useQuery(fleetHostsFleetlessOptions());
-  const hives = useQuery(fleetHivesListOptions());
+  // Depart, join and onboard are QUEUED, not done. Clicking one and seeing the
+  // page unchanged is correct and useless: the work is happening in a worker,
+  // and until this refetches there is nothing on screen to say so.
+  //
+  // Polled at a rate that depends on whether anything is actually in flight,
+  // rather than a flat interval. A fleet page left open on a wall display would
+  // otherwise re-run several joins every few seconds forever to learn nothing;
+  // and a flat SLOW interval would leave an operator staring at a stale row for
+  // half a minute after clicking Depart, which is the problem this exists to fix.
+  //
+  // react-query already pauses polling while the tab is hidden, so a backgrounded
+  // page costs nothing.
+  const [pollFast, setPollFast] = useState(false);
+  const actedAt = useRef(0);
+  const refetchInterval = pollFast ? 2000 : 15000;
+
+  const hypervisors = useQuery({ ...fleetHypervisorsListOptions(), refetchInterval });
+  const fleetless = useQuery({ ...fleetHostsFleetlessOptions(), refetchInterval });
+  const hives = useQuery({ ...fleetHivesListOptions(), refetchInterval });
 
   const invalidate = () => {
+    // Poll quickly from THIS moment, not from when the work becomes visible.
+    //
+    // A queued departure sets nothing on the machine until a worker picks it up,
+    // so the data-derived signal below cannot see it yet — and that gap is
+    // exactly the one an operator is staring at, having just clicked the button.
+    actedAt.current = Date.now();
+    setPollFast(true);
     void queryClient.invalidateQueries({ queryKey: fleetHypervisorsListQueryKey() });
     void queryClient.invalidateQueries({ queryKey: fleetHostsFleetlessQueryKey() });
   };
@@ -182,6 +205,43 @@ export const Hypervisors = () => {
   });
 
   const nodes = hypervisors.data?.hypervisors ?? [];
+
+  // Whether the fleet is mid-operation, derived from the data rather than from
+  // what this tab happens to have clicked.
+  //
+  // That distinction matters: a departure started in another browser, or by a
+  // colleague, or by an API client, moves this page just as much as one started
+  // here — and a flag set by our own mutation would leave those invisible until
+  // somebody reloaded.
+  //
+  // Three signals, because the three operations report themselves differently.
+  // Onboarding has a state column. Departures and arrivals have none, so they
+  // are recognised by a recent last_operation_at — the window is generous
+  // because a job can sit queued before it runs. And a machine that is neither
+  // provisioned nor failed is somewhere in between.
+  const busy = nodes.some((n) => {
+    if (n.provisioning_state === 'pending' || n.provisioning_state === 'provisioning') return true;
+    if (!n.last_operation_at) return false;
+    return Date.now() - new Date(n.last_operation_at).getTime() < 3 * 60 * 1000;
+  });
+
+  useEffect(() => {
+    if (busy) {
+      setPollFast(true);
+      return;
+    }
+    // Nothing in flight. Keep polling quickly for a grace period after the last
+    // click, because a queued job is invisible in the data until it starts —
+    // dropping to the slow interval the instant a mutation returns would put the
+    // operator back to waiting fifteen seconds to see their own action.
+    const remaining = 60_000 - (Date.now() - actedAt.current);
+    if (remaining <= 0) {
+      setPollFast(false);
+      return;
+    }
+    const timer = setTimeout(() => setPollFast(false), remaining);
+    return () => clearTimeout(timer);
+  }, [busy]);
 
   // Every refusal on the page, for the remedy card at the bottom.
   //
