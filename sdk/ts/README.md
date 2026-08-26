@@ -107,6 +107,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FirewallApi* | [**firewallRulesetsUpdate**](docs/FirewallApi.md#firewallrulesetsupdate) | **PUT** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
 *FirewallApi* | [**firewallSnapshotBody**](docs/FirewallApi.md#firewallsnapshotbody) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision\&#39;s ruleset
 *FirewallApi* | [**firewallSnapshotsList**](docs/FirewallApi.md#firewallsnapshotslist) | **GET** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet\&#39;s published revisions
+*FleetApi* | [**fleetAgentUpgrade**](docs/FleetApi.md#fleetagentupgrade) | **POST** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetApi* | [**fleetBeeAgentBinary**](docs/FleetApi.md#fleetbeeagentbinary) | **GET** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetApi* | [**fleetBeeAgentDist**](docs/FleetApi.md#fleetbeeagentdist) | **GET** /api/v1/agent/dist | What agent binaries this control plane can serve
 *FleetApi* | [**fleetBeeAppendLogs**](docs/FleetApi.md#fleetbeeappendlogs) | **POST** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
@@ -173,6 +174,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [AgentBuildView](docs/AgentBuildView.md)
 - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
 - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
+- [AgentUpgradeRequestBody](docs/AgentUpgradeRequestBody.md)
+- [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
 - [ArriveRequestBody](docs/ArriveRequestBody.md)
 - [ArriveResponseBody](docs/ArriveResponseBody.md)
 - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
@@ -325,6 +328,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [UpdateRoleRequestBody](docs/UpdateRoleRequestBody.md)
 - [UpdateRoleResponseBody](docs/UpdateRoleResponseBody.md)
 - [UpdateRulesetRequestBody](docs/UpdateRulesetRequestBody.md)
+- [UpgradeCandidateView](docs/UpgradeCandidateView.md)
 - [UserEntity](docs/UserEntity.md)
 - [VerifyEmailRequestBody](docs/VerifyEmailRequestBody.md)
 - [VerifyEmailResponseBody](docs/VerifyEmailResponseBody.md)

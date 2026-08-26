@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/glueops/apiary/internal/agentdist"
 	"github.com/glueops/apiary/internal/apimiddleware"
 	"github.com/glueops/apiary/internal/app"
+	"github.com/glueops/apiary/internal/buildinfo"
 	"github.com/glueops/apiary/internal/models/control"
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
@@ -140,7 +142,7 @@ type DeleteBeeResponse struct {
 type CreateTaskRequest struct {
 	Body struct {
 		BeeID string          `json:"bee_id" required:"true" format:"uuid"`
-		Kind  string          `json:"kind" required:"true" enum:"fleet.host.ping,fleet.host.dist-upgrade,fleet.datacenter.join,fleet.datacenter.evict" doc:"What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing."`
+		Kind  string          `json:"kind" required:"true" enum:"fleet.host.ping,fleet.host.dist-upgrade,fleet.host.agent-upgrade,fleet.datacenter.join,fleet.datacenter.evict" doc:"What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing."`
 		Spec  json.RawMessage `json:"spec,omitempty" doc:"Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host."`
 	}
 }
@@ -428,6 +430,73 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		out := &CreateTaskResponse{}
 		out.Body.ID = task.ID.String()
 		out.Body.Status = task.Status
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID:   "fleet-agent-upgrade",
+		Method:        http.MethodPost,
+		Path:          "/fleet/agent-upgrades",
+		Summary:       "Upgrade every agent in a fleet",
+		DefaultStatus: http.StatusCreated,
+		Description: "Queues one upgrade task per agent. Each host downloads the binary this " +
+			"control plane serves, verifies it against the advertised digest, proves it runs, " +
+			"keeps the previous one, and restarts.\n\n" +
+			"ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two " +
+			"things at once. Hosts do proceed in parallel with each other, which is safe here " +
+			"because an agent is not in the data path of anything it manages — an agent that " +
+			"fails to come back costs control of that host, not its guests.\n\n" +
+			"Agents already on the target version, offline, or holding another task are SKIPPED " +
+			"and each says why. Queueing an offline agent would hand it a task it collects " +
+			"whenever it returns, which is often during the next incident.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *AgentUpgradeRequest) (*AgentUpgradeResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var hiveID *uuid.UUID
+		if in.Body.HiveID != "" {
+			id, perr := uuid.Parse(in.Body.HiveID)
+			if perr != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid fleet id")
+			}
+			hiveID = &id
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		// The control plane's OWN version is the target. These binaries shipped
+		// with it, so there is nothing else it could honestly upgrade an agent to
+		// — and letting a caller name a version would mean advertising one this
+		// server cannot serve.
+		target := buildinfo.Version
+		dist, derr := agentdist.Catalogue(target)
+		if derr != nil || len(dist.Builds) == 0 {
+			return nil, huma.Error409Conflict("this control plane carries no agent binaries, so " +
+				"there is nothing for an agent to upgrade to")
+		}
+
+		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, *p.UserID,
+			in.Body.Force, time.Now().UTC(), 2*time.Minute)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &AgentUpgradeResponse{}
+		out.Body.Version = target
+		out.Body.Agents = make([]UpgradeCandidateView, 0, len(results))
+		for _, r := range results {
+			if r.Queued {
+				out.Body.Queued++
+			}
+			out.Body.Agents = append(out.Body.Agents, UpgradeCandidateView{
+				BeeID: r.BeeID, AgentVersion: r.Version, Queued: r.Queued, Skipped: r.Skipped,
+			})
+		}
 		return out, nil
 	})
 
@@ -779,4 +848,27 @@ func revokeAgentKey(ctx context.Context, cdb *gorm.DB, orgID, keyID uuid.UUID) e
 			"this agent's credential could not be revoked, so it was not removed")
 	}
 	return nil
+}
+
+// AgentUpgradeRequest asks for a fleet's agents to be upgraded.
+type AgentUpgradeRequest struct {
+	Body struct {
+		HiveID string `json:"hive_id,omitempty" format:"uuid" doc:"Limit to one fleet. Omit to cover every agent in the organization, including hosts in no fleet — which are the ones most likely to be forgotten."`
+		Force  bool   `json:"force,omitempty" doc:"Queue agents that already report the target version. For repairing a damaged binary, not for routine use: it restarts every agent in scope."`
+	}
+}
+
+type UpgradeCandidateView struct {
+	BeeID        string `json:"bee_id"`
+	AgentVersion string `json:"agent_version,omitempty" doc:"What this agent last reported running."`
+	Queued       bool   `json:"queued"`
+	Skipped      string `json:"skipped,omitempty" doc:"Why this agent was left alone. Per agent rather than a count, because \"14 of 20 queued\" leaves the operator to work out which six."`
+}
+
+type AgentUpgradeResponse struct {
+	Body struct {
+		Version string                 `json:"version" doc:"The version agents are being moved to, which is this control plane's own."`
+		Queued  int                    `json:"queued"`
+		Agents  []UpgradeCandidateView `json:"agents"`
+	}
 }

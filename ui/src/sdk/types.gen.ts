@@ -124,6 +124,34 @@ export type AgentFirewallResponseBody = {
     revision?: number;
 };
 
+export type AgentUpgradeRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Queue agents that already report the target version. For repairing a damaged binary, not for routine use: it restarts every agent in scope.
+     */
+    force?: boolean;
+    /**
+     * Limit to one fleet. Omit to cover every agent in the organization, including hosts in no fleet — which are the ones most likely to be forgotten.
+     */
+    hive_id?: string;
+};
+
+export type AgentUpgradeResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    agents: Array<UpgradeCandidateView> | null;
+    queued: number;
+    /**
+     * The version agents are being moved to, which is this control plane's own.
+     */
+    version: string;
+};
+
 export type ArriveRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -354,7 +382,7 @@ export type CreateTaskRequestBody = {
     /**
      * What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing.
      */
-    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
+    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
     /**
      * Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host.
      */
@@ -1896,6 +1924,19 @@ export type UpdateRulesetRequestBody = {
     name: string;
 };
 
+export type UpgradeCandidateView = {
+    /**
+     * What this agent last reported running.
+     */
+    agent_version?: string;
+    bee_id: string;
+    queued: boolean;
+    /**
+     * Why this agent was left alone. Per agent rather than a count, because "14 of 20 queued" leaves the operator to work out which six.
+     */
+    skipped?: string;
+};
+
 export type UserEntity = {
     displayName: string;
     id: unknown;
@@ -1995,6 +2036,26 @@ export type AgentFirewallResponseBodyWritable = {
     content?: string;
     digest?: string;
     revision?: number;
+};
+
+export type AgentUpgradeRequestBodyWritable = {
+    /**
+     * Queue agents that already report the target version. For repairing a damaged binary, not for routine use: it restarts every agent in scope.
+     */
+    force?: boolean;
+    /**
+     * Limit to one fleet. Omit to cover every agent in the organization, including hosts in no fleet — which are the ones most likely to be forgotten.
+     */
+    hive_id?: string;
+};
+
+export type AgentUpgradeResponseBodyWritable = {
+    agents: Array<UpgradeCandidateView> | null;
+    queued: number;
+    /**
+     * The version agents are being moved to, which is this control plane's own.
+     */
+    version: string;
 };
 
 export type ArriveRequestBodyWritable = {
@@ -2118,7 +2179,7 @@ export type CreateTaskRequestBodyWritable = {
     /**
      * What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing.
      */
-    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
+    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
     /**
      * Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host.
      */
@@ -4470,6 +4531,31 @@ export type FirewallRulesCreateResponses = {
 };
 
 export type FirewallRulesCreateResponse = FirewallRulesCreateResponses[keyof FirewallRulesCreateResponses];
+
+export type FleetAgentUpgradeData = {
+    body: AgentUpgradeRequestBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/fleet/agent-upgrades';
+};
+
+export type FleetAgentUpgradeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetAgentUpgradeError = FleetAgentUpgradeErrors[keyof FleetAgentUpgradeErrors];
+
+export type FleetAgentUpgradeResponses = {
+    /**
+     * Created
+     */
+    201: AgentUpgradeResponseBody;
+};
+
+export type FleetAgentUpgradeResponse = FleetAgentUpgradeResponses[keyof FleetAgentUpgradeResponses];
 
 export type FleetBeesListData = {
     body?: never;

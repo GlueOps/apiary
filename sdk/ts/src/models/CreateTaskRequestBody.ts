@@ -52,6 +52,7 @@ export interface CreateTaskRequestBody {
 export const CreateTaskRequestBodyKindEnum = {
     FleetHostPing: 'fleet.host.ping',
     FleetHostDistUpgrade: 'fleet.host.dist-upgrade',
+    FleetHostAgentUpgrade: 'fleet.host.agent-upgrade',
     FleetDatacenterJoin: 'fleet.datacenter.join',
     FleetDatacenterEvict: 'fleet.datacenter.evict'
 } as const;

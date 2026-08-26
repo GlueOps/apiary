@@ -118,6 +118,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallRulesetsUpdate**](docs/FirewallAPI.md#firewallrulesetsupdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
+*FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
 *FleetAPI* | [**FleetBeeAppendLogs**](docs/FleetAPI.md#fleetbeeappendlogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
@@ -184,6 +185,8 @@ Class | Method | HTTP request | Description
  - [AgentBuildView](docs/AgentBuildView.md)
  - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
  - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
+ - [AgentUpgradeRequestBody](docs/AgentUpgradeRequestBody.md)
+ - [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
@@ -336,6 +339,7 @@ Class | Method | HTTP request | Description
  - [UpdateRoleRequestBody](docs/UpdateRoleRequestBody.md)
  - [UpdateRoleResponseBody](docs/UpdateRoleResponseBody.md)
  - [UpdateRulesetRequestBody](docs/UpdateRulesetRequestBody.md)
+ - [UpgradeCandidateView](docs/UpgradeCandidateView.md)
  - [UserEntity](docs/UserEntity.md)
  - [VerifyEmailRequestBody](docs/VerifyEmailRequestBody.md)
  - [VerifyEmailResponseBody](docs/VerifyEmailResponseBody.md)

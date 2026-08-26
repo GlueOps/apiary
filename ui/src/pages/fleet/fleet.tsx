@@ -1,6 +1,12 @@
 import { useState } from 'react';
 
-import { IconKey, IconPlus, IconServerBolt, IconTerminal2 } from '@tabler/icons-react';
+import {
+  IconArrowUpCircle,
+  IconKey,
+  IconPlus,
+  IconServerBolt,
+  IconTerminal2,
+} from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -34,6 +40,7 @@ import {
   fleetTasksCreateMutation,
 } from '@/sdk/@tanstack/react-query.gen';
 
+import { AgentUpgradeDialog } from './agent-upgrade-dialog';
 import { BeeTable, beeLabel, hiveIdOf } from './bee-table';
 import { DeclareDialog } from './declare-dialog';
 import { EnrolmentDialog } from './enrolment-dialog';
@@ -48,6 +55,7 @@ export const Fleet = () => {
   const queryClient = useQueryClient();
   const [enrolOpen, setEnrolOpen] = useState(false);
   const [declareOpen, setDeclareOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [watching, setWatching] = useState<{
     taskId: string;
     hostname: string;
@@ -186,6 +194,9 @@ export const Fleet = () => {
           </Button>
           <Button size="sm" variant="outline" onClick={() => setEnrolOpen(true)}>
             <IconKey /> Enrol by hand
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setUpgradeOpen(true)}>
+            <IconArrowUpCircle /> Upgrade agents
           </Button>
         </div>
       </div>
@@ -532,6 +543,7 @@ export const Fleet = () => {
 
       <EnrolmentDialog open={enrolOpen} onOpenChange={setEnrolOpen} />
       <DeclareDialog open={declareOpen} onOpenChange={setDeclareOpen} />
+      <AgentUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </div>
   );
 };

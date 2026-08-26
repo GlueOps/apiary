@@ -4,6 +4,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**fleetAgentUpgrade**](FleetApi.md#fleetagentupgrade) | **POST** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet |
 | [**fleetBeeAgentBinary**](FleetApi.md#fleetbeeagentbinary) | **GET** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform |
 | [**fleetBeeAgentDist**](FleetApi.md#fleetbeeagentdist) | **GET** /api/v1/agent/dist | What agent binaries this control plane can serve |
 | [**fleetBeeAppendLogs**](FleetApi.md#fleetbeeappendlogs) | **POST** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane |
@@ -33,6 +34,84 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**sshKeysMint**](FleetApi.md#sshkeysmint) | **POST** /api/v1/ssh-keys | Mint a fleet SSH key |
 | [**sshKeysRevoke**](FleetApi.md#sshkeysrevoke) | **DELETE** /api/v1/ssh-keys/{id} | Revoke a fleet SSH key |
 
+
+
+## fleetAgentUpgrade
+
+> AgentUpgradeResponseBody fleetAgentUpgrade(agentUpgradeRequestBody)
+
+Upgrade every agent in a fleet
+
+Queues one upgrade task per agent. Each host downloads the binary this control plane serves, verifies it against the advertised digest, proves it runs, keeps the previous one, and restarts.  ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two things at once. Hosts do proceed in parallel with each other, which is safe here because an agent is not in the data path of anything it manages — an agent that fails to come back costs control of that host, not its guests.  Agents already on the target version, offline, or holding another task are SKIPPED and each says why. Queueing an offline agent would hand it a task it collects whenever it returns, which is often during the next incident.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetAgentUpgradeRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FleetApi(config);
+
+  const body = {
+    // AgentUpgradeRequestBody
+    agentUpgradeRequestBody: ...,
+  } satisfies FleetAgentUpgradeRequest;
+
+  try {
+    const data = await api.fleetAgentUpgrade(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **agentUpgradeRequestBody** | [AgentUpgradeRequestBody](AgentUpgradeRequestBody.md) |  | |
+
+### Return type
+
+[**AgentUpgradeResponseBody**](AgentUpgradeResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## fleetBeeAgentBinary

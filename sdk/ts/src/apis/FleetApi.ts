@@ -24,6 +24,16 @@ import {
     AgentFirewallResponseBodyToJSON,
 } from '../models/AgentFirewallResponseBody';
 import {
+    type AgentUpgradeRequestBody,
+    AgentUpgradeRequestBodyFromJSON,
+    AgentUpgradeRequestBodyToJSON,
+} from '../models/AgentUpgradeRequestBody';
+import {
+    type AgentUpgradeResponseBody,
+    AgentUpgradeResponseBodyFromJSON,
+    AgentUpgradeResponseBodyToJSON,
+} from '../models/AgentUpgradeResponseBody';
+import {
     type ArriveRequestBody,
     ArriveRequestBodyFromJSON,
     ArriveRequestBodyToJSON,
@@ -199,6 +209,10 @@ import {
     UpdateHiveRequestBodyToJSON,
 } from '../models/UpdateHiveRequestBody';
 
+export interface FleetAgentUpgradeRequest {
+    agentUpgradeRequestBody: Omit<AgentUpgradeRequestBody, '$schema'>;
+}
+
 export interface FleetBeeAgentBinaryRequest {
     os: string;
     arch: string;
@@ -302,6 +316,75 @@ export interface SshKeysRevokeRequest {
  * 
  */
 export class FleetApi extends runtime.BaseAPI {
+
+    /**
+     * Creates request options for fleetAgentUpgrade without sending the request
+     */
+    async fleetAgentUpgradeRequestOpts(requestParameters: FleetAgentUpgradeRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['agentUpgradeRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'agentUpgradeRequestBody',
+                'Required parameter "agentUpgradeRequestBody" was null or undefined when calling fleetAgentUpgrade().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/fleet/agent-upgrades`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AgentUpgradeRequestBodyToJSON(requestParameters['agentUpgradeRequestBody']),
+        };
+    }
+
+    /**
+     * Queues one upgrade task per agent. Each host downloads the binary this control plane serves, verifies it against the advertised digest, proves it runs, keeps the previous one, and restarts.  ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two things at once. Hosts do proceed in parallel with each other, which is safe here because an agent is not in the data path of anything it manages — an agent that fails to come back costs control of that host, not its guests.  Agents already on the target version, offline, or holding another task are SKIPPED and each says why. Queueing an offline agent would hand it a task it collects whenever it returns, which is often during the next incident.
+     * Upgrade every agent in a fleet
+     */
+    async fleetAgentUpgradeRaw(requestParameters: FleetAgentUpgradeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AgentUpgradeResponseBody>> {
+        const requestOptions = await this.fleetAgentUpgradeRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AgentUpgradeResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Queues one upgrade task per agent. Each host downloads the binary this control plane serves, verifies it against the advertised digest, proves it runs, keeps the previous one, and restarts.  ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two things at once. Hosts do proceed in parallel with each other, which is safe here because an agent is not in the data path of anything it manages — an agent that fails to come back costs control of that host, not its guests.  Agents already on the target version, offline, or holding another task are SKIPPED and each says why. Queueing an offline agent would hand it a task it collects whenever it returns, which is often during the next incident.
+     * Upgrade every agent in a fleet
+     */
+    async fleetAgentUpgrade(requestParameters: FleetAgentUpgradeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AgentUpgradeResponseBody> {
+        const response = await this.fleetAgentUpgradeRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for fleetBeeAgentBinary without sending the request

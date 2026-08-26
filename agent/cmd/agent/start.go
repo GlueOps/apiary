@@ -48,7 +48,7 @@ var startCmd = &cobra.Command{
 			Client:        client,
 			AgentVersion:  Version,
 			HeartbeatWait: cfg.HeartbeatWait,
-		}, executors(fleetDeps(cfg)))
+		}, executors(fleetDeps(cfg), cfg))
 
 		// Withdraw any standing unavailability BEFORE the loops start. This
 		// process may be the one that came back from the reboot it declared, and
@@ -76,7 +76,7 @@ var startCmd = &cobra.Command{
 // exist to translate bee.Env into fleetops.Env and nothing else — the decisions,
 // which are the dangerous part, live in fleetops where they are tested against a
 // fake cluster rather than a hypervisor.
-func executors(d fleetops.Deps) map[string]bee.Executor {
+func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 	adapt := func(e *bee.Env) *fleetops.Env {
 		return &fleetops.Env{Logf: e.Logf, Phase: e.Phase, Declare: e.Declare}
 	}
@@ -97,6 +97,10 @@ func executors(d fleetops.Deps) map[string]bee.Executor {
 		fleetops.KindEvict: func(ctx context.Context, t store.Task, e *bee.Env) error {
 			return fleetops.Evict(ctx, d, adapt(e), t.Spec)
 		},
+		// Not routed through fleetops: it touches no hypervisor and needs the
+		// agent's own configuration and credential, which fleetops.Deps has no
+		// business carrying.
+		fleetops.KindAgentUpgrade: upgradeTask(cfg),
 	}
 }
 

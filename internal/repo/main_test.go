@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 		fleetTestSchema,
 		factsTestSchema,
 		sshKeyTestSchema,
+		upgradeTestSchema,
 		socialTestSchema,
 	)
 	os.Exit(code)

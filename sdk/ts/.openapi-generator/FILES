@@ -11,6 +11,8 @@ docs/AdminApi.md
 docs/AgentBuildView.md
 docs/AgentDistResponseBody.md
 docs/AgentFirewallResponseBody.md
+docs/AgentUpgradeRequestBody.md
+docs/AgentUpgradeResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
 docs/AuthApi.md
@@ -173,6 +175,7 @@ docs/UpdateRequestBody.md
 docs/UpdateRoleRequestBody.md
 docs/UpdateRoleResponseBody.md
 docs/UpdateRulesetRequestBody.md
+docs/UpgradeCandidateView.md
 docs/UserEntity.md
 docs/VerifyEmailRequestBody.md
 docs/VerifyEmailResponseBody.md
@@ -198,6 +201,8 @@ src/models/AccessRuleView.ts
 src/models/AgentBuildView.ts
 src/models/AgentDistResponseBody.ts
 src/models/AgentFirewallResponseBody.ts
+src/models/AgentUpgradeRequestBody.ts
+src/models/AgentUpgradeResponseBody.ts
 src/models/ArriveRequestBody.ts
 src/models/ArriveResponseBody.ts
 src/models/AuthenticatorSelection.ts
@@ -350,6 +355,7 @@ src/models/UpdateRequestBody.ts
 src/models/UpdateRoleRequestBody.ts
 src/models/UpdateRoleResponseBody.ts
 src/models/UpdateRulesetRequestBody.ts
+src/models/UpgradeCandidateView.ts
 src/models/UserEntity.ts
 src/models/VerifyEmailRequestBody.ts
 src/models/VerifyEmailResponseBody.ts
