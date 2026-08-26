@@ -40,7 +40,18 @@ type Env struct {
 
 // Deps are the collaborators an executor needs.
 type Deps struct {
-	Cluster  Cluster
+	Cluster Cluster
+
+	// ClusterErr is why Cluster is nil, kept so a refused task can say what
+	// actually went wrong.
+	//
+	// It used to be logged at startup and discarded, and the refusal then had to
+	// GUESS a cause — it blamed the token's permissions, which sent an operator to
+	// check ACLs on a token that was fully privileged. The real reason was that no
+	// token was configured at all. A message that confidently names the wrong
+	// cause is worse than one that names none.
+	ClusterErr error
+
 	Runner   Runner
 	Node     string // this host's Proxmox node name
 	Reboot   func(ctx context.Context) error
@@ -58,9 +69,7 @@ type Deps struct {
 // Refusing is what the startup message already claimed, and a refused task is
 // visible in the control plane where a stack trace in a journal is not.
 var ErrNoCluster = errors.New(
-	"fleetops: this host has no Proxmox API client, so it cannot perform cluster work; " +
-		"give the agent's token an API role — a scoped one such as PVEAuditor is enough to " +
-		"read state — and the task will run on its next attempt")
+	"fleetops: this host has no Proxmox API client, so it cannot perform cluster work")
 
 // requireCluster refuses before a task touches a nil client.
 //
@@ -68,11 +77,19 @@ var ErrNoCluster = errors.New(
 // each step: a nil dereference three calls deep reports as a segfault address,
 // and the operator has to read a stack trace to learn that a credential is
 // missing.
+//
+// The refusal carries the REAL reason where there is one. Guessing produced a
+// message blaming a token's permissions on a host whose token was fully
+// privileged and simply never configured — and an operator who trusts that goes
+// and checks ACLs.
 func requireCluster(d Deps) error {
-	if d.Cluster == nil {
-		return ErrNoCluster
+	if d.Cluster != nil {
+		return nil
 	}
-	return nil
+	if d.ClusterErr != nil {
+		return fmt.Errorf("%w: %w", ErrNoCluster, d.ClusterErr)
+	}
+	return ErrNoCluster
 }
 
 // ---------------------------------------------------------------- dist-upgrade

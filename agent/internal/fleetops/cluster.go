@@ -128,8 +128,13 @@ func NewLocalClient(baseURL, tokenID, secret string) (*proxmox.Client, error) {
 		return nil, fmt.Errorf("fleetops: no Proxmox API URL configured for this host")
 	}
 	if tokenID == "" || secret == "" {
-		return nil, fmt.Errorf("fleetops: a Proxmox API token id and secret are required; a fleet " +
-			"agent should hold a scoped token, not the root password")
+		// Names the SETTINGS, because that is what is missing. Saying only that a
+		// token is required sent an operator to check the permissions of a token
+		// that was fully privileged and simply never given to this agent.
+		return nil, fmt.Errorf("fleetops: no Proxmox API token is configured for this host " +
+			"(set proxmox_token_id and proxmox_secret in /etc/apiary-agent/config.yaml, or " +
+			"AGENT_PROXMOX_TOKEN_ID and AGENT_PROXMOX_SECRET in /etc/apiary-agent/agent.env); " +
+			"a fleet agent should hold a scoped token, not the root password")
 	}
 	// The two halves are concatenated into "PVEAPIToken=<id>=<secret>", so a
 	// secret that is itself a whole token string produces "<id>=<id>=<secret>".

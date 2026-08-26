@@ -20,9 +20,12 @@ import (
 func TestClusterTasksRefuseWithoutAClientRatherThanPanicking(t *testing.T) {
 	t.Parallel()
 
-	// Deliberately zero: Cluster nil is exactly the state fleetDeps leaves behind
-	// when the token cannot reach the API.
-	var d Deps
+	// Cluster nil with the construction error kept — exactly the state fleetDeps
+	// leaves behind when the agent has no Proxmox token configured, which is the
+	// state a real host was found in.
+	d := Deps{ClusterErr: errors.New(
+		"fleetops: no Proxmox API token is configured for this host " +
+			"(set proxmox_token_id and proxmox_secret in /etc/apiary-agent/config.yaml)")}
 	e := &Env{
 		Logf:  func(string, string, ...any) {},
 		Phase: func(string) {},
@@ -50,11 +53,49 @@ func TestClusterTasksRefuseWithoutAClientRatherThanPanicking(t *testing.T) {
 				t.Fatalf("%s failed with %v, want ErrNoCluster", name, err)
 			}
 			// The message has to name the fix. An operator reading "no client" goes
-			// looking for a network problem; the actual cause is a token with no
-			// role, and it is not guessable from the symptom.
+			// looking for a network problem, and the actual cause is not guessable
+			// from the symptom.
 			if !strings.Contains(err.Error(), "token") {
 				t.Errorf("%s: %q does not say what to do about it", name, err)
 			}
 		})
+	}
+}
+
+// TestTheRefusalCarriesTheRealCauseRatherThanGuessing.
+//
+// The first version of this refusal named a cause it could not know: it blamed
+// the token's permissions. On a host whose token was fully privileged and simply
+// never configured, that sent the operator to check ACLs — a confidently wrong
+// message is worse than one that admits it does not know.
+func TestTheRefusalCarriesTheRealCauseRatherThanGuessing(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("no Proxmox API token is configured for this host")
+	d := Deps{ClusterErr: cause}
+
+	err := requireCluster(d)
+	if err == nil {
+		t.Fatal("a nil cluster was accepted")
+	}
+	if !errors.Is(err, ErrNoCluster) {
+		t.Fatalf("got %v, want it to wrap ErrNoCluster so callers can still match it", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("got %q, which drops the reason the client could not be built", err)
+	}
+}
+
+// TestARefusalWithNoRecordedCauseSaysOnlyWhatItKnows.
+func TestARefusalWithNoRecordedCauseSaysOnlyWhatItKnows(t *testing.T) {
+	t.Parallel()
+
+	err := requireCluster(Deps{})
+	if !errors.Is(err, ErrNoCluster) {
+		t.Fatalf("got %v, want ErrNoCluster", err)
+	}
+	// No invented cause appended.
+	if strings.Contains(err.Error(), "role") || strings.Contains(err.Error(), "PVEAuditor") {
+		t.Fatalf("%q guesses at a cause it does not have", err)
 	}
 }
