@@ -37,6 +37,12 @@ export interface RefusalView {
      * @memberof RefusalView
      */
     remedy?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RefusalView
+     */
+    summary?: string;
 }
 
 /**
@@ -61,6 +67,7 @@ export function RefusalViewFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'code': json['code'],
         'detail': json['detail'],
         'remedy': json['remedy'] == null ? undefined : json['remedy'],
+        'summary': json['summary'] == null ? undefined : json['summary'],
     };
 }
 
@@ -78,6 +85,7 @@ export function RefusalViewToJSONTyped(value?: RefusalView | null, ignoreDiscrim
         'code': value['code'],
         'detail': value['detail'],
         'remedy': value['remedy'],
+        'summary': value['summary'],
     };
 }
 

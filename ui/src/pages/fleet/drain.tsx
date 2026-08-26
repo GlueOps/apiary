@@ -67,15 +67,22 @@ export function drainHint(state: string): string {
  * belongs on its row; the FIX for a reason is the same wherever it appears, so
  * it belongs once, at the bottom, where somebody goes looking for what to do.
  *
- * Keyed by CODE rather than by message. Two hosts refused under the same rule
- * carry details differing only in their numbers, and one row per number is the
- * repetition this exists to remove. The detail shown is the first one seen,
- * which reads as an example of the rule rather than a claim about one host.
+ * Keyed by CODE and rendered from SUMMARY, which is the generic form of the
+ * rule. Grouping on the detail instead would mean picking one host's figures to
+ * display — "the provider reports 2 guest(s)" shown for a group that also
+ * contains a host with five is not a shorter message, it is a wrong one.
+ *
+ * The count of affected hosts is shown instead, which is the number that is
+ * actually true of the group and more useful than any one host's: it says how
+ * much work the fix is.
  */
 export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSync?: () => void }) {
-  const byCode = new Map<string, RefusalView>();
+  const byCode = new Map<string, { refusal: RefusalView; hosts: number }>();
   for (const r of refusals) {
-    if (r.remedy && !byCode.has(r.code)) byCode.set(r.code, r);
+    if (!r.remedy) continue;
+    const seen = byCode.get(r.code);
+    if (seen) seen.hosts += 1;
+    else byCode.set(r.code, { refusal: r, hosts: 1 });
   }
   if (byCode.size === 0) return null;
 
@@ -97,7 +104,7 @@ export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSy
             </tr>
           </thead>
           <tbody>
-            {[...byCode.values()].map((r) => (
+            {[...byCode.values()].map(({ refusal: r, hosts }) => (
               <tr key={r.code} className="border-b align-top last:border-0">
                 <td className="py-2 pr-4 text-muted-foreground">
                   <span className="flex gap-2">
@@ -105,7 +112,15 @@ export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSy
                       className="mt-0.5 size-3.5 shrink-0 text-amber-500"
                       aria-hidden
                     />
-                    <span>{r.detail}</span>
+                    <span>
+                      {/* The generic form. Falling back to the detail only for a
+                          refusal that has no summary yet, where showing one
+                          host's figures is still better than showing nothing. */}
+                      {r.summary || r.detail}
+                      <span className="ml-1 text-muted-foreground/70">
+                        · {hosts} {hosts === 1 ? 'host' : 'hosts'}
+                      </span>
+                    </span>
                   </span>
                 </td>
                 <td className="py-2">

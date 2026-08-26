@@ -5081,9 +5081,11 @@ components:
         - code: code
           detail: detail
           remedy: remedy
+          summary: summary
         - code: code
           detail: detail
           remedy: remedy
+          summary: summary
         bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5422,9 +5424,11 @@ components:
         - code: code
           detail: detail
           remedy: remedy
+          summary: summary
         - code: code
           detail: detail
           remedy: remedy
+          summary: summary
         drain_state: active
         held_placements: 0
         hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -5899,9 +5903,11 @@ components:
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5913,9 +5919,11 @@ components:
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5995,9 +6003,11 @@ components:
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           drain_state: active
           held_placements: 0
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -6025,9 +6035,11 @@ components:
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           - code: code
             detail: detail
             remedy: remedy
+            summary: summary
           drain_state: active
           held_placements: 0
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -7521,12 +7533,15 @@ components:
         code: code
         detail: detail
         remedy: remedy
+        summary: summary
       properties:
         code:
           type: string
         detail:
           type: string
         remedy:
+          type: string
+        summary:
           type: string
       required:
       - code

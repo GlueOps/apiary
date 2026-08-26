@@ -9,6 +9,7 @@ Name | Type
 `code` | string
 `detail` | string
 `remedy` | string
+`summary` | string
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   "code": null,
   "detail": null,
   "remedy": null,
+  "summary": null,
 } satisfies RefusalView
 
 console.log(example)

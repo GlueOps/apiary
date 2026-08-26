@@ -24,6 +24,7 @@ type RefusalView struct {
 	Code string `json:"code"`
 	Detail string `json:"detail"`
 	Remedy *string `json:"remedy,omitempty"`
+	Summary *string `json:"summary,omitempty"`
 }
 
 type _RefusalView RefusalView
@@ -127,6 +128,38 @@ func (o *RefusalView) SetRemedy(v string) {
 	o.Remedy = &v
 }
 
+// GetSummary returns the Summary field value if set, zero value otherwise.
+func (o *RefusalView) GetSummary() string {
+	if o == nil || IsNil(o.Summary) {
+		var ret string
+		return ret
+	}
+	return *o.Summary
+}
+
+// GetSummaryOk returns a tuple with the Summary field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RefusalView) GetSummaryOk() (*string, bool) {
+	if o == nil || IsNil(o.Summary) {
+		return nil, false
+	}
+	return o.Summary, true
+}
+
+// HasSummary returns a boolean if a field has been set.
+func (o *RefusalView) HasSummary() bool {
+	if o != nil && !IsNil(o.Summary) {
+		return true
+	}
+
+	return false
+}
+
+// SetSummary gets a reference to the given string and assigns it to the Summary field.
+func (o *RefusalView) SetSummary(v string) {
+	o.Summary = &v
+}
+
 func (o RefusalView) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -141,6 +174,9 @@ func (o RefusalView) ToMap() (map[string]interface{}, error) {
 	toSerialize["detail"] = o.Detail
 	if !IsNil(o.Remedy) {
 		toSerialize["remedy"] = o.Remedy
+	}
+	if !IsNil(o.Summary) {
+		toSerialize["summary"] = o.Summary
 	}
 	return toSerialize, nil
 }

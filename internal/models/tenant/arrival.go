@@ -22,12 +22,21 @@ type ArrivalRefusal struct {
 	// is what a client switches on and what an operator learns to recognise.
 	Code string
 
-	// Detail states WHAT IS WRONG, and names the offending number where there is
-	// one. "3 guests are still on this node" is actionable; "not drained" sends
+	// Summary states the rule GENERICALLY, with no numbers and no host in it.
+	//
+	// It exists because the same rule refuses many hosts with different figures.
+	// Grouping refusals by code to avoid repeating them means picking one of
+	// those details to display, and "the provider reports 2 guest(s)" shown for a
+	// group that also contains a host with five is not a shorter message — it is
+	// a wrong one. The summary is the half that is true of every host the rule
+	// refused, so it can be shown once.
+	Summary string
+
+	// Detail states what is wrong ON THIS HOST, and names the offending number.
+	// "3 guests are still on this node" is actionable; "not drained" sends
 	// somebody to the provider's UI to work out why.
 	//
-	// Terse on purpose. It sits in a table cell beside a machine, and a paragraph
-	// there is a paragraph nobody reads and a row that scrolls sideways.
+	// Per host, so it cannot be grouped — see Summary.
 	Detail string
 
 	// Remedy states WHAT TO DO, separately.
@@ -88,38 +97,40 @@ func CheckArrival(req ArrivalRequest) []ArrivalRefusal {
 			// migration that skipped a step, and telling them to depart first would
 			// be actively wrong advice.
 			out = append(out, ArrivalRefusal{
-				Code:   RefuseSameHive,
-				Detail: fmt.Sprintf("this host is already a member of hive %q", req.TargetHive.Name),
+				Code:    RefuseSameHive,
+				Summary: "the host is already a member of the cluster it is being joined to",
+				Detail:  fmt.Sprintf("this host is already a member of hive %q", req.TargetHive.Name),
+				Remedy:  "Nothing to do — it is already where you are sending it.",
 			})
 		} else {
 			out = append(out, ArrivalRefusal{
-				Code: RefuseAlreadyInHive,
-				Detail: fmt.Sprintf(
-					"this host still reports membership of another hive; depart it first. A " +
-						"migration is a departure and then an arrival, and the fleetless state " +
-						"between them is a real state — joining directly would leave two clusters " +
-						"believing they own the same node"),
+				Code:    RefuseAlreadyInHive,
+				Summary: "the host still reports membership of another cluster",
+				Detail:  "this host still reports membership of another cluster",
+				Remedy: "Depart it first. A migration is a departure and then an arrival, and " +
+					"the fleetless state between them is a real state — joining directly would " +
+					"leave two clusters believing they own the same node.",
 			})
 		}
 	}
 
 	if req.ObservedGuests > 0 {
 		out = append(out, ArrivalRefusal{
-			Code: RefuseArrivalGuests,
-			Detail: fmt.Sprintf(
-				"the joining host has %d guest(s), STOPPED ONES INCLUDED — `pvecm add` refuses a "+
-					"node with any guests at all, and a stopped guest counts. Move or delete them "+
-					"before joining",
+			Code:    RefuseArrivalGuests,
+			Summary: "the joining host still has guests, stopped ones included",
+			Detail: fmt.Sprintf("the joining host has %d guest(s), stopped ones included",
 				req.ObservedGuests),
+			Remedy: "Move or delete them before joining. `pvecm add` refuses a node with any " +
+				"guests at all, and a stopped guest counts.",
 		})
 	}
 
 	if req.TargetNodeCount < 1 {
 		out = append(out, ArrivalRefusal{
-			Code: RefuseTargetHiveEmpty,
-			Detail: fmt.Sprintf(
-				"hive %q has no nodes to join to; create the cluster on a first node before "+
-					"adding a second", req.TargetHive.Name),
+			Code:    RefuseTargetHiveEmpty,
+			Summary: "the target cluster has no nodes to join to",
+			Detail:  fmt.Sprintf("hive %q has no nodes to join to", req.TargetHive.Name),
+			Remedy:  "Create the cluster on a first node before adding a second.",
 		})
 	}
 

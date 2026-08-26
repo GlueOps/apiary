@@ -28,8 +28,13 @@ type RefusalView struct {
 	// Code is the stable half — like an HTTP status, what a client switches on
 	// and what an operator learns to recognise.
 	Code string `json:"code" example:"guests_present"`
-	// Detail states what is wrong, terse enough to sit in a table cell beside the
-	// machine it is about.
+	// Summary states the rule generically, with no numbers and no host in it, so
+	// refusals of the same rule across many machines can be shown once. Grouping
+	// on Detail instead means showing one host's figures as if they applied to
+	// every host in the group.
+	Summary string `json:"summary,omitempty"`
+	// Detail states what is wrong on THIS machine, and names the offending
+	// number.
 	Detail string `json:"detail"`
 	// Remedy states what to do, separately, so it can be rendered where somebody
 	// is looking for it rather than repeated inline to people who already know.
@@ -39,7 +44,7 @@ type RefusalView struct {
 func refusalViews(rs []tenant.DepartureRefusal) []RefusalView {
 	out := make([]RefusalView, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail, Remedy: r.Remedy})
+		out = append(out, RefusalView{Code: r.Code, Summary: r.Summary, Detail: r.Detail, Remedy: r.Remedy})
 	}
 	return out
 }
@@ -47,7 +52,7 @@ func refusalViews(rs []tenant.DepartureRefusal) []RefusalView {
 func arrivalRefusalViews(rs []tenant.ArrivalRefusal) []RefusalView {
 	out := make([]RefusalView, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail, Remedy: r.Remedy})
+		out = append(out, RefusalView{Code: r.Code, Summary: r.Summary, Detail: r.Detail, Remedy: r.Remedy})
 	}
 	return out
 }

@@ -1473,6 +1473,7 @@ export type RefusalView = {
     code: string;
     detail: string;
     remedy?: string;
+    summary?: string;
 };
 
 export type RegisterRequestBody = {
