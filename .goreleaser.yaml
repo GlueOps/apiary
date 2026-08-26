@@ -46,7 +46,8 @@ before:
     # A hook and not only the build entry below, because these bytes are EMBEDDED:
     # the server build reads the directory, so they have to exist first. The build
     # entry still produces the released artifacts; this is an earlier copy for
-    # embedding.
+    # embedding, stamped with the same version so an upgraded agent reports what
+    # the control plane that served it reports.
     #
     # `just agent-dist` rather than an inline `go build`, so the flags live in one
     # place. An inline copy drifts, and the way it drifts is silent: `go build -X`
@@ -60,7 +61,7 @@ before:
     # list, with nothing enforcing it and a silent empty catalogue when it is
     # wrong. Verified: running this hook before the SPA build leaves both binaries
     # intact.
-    - just agent-dist
+    - just agent-dist v{{ .Version }}
 
 builds:
   - id: apiary

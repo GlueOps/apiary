@@ -13,13 +13,34 @@ sdk:
 #
 # linux only: the agent is a systemd service that runs as root on a hypervisor,
 # and there is no darwin host for it to run on.
-agent-dist:
+agent-dist version="":
   #!/usr/bin/env bash
   set -euo pipefail
+  # STAMPED, because an agent's version is read by people.
+  #
+  # These were built with "-s -w" alone, on the reasoning that nothing reads a
+  # version out of them — the convergence decision is made on the digest. That
+  # was wrong about the audience: the fleet listing shows agent_version per host
+  # and the upgrade dialog reports it back, so every agent the control plane
+  # upgraded reported "dev" and an operator could not tell what any host was
+  # running.
+  #
+  # main.version, not a package path. `go build -X` on a symbol that is not in
+  # the binary is NOT an error, so a stamp aimed at the wrong name is silently
+  # ignored and every agent reports "dev" with nothing to say why.
+  #
+  # The control plane's version, because these ship with it — the same release
+  # produces both, and an agent claiming a version its server never shipped would
+  # be a worse lie than "dev".
+  v="{{ version }}"
+  if [ -z "$v" ]; then
+    v="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+  fi
+  echo "  stamping agents as $v"
   for arch in amd64 arm64; do
     echo "  building linux/$arch"
     ( cd agent && GOWORK=off GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
-        go build -trimpath -ldflags "-s -w" \
+        go build -trimpath -ldflags "-s -w -X main.version=$v" \
         -o "../internal/agentdist/dist/apiary-agent_linux_$arch" . )
   done
   ls -lh internal/agentdist/dist/ | tail -n +2
