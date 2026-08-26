@@ -58,6 +58,45 @@ export function drainHint(state: string): string {
  * an operation the server will refuse. This component only decides how to say it.
  */
 /**
+ * The short name of a refusal, for a badge.
+ *
+ * Derived from the CODE rather than shipped as another field. The code is
+ * already the stable half and already reads as a phrase once its underscores are
+ * gone — "guests_present" becomes "guests present" — and a fourth string per
+ * refusal would be a fourth thing to keep in agreement with the other three.
+ */
+export function refusalLabel(code: string) {
+  return code.replaceAll('_', ' ');
+}
+
+/**
+ * Which rules are blocking THIS host.
+ *
+ * The card at the bottom says what each rule means and how to fix it, once. It
+ * cannot say which hosts it applies to without listing them, and a list of
+ * hostnames inside a table cell is the sideways-scrolling problem again. So the
+ * row carries the names of its own rules and the card explains them — the same
+ * split as a legend on a chart.
+ */
+export function RefusalBadges({ refusals }: { refusals: RefusalView[] }) {
+  if (refusals.length === 0) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {refusals.map((r) => (
+        <Badge
+          key={r.code}
+          variant="outline"
+          className="border-amber-500/40 text-[10px] font-normal text-amber-600 dark:text-amber-500"
+          title={r.detail}
+        >
+          {refusalLabel(r.code)}
+        </Badge>
+      ))}
+    </span>
+  );
+}
+
+/**
  * Every distinct refusal on the page, with its remedy, once.
  *
  * The remedies were briefly rendered under each machine's own list of reasons,
@@ -113,6 +152,14 @@ export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSy
                       aria-hidden
                     />
                     <span>
+                      {/* The same badge the affected rows carry, so the two line
+                          up without the card having to list hostnames. */}
+                      <Badge
+                        variant="outline"
+                        className="mr-1.5 border-amber-500/40 text-[10px] font-normal text-amber-600 dark:text-amber-500"
+                      >
+                        {refusalLabel(r.code)}
+                      </Badge>
                       {/* The generic form. Falling back to the detail only for a
                           refusal that has no summary yet, where showing one
                           host's figures is still better than showing nothing. */}

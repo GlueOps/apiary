@@ -55,7 +55,7 @@ import {
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { StatusBadge, relative } from './bee-table';
-import { DrainBadge, Hint, LoadError, RemedyCard, capacityLabel } from './drain';
+import { DrainBadge, Hint, LoadError, RefusalBadges, RemedyCard, capacityLabel } from './drain';
 
 /**
  * Pulls the message out of a 409 refusal.
@@ -294,6 +294,11 @@ export const Hypervisors = () => {
                           {n.address ? (
                             <span className="block text-xs text-muted-foreground">{n.address}</span>
                           ) : null}
+                          {/* Which rules are blocking THIS host. The card at the
+                              bottom explains each one and how to fix it; naming
+                              them here is what stops that card having to list
+                              hostnames in a table cell. */}
+                          <RefusalBadges refusals={n.departure_refusals ?? []} />
                         </TableCell>
                         <TableCell>
                           {n.schedulable ? (
