@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 	"testing"
 
 	"gorm.io/gorm"
@@ -17,6 +19,14 @@ func declareDB(t *testing.T) *gorm.DB {
 	return testsupport.OpenSchema(t, declareTestSchema, &tenant.Hive{}, &tenant.Bee{},
 		&tenant.Hypervisor{})
 }
+
+// uniq makes an address that no other test in this package has used.
+//
+// The schema is shared by every test in the package, so a fixed address is a row
+// left behind by whichever test ran first — and a count of "all pending rows"
+// then measures the package's history rather than this test's work. That is what
+// made these pass while skipping and fail against a real database.
+func uniq(prefix string) string { return prefix + "-" + uuid.NewString()[:8] }
 
 func hosts(addrs ...string) []tenant.DeclaredHost {
 	out := make([]tenant.DeclaredHost, 0, len(addrs))
@@ -37,7 +47,8 @@ func TestADeclaredHostIsQueuedAndNotSchedulable(t *testing.T) {
 	db := declareDB(t)
 	ctx := context.Background()
 
-	got, err := DeclareHosts(ctx, db, hosts("10.10.10.9"))
+	addr := uniq("10.10.10.9")
+	got, err := DeclareHosts(ctx, db, hosts(addr))
 	if err != nil {
 		t.Fatalf("declare: %v", err)
 	}
@@ -46,7 +57,7 @@ func TestADeclaredHostIsQueuedAndNotSchedulable(t *testing.T) {
 	}
 
 	var hv tenant.Hypervisor
-	if err := db.First(&hv, "address = ?", "10.10.10.9").Error; err != nil {
+	if err := db.First(&hv, "address = ?", addr).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if hv.ProvisioningState != tenant.OnboardPending {
@@ -63,15 +74,19 @@ func TestARackIsDeclaredInOnePass(t *testing.T) {
 	db := declareDB(t)
 	ctx := context.Background()
 
-	got, err := DeclareHosts(ctx, db, hosts("pve1", "pve2", "pve3", "pve4"))
+	rack := []string{uniq("pve1"), uniq("pve2"), uniq("pve3"), uniq("pve4")}
+	got, err := DeclareHosts(ctx, db, hosts(rack...))
 	if err != nil {
 		t.Fatalf("declare: %v", err)
 	}
 	if len(got) != 4 {
 		t.Fatalf("%d results, want 4", len(got))
 	}
+	// Counted against THIS rack, not against every pending row in the schema —
+	// the schema is shared, so the broader count measures the package's history.
 	var n int64
-	_ = db.Model(&tenant.Hypervisor{}).Where("provisioning_state = ?", tenant.OnboardPending).
+	_ = db.Model(&tenant.Hypervisor{}).
+		Where("address IN ? AND provisioning_state = ?", rack, tenant.OnboardPending).
 		Count(&n).Error
 	if n != 4 {
 		t.Fatalf("%d rows queued, want 4", n)
@@ -87,16 +102,17 @@ func TestARepeatedDeclarationLeavesTheExistingMachineAlone(t *testing.T) {
 	db := declareDB(t)
 	ctx := context.Background()
 
-	if _, err := DeclareHosts(ctx, db, hosts("pve1")); err != nil {
+	addr := uniq("pve1")
+	if _, err := DeclareHosts(ctx, db, hosts(addr)); err != nil {
 		t.Fatalf("first: %v", err)
 	}
 	// Pretend it finished onboarding.
-	if err := db.Model(&tenant.Hypervisor{}).Where("address = ?", "pve1").
+	if err := db.Model(&tenant.Hypervisor{}).Where("address = ?", addr).
 		Update("provisioning_state", tenant.OnboardProvisioned).Error; err != nil {
 		t.Fatalf("advance: %v", err)
 	}
 
-	got, err := DeclareHosts(ctx, db, hosts("pve1"))
+	got, err := DeclareHosts(ctx, db, hosts(addr))
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -108,7 +124,7 @@ func TestARepeatedDeclarationLeavesTheExistingMachineAlone(t *testing.T) {
 	}
 
 	var hv tenant.Hypervisor
-	_ = db.First(&hv, "address = ?", "pve1").Error
+	_ = db.First(&hv, "address = ?", addr).Error
 	if hv.ProvisioningState != tenant.OnboardProvisioned {
 		t.Fatalf("state = %q: a re-declaration reset a machine that was already onboarded",
 			hv.ProvisioningState)
@@ -124,10 +140,13 @@ func TestOneBadAddressDoesNotLoseTheRest(t *testing.T) {
 	db := declareDB(t)
 	ctx := context.Background()
 
-	if _, err := DeclareHosts(ctx, db, hosts("pve2")); err != nil {
+	repeated := uniq("pve2")
+	batch := []string{uniq("pve1"), repeated, uniq("pve3")}
+
+	if _, err := DeclareHosts(ctx, db, hosts(repeated)); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	got, err := DeclareHosts(ctx, db, hosts("pve1", "pve2", "pve3"))
+	got, err := DeclareHosts(ctx, db, hosts(batch...))
 	if err != nil {
 		t.Fatalf("declare: %v", err)
 	}
@@ -142,7 +161,7 @@ func TestOneBadAddressDoesNotLoseTheRest(t *testing.T) {
 		t.Fatalf("%d created, want 2: the repeat should not have cost the other two", created)
 	}
 	var n int64
-	_ = db.Model(&tenant.Hypervisor{}).Count(&n).Error
+	_ = db.Model(&tenant.Hypervisor{}).Where("address IN ?", batch).Count(&n).Error
 	if n != 3 {
 		t.Fatalf("%d machines, want 3", n)
 	}

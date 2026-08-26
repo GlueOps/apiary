@@ -20,10 +20,55 @@ func upgradeDB(t *testing.T) *gorm.DB {
 		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{}, &tenant.FleetTask{})
 }
 
+// seedFleet makes a hive that only this test's agents belong to.
+//
+// Every test in the package shares one schema, so an unscoped query sees every
+// other test's bees — which is what made these pass while skipping and fail
+// against a real database. Scoping to a per-test hive is what makes each one
+// independent, and it exercises the hive filter besides.
+func seedFleet(t *testing.T, db *gorm.DB) tenant.Hive {
+	t.Helper()
+	h := tenant.Hive{ID: uuid.New(), Name: "fleet-" + uuid.NewString()[:8], Provider: "proxmox"}
+	if err := db.Create(&h).Error; err != nil {
+		t.Fatalf("seed hive: %v", err)
+	}
+	return h
+}
+
+// joinFleet links a bee to a hive through its machine record, which is where the
+// hive actually lives — a bee carries no hive of its own.
+func joinFleet(t *testing.T, db *gorm.DB, b tenant.Bee, hive tenant.Hive) {
+	t.Helper()
+	hv := tenant.Hypervisor{
+		ID: uuid.New(), Address: uuid.NewString()[:12],
+		BeeID: &b.ID, HiveID: &hive.ID,
+	}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatalf("join fleet: %v", err)
+	}
+}
+
+// tasksFor counts the tasks queued against one agent.
+func tasksFor(t *testing.T, db *gorm.DB, b tenant.Bee) int64 {
+	t.Helper()
+	var n int64
+	if err := db.Model(&tenant.FleetTask{}).Where("bee_id = ?", b.ID).Count(&n).Error; err != nil {
+		t.Fatalf("count tasks: %v", err)
+	}
+	return n
+}
+
 // seedBee writes an agent with a version and a last-seen time.
 func seedBee(t *testing.T, db *gorm.DB, version string, lastSeen time.Time) tenant.Bee {
 	t.Helper()
-	b := tenant.Bee{ID: uuid.New(), AgentVersion: version, LastSeenAt: &lastSeen}
+	// A UNIQUE api key id per bee. The column is a plain uuid, not a pointer, so
+	// every bee seeded without one carries the zero uuid — and the unique index
+	// treats those as equal, so the second insert collides. Postgres would have
+	// let a NULL through; a zero value is not NULL.
+	b := tenant.Bee{
+		ID: uuid.New(), APIKeyID: uuid.New(),
+		AgentVersion: version, LastSeenAt: &lastSeen,
+	}
 	if err := db.Create(&b).Error; err != nil {
 		t.Fatalf("seed bee: %v", err)
 	}
@@ -48,10 +93,13 @@ func TestAgentsAlreadyOnTheTargetVersionAreSkipped(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
+	hive := seedFleet(t, db)
 	current := seedBee(t, db, "v2.0.0", now)
 	old := seedBee(t, db, "v1.0.0", now)
+	joinFleet(t, db, current, hive)
+	joinFleet(t, db, old, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, nil, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -73,9 +121,11 @@ func TestAnOfflineAgentIsNotQueuedForLater(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
+	hive := seedFleet(t, db)
 	offline := seedBee(t, db, "v1.0.0", now.Add(-time.Hour))
+	joinFleet(t, db, offline, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, nil, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -87,10 +137,8 @@ func TestAnOfflineAgentIsNotQueuedForLater(t *testing.T) {
 		t.Fatal("the skip was silent, so the operator has to work out which agents were missed")
 	}
 
-	var n int64
-	_ = db.Model(&tenant.FleetTask{}).Count(&n).Error
-	if n != 0 {
-		t.Fatalf("%d tasks created for an offline fleet", n)
+	if n := tasksFor(t, db, offline); n != 0 {
+		t.Fatalf("%d tasks created for an offline agent", n)
 	}
 }
 
@@ -100,8 +148,11 @@ func TestForceQueuesAnAgentAlreadyOnTheVersion(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
+	hive := seedFleet(t, db)
 	b := seedBee(t, db, "v2.0.0", now)
-	got, err := QueueAgentUpgrades(ctx, db, nil, "v2.0.0", uuid.New(), true, now, 2*time.Minute)
+	joinFleet(t, db, b, hive)
+
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), true, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -119,11 +170,14 @@ func TestAnAgentIsQueuedAtMostOnce(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
+	hive := seedFleet(t, db)
 	b := seedBee(t, db, "v1.0.0", now)
-	if _, err := QueueAgentUpgrades(ctx, db, nil, "v2.0.0", uuid.New(), false, now, 2*time.Minute); err != nil {
+	joinFleet(t, db, b, hive)
+
+	if _, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute); err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	got, err := QueueAgentUpgrades(ctx, db, nil, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -131,10 +185,8 @@ func TestAnAgentIsQueuedAtMostOnce(t *testing.T) {
 		t.Fatal("a second task was queued onto an agent that already held one")
 	}
 
-	var n int64
-	_ = db.Model(&tenant.FleetTask{}).Count(&n).Error
-	if n != 1 {
-		t.Fatalf("%d tasks, want 1", n)
+	if n := tasksFor(t, db, b); n != 1 {
+		t.Fatalf("%d tasks for one agent, want 1", n)
 	}
 }
 
@@ -145,24 +197,13 @@ func TestScopingToAFleetLeavesOtherFleetsAlone(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	hiveA := tenant.Hive{ID: uuid.New(), Name: "a-" + uuid.NewString()[:8], Provider: "proxmox"}
-	hiveB := tenant.Hive{ID: uuid.New(), Name: "b-" + uuid.NewString()[:8], Provider: "proxmox"}
-	if err := db.Create(&[]tenant.Hive{hiveA, hiveB}).Error; err != nil {
-		t.Fatalf("seed hives: %v", err)
-	}
+	hiveA := seedFleet(t, db)
+	hiveB := seedFleet(t, db)
 
 	inA := seedBee(t, db, "v1.0.0", now)
 	inB := seedBee(t, db, "v1.0.0", now)
-	for _, pair := range []struct {
-		bee  uuid.UUID
-		hive uuid.UUID
-	}{{inA.ID, hiveA.ID}, {inB.ID, hiveB.ID}} {
-		hv := tenant.Hypervisor{ID: uuid.New(), Address: uuid.NewString()[:8],
-			BeeID: &pair.bee, HiveID: &pair.hive}
-		if err := db.Create(&hv).Error; err != nil {
-			t.Fatalf("seed hypervisor: %v", err)
-		}
-	}
+	joinFleet(t, db, inA, hiveA)
+	joinFleet(t, db, inB, hiveB)
 
 	got, err := QueueAgentUpgrades(ctx, db, &hiveA.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
 	if err != nil {

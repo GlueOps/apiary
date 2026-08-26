@@ -61,7 +61,10 @@ export function AgentUpgradeDialog({ open, onOpenChange }: AgentUpgradeDialogPro
   const upgrade = useMutation({
     ...fleetAgentUpgradeMutation(),
     onSuccess: (res) => {
-      setResults({ version: res.version, agents: res.agents });
+      // ?? [], because the generated type makes the list nullable. An absent
+      // list is "no agents in scope", which renders as an empty result rather
+      // than as a crash.
+      setResults({ version: res.version, agents: res.agents ?? [] });
       toast.success(
         res.queued === 0
           ? 'Nothing to upgrade — every agent in scope is already current or unavailable'
