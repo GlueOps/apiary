@@ -182,6 +182,9 @@ func TestOnboardRefusesToEnableAUnitWithNoBinary(t *testing.T) {
 // The binary, unit and config all reach the host — the gap that made the first
 // version of this worker enable a unit nothing had installed.
 //
+// Installed to /usr/sbin: this runs as root, and /usr/local/bin is on every
+// unprivileged user's PATH.
+//
 // The BINARY only. The unit and the environment file are no longer uploaded from
 // here: the agent writes both itself during `enrol --install`, so a second copy
 // shipped from the control plane would be a second definition of the unit that
@@ -207,7 +210,7 @@ func TestOnboardUploadsTheBinary(t *testing.T) {
 		t.Fatalf("the binary was not staged before being moved into place; uploads were %v",
 			r.uploads)
 	}
-	if r.indexOf("mv -f") == -1 || r.indexOf("/usr/local/bin/apiary-agent") == -1 {
+	if r.indexOf("mv -f") == -1 || r.indexOf(AgentPath) == -1 {
 		t.Fatalf("the staged binary was never moved into place; commands were %v", r.cmds)
 	}
 
