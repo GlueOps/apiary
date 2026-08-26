@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -271,12 +272,25 @@ type AgentBundle struct {
 // that dies halfway cannot leave a truncated executable that systemd then tries
 // to start — which fails in a way that looks like a broken agent rather than a
 // broken copy.
+// AgentPath is where the agent is installed.
+//
+// /usr/sbin, not /usr/local/bin. The agent runs as root and its whole job is
+// upgrading and rebooting the host, so it belongs where root-only binaries
+// belong — and /usr/local/bin is on every unprivileged user's PATH, which makes
+// a root daemon look like something any of them could usefully run.
+//
+// An agent ALREADY installed somewhere else keeps working. `apiary-agent
+// upgrade` resolves its own path and replaces itself in place, and the unit's
+// ExecStart is rewritten to whatever the binary actually is — so this changes
+// where NEW hosts land, not where existing ones are moved to.
+const AgentPath = "/usr/sbin/apiary-agent"
+
 func installAgent(ctx context.Context, r Runner, b AgentBundle) error {
 	if len(b.Binary) == 0 {
 		return fmt.Errorf("onboard: this control plane carries no agent binary for that host, " +
 			"so there is nothing to install; build one into internal/agentdist/dist")
 	}
-	if out, err := r.Run(ctx, "install -d -m 0755 /usr/local/bin"); err != nil {
+	if out, err := r.Run(ctx, "install -d -m 0755 "+path.Dir(AgentPath)); err != nil {
 		return fmt.Errorf("onboard: create directories: %w (%s)", err, strings.TrimSpace(out))
 	}
 	// Uploaded to a staging path and moved into place, not written over. Linux
@@ -284,11 +298,11 @@ func installAgent(ctx context.Context, r Runner, b AgentBundle) error {
 	// re-runs against a host whose agent is already up would otherwise fail on
 	// the copy — and the failure is silent enough that it reads as the new
 	// binary having been installed.
-	const staged = "/usr/local/bin/.apiary-agent.incoming"
+	staged := path.Join(path.Dir(AgentPath), ".apiary-agent.incoming")
 	if err := r.Upload(ctx, staged, 0o755, b.Binary); err != nil {
 		return fmt.Errorf("onboard: upload the agent: %w", err)
 	}
-	if out, err := r.Run(ctx, "mv -f "+staged+" /usr/local/bin/apiary-agent"); err != nil {
+	if out, err := r.Run(ctx, "mv -f "+staged+" "+AgentPath); err != nil {
 		return fmt.Errorf("onboard: install the agent binary: %w (%s)", err, strings.TrimSpace(out))
 	}
 	return nil
@@ -322,9 +336,8 @@ func enrolAgent(ctx context.Context, r Runner, d OnboardDeps, in OnboardInput) e
 	// as a one-shot command outside systemd, so nothing has loaded that file yet
 	// — and on the first onboard the file does not exist, because `install` is
 	// what creates it.
-	cmd := fmt.Sprintf("AGENT_BASE_URL=%s /usr/local/bin/apiary-agent enrol --token %s "+
-		"--base-url %s --install",
-		shellQuote(d.BaseURL), shellQuote(token), shellQuote(d.BaseURL))
+	cmd := fmt.Sprintf("AGENT_BASE_URL=%s %s enrol --token %s --base-url %s --install",
+		shellQuote(d.BaseURL), AgentPath, shellQuote(token), shellQuote(d.BaseURL))
 	out, err := r.Run(ctx, cmd)
 	if err != nil {
 		// The token is NOT included in the error. A failed enrolment is exactly

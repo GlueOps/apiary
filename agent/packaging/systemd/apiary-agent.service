@@ -20,7 +20,14 @@ StartLimitIntervalSec=0
 [Service]
 Type=notify
 NotifyAccess=main
-ExecStart=/usr/local/bin/apiary-agent start
+# /usr/sbin, not /usr/local/bin. This runs as root and its job is upgrading and
+# rebooting the host, so it belongs where root-only binaries belong — and
+# /usr/local/bin is on every unprivileged user's PATH, which makes a root daemon
+# look like something any of them could usefully run.
+#
+# `apiary-agent install` rewrites this line to wherever the binary actually is,
+# so a host that already has it elsewhere keeps working rather than being moved.
+ExecStart=/usr/sbin/apiary-agent start
 
 # The supervision this replaces: run as a bare process and nothing notices when
 # it dies. A fleet agent that has silently exited looks identical to a host that
