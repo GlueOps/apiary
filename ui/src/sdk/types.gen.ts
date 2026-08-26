@@ -145,6 +145,17 @@ export type BeeView = {
     unavailable_until?: string;
 };
 
+export type BindingScopeBody = {
+    /**
+     * The fleet this binding applies to. Empty means every host in the organization, including hosts in no fleet.
+     */
+    hive_id?: string;
+    /**
+     * A group inside that fleet. Requires hive_id: swarm names are unique only within a fleet, so a bare swarm id names a group without saying whose.
+     */
+    swarm_id?: string;
+};
+
 export type BindingView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1730,6 +1741,7 @@ export type UpdateBindingRequestBody = {
     readonly $schema?: string;
     enabled: boolean;
     priority?: number;
+    scope?: BindingScopeBody;
 };
 
 export type UpdateHiveRequestBody = {
@@ -2839,6 +2851,7 @@ export type TaskLogsResponseBodyWritable = {
 export type UpdateBindingRequestBodyWritable = {
     enabled: boolean;
     priority?: number;
+    scope?: BindingScopeBody;
 };
 
 export type UpdateHiveRequestBodyWritable = {

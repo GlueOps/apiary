@@ -25,6 +25,7 @@ type UpdateBindingRequestBody struct {
 	Schema *string `json:"$schema,omitempty"`
 	Enabled bool `json:"enabled"`
 	Priority *int64 `json:"priority,omitempty"`
+	Scope *BindingScopeBody `json:"scope,omitempty"`
 }
 
 type _UpdateBindingRequestBody UpdateBindingRequestBody
@@ -135,6 +136,38 @@ func (o *UpdateBindingRequestBody) SetPriority(v int64) {
 	o.Priority = &v
 }
 
+// GetScope returns the Scope field value if set, zero value otherwise.
+func (o *UpdateBindingRequestBody) GetScope() BindingScopeBody {
+	if o == nil || IsNil(o.Scope) {
+		var ret BindingScopeBody
+		return ret
+	}
+	return *o.Scope
+}
+
+// GetScopeOk returns a tuple with the Scope field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *UpdateBindingRequestBody) GetScopeOk() (*BindingScopeBody, bool) {
+	if o == nil || IsNil(o.Scope) {
+		return nil, false
+	}
+	return o.Scope, true
+}
+
+// HasScope returns a boolean if a field has been set.
+func (o *UpdateBindingRequestBody) HasScope() bool {
+	if o != nil && !IsNil(o.Scope) {
+		return true
+	}
+
+	return false
+}
+
+// SetScope gets a reference to the given BindingScopeBody and assigns it to the Scope field.
+func (o *UpdateBindingRequestBody) SetScope(v BindingScopeBody) {
+	o.Scope = &v
+}
+
 func (o UpdateBindingRequestBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -151,6 +184,9 @@ func (o UpdateBindingRequestBody) ToMap() (map[string]interface{}, error) {
 	toSerialize["enabled"] = o.Enabled
 	if !IsNil(o.Priority) {
 		toSerialize["priority"] = o.Priority
+	}
+	if !IsNil(o.Scope) {
+		toSerialize["scope"] = o.Scope
 	}
 	return toSerialize, nil
 }

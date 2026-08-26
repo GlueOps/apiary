@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { BindingScopeBody } from './BindingScopeBody';
+import {
+    BindingScopeBodyFromJSON,
+    BindingScopeBodyFromJSONTyped,
+    BindingScopeBodyToJSON,
+    BindingScopeBodyToJSONTyped,
+} from './BindingScopeBody';
+
 /**
  * 
  * @export
@@ -37,6 +45,12 @@ export interface UpdateBindingRequestBody {
      * @memberof UpdateBindingRequestBody
      */
     priority?: number;
+    /**
+     * 
+     * @type {BindingScopeBody}
+     * @memberof UpdateBindingRequestBody
+     */
+    scope?: BindingScopeBody;
 }
 
 /**
@@ -60,6 +74,7 @@ export function UpdateBindingRequestBodyFromJSONTyped(json: any, ignoreDiscrimin
         '$schema': json['$schema'] == null ? undefined : json['$schema'],
         'enabled': json['enabled'],
         'priority': json['priority'] == null ? undefined : json['priority'],
+        'scope': json['scope'] == null ? undefined : BindingScopeBodyFromJSON(json['scope']),
     };
 }
 
@@ -76,6 +91,7 @@ export function UpdateBindingRequestBodyToJSONTyped(value?: Omit<UpdateBindingRe
         
         'enabled': value['enabled'],
         'priority': value['priority'],
+        'scope': BindingScopeBodyToJSON(value['scope']),
     };
 }
 

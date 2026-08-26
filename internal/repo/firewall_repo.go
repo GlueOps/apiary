@@ -330,11 +330,43 @@ func (r *FirewallRepoGorm) CreateBinding(ctx context.Context, b *tenant.Firewall
 }
 
 func (r *FirewallRepoGorm) UpdateBinding(ctx context.Context, id uuid.UUID, priority int, enabled bool) error {
+	return r.UpdateBindingWithScope(ctx, id, priority, enabled, nil)
+}
+
+// BindingScopeChange moves a binding to a different scope.
+//
+// A distinct type, and passed as a POINTER, so "leave the scope alone" is
+// expressible. Without it a caller sending only priority and enabled — which is
+// every caller that predates this — would have its binding silently re-scoped to
+// org-wide, because both ids would arrive as nil. Widening a binding from one
+// fleet to the whole organization is the single worst accident this endpoint
+// could have, so the absence of an instruction has to mean absence.
+type BindingScopeChange struct {
+	HiveID  *uuid.UUID
+	SwarmID *uuid.UUID
+}
+
+// UpdateBindingWithScope updates a binding, optionally moving its scope.
+func (r *FirewallRepoGorm) UpdateBindingWithScope(
+	ctx context.Context, id uuid.UUID, priority int, enabled bool, scope *BindingScopeChange,
+) error {
+	fields := map[string]any{"priority": priority, "enabled": enabled}
+	if scope != nil {
+		// Written as explicit NULLs rather than omitted. A map value of nil is what
+		// GORM turns into NULL; leaving the key out would keep the old id, which is
+		// the difference between "move this to org-wide" and "do nothing".
+		fields["hive_id"] = scope.HiveID
+		fields["swarm_id"] = scope.SwarmID
+	}
 	res := r.db.WithContext(ctx).Model(&tenant.FirewallBinding{}).
 		Where("id = ?", id).
-		Updates(map[string]any{"priority": priority, "enabled": enabled})
+		Updates(fields)
 	if res.Error != nil {
-		return res.Error
+		// Translated, because a re-scope collides on exactly the indexes a create
+		// does: moving a binding onto a scope where the same ruleset is already
+		// bound would render that ruleset twice, duplicating every rule in it. The
+		// operator needs "already bound there", not a constraint name.
+		return translateFirewallConflict(res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return ErrFirewallBindingNotFound

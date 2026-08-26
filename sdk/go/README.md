@@ -104,7 +104,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallBindingsCreate**](docs/FirewallAPI.md#firewallbindingscreate) | **Post** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization
 *FirewallAPI* | [**FirewallBindingsDelete**](docs/FirewallAPI.md#firewallbindingsdelete) | **Delete** /api/v1/firewall/bindings/{id} | Remove a binding
 *FirewallAPI* | [**FirewallBindingsList**](docs/FirewallAPI.md#firewallbindingslist) | **Get** /api/v1/firewall/bindings | List ruleset bindings
-*FirewallAPI* | [**FirewallBindingsUpdate**](docs/FirewallAPI.md#firewallbindingsupdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
+*FirewallAPI* | [**FirewallBindingsUpdate**](docs/FirewallAPI.md#firewallbindingsupdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding
 *FirewallAPI* | [**FirewallPreview**](docs/FirewallAPI.md#firewallpreview) | **Get** /api/v1/firewall/preview | Preview the rules a fleet would receive
 *FirewallAPI* | [**FirewallPublish**](docs/FirewallAPI.md#firewallpublish) | **Post** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet&#39;s rules as the next revision
 *FirewallAPI* | [**FirewallRevert**](docs/FirewallAPI.md#firewallrevert) | **Post** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision&#39;s ruleset
@@ -183,6 +183,7 @@ Class | Method | HTTP request | Description
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
  - [BeeView](docs/BeeView.md)
+ - [BindingScopeBody](docs/BindingScopeBody.md)
  - [BindingView](docs/BindingView.md)
  - [CapacityView](docs/CapacityView.md)
  - [ChangePasswordRequestBody](docs/ChangePasswordRequestBody.md)

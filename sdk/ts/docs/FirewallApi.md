@@ -7,7 +7,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**firewallBindingsCreate**](FirewallApi.md#firewallbindingscreate) | **POST** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization |
 | [**firewallBindingsDelete**](FirewallApi.md#firewallbindingsdelete) | **DELETE** /api/v1/firewall/bindings/{id} | Remove a binding |
 | [**firewallBindingsList**](FirewallApi.md#firewallbindingslist) | **GET** /api/v1/firewall/bindings | List ruleset bindings |
-| [**firewallBindingsUpdate**](FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding |
+| [**firewallBindingsUpdate**](FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding |
 | [**firewallPreview**](FirewallApi.md#firewallpreview) | **GET** /api/v1/firewall/preview | Preview the rules a fleet would receive |
 | [**firewallPublish**](FirewallApi.md#firewallpublish) | **POST** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet\&#39;s rules as the next revision |
 | [**firewallRevert**](FirewallApi.md#firewallrevert) | **POST** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision\&#39;s ruleset |
@@ -250,7 +250,9 @@ This endpoint does not need any parameter.
 
 > DeletedResponseBody firewallBindingsUpdate(id, updateBindingRequestBody)
 
-Reprioritise or disable a binding
+Reprioritise, disable, or re-scope a binding
+
+Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.  Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
 
 ### Example
 

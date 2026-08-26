@@ -1299,6 +1299,10 @@ paths:
       tags:
       - Firewall
     put:
+      description: |-
+        Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.
+
+        Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
       operationId: firewall-bindings-update
       parameters:
       - explode: false
@@ -1333,7 +1337,7 @@ paths:
       - ApiKeyAuth: []
       - OrgKeyAuth: []
         OrgKeySecret: []
-      summary: Reprioritise or disable a binding
+      summary: "Reprioritise, disable, or re-scope a binding"
       tags:
       - Firewall
   /api/v1/firewall/hives/{hive_id}/publish:
@@ -3777,6 +3781,21 @@ components:
       required:
       - id
       - status
+    BindingScopeBody:
+      additionalProperties: false
+      example:
+        hive_id: hive_id
+        swarm_id: swarm_id
+      properties:
+        hive_id:
+          description: "The fleet this binding applies to. Empty means every host\
+            \ in the organization, including hosts in no fleet."
+          type: string
+        swarm_id:
+          description: "A group inside that fleet. Requires hive_id: swarm names are\
+            \ unique only within a fleet, so a bare swarm id names a group without\
+            \ saying whose."
+          type: string
     BindingView:
       additionalProperties: false
       example:
@@ -8018,6 +8037,9 @@ components:
         $schema: https://openapi-generator.tech
         enabled: true
         priority: 0
+        scope:
+          hive_id: hive_id
+          swarm_id: swarm_id
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -8030,6 +8052,8 @@ components:
           format: int64
           minimum: 0
           type: integer
+        scope:
+          $ref: "#/components/schemas/BindingScopeBody"
       required:
       - enabled
     UpdateHiveRequestBody:

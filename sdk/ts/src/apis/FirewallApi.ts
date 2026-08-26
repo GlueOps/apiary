@@ -431,7 +431,8 @@ export class FirewallApi extends runtime.BaseAPI {
     }
 
     /**
-     * Reprioritise or disable a binding
+     * Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.  Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
+     * Reprioritise, disable, or re-scope a binding
      */
     async firewallBindingsUpdateRaw(requestParameters: FirewallBindingsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeletedResponseBody>> {
         const requestOptions = await this.firewallBindingsUpdateRequestOpts(requestParameters);
@@ -441,7 +442,8 @@ export class FirewallApi extends runtime.BaseAPI {
     }
 
     /**
-     * Reprioritise or disable a binding
+     * Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.  Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
+     * Reprioritise, disable, or re-scope a binding
      */
     async firewallBindingsUpdate(requestParameters: FirewallBindingsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeletedResponseBody> {
         const response = await this.firewallBindingsUpdateRaw(requestParameters, initOverrides);

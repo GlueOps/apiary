@@ -556,7 +556,11 @@ export const firewallBindingsDelete = <ThrowOnError extends boolean = false>(opt
 });
 
 /**
- * Reprioritise or disable a binding
+ * Reprioritise, disable, or re-scope a binding
+ *
+ * Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.
+ *
+ * Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
  */
 export const firewallBindingsUpdate = <ThrowOnError extends boolean = false>(options: Options<FirewallBindingsUpdateData, ThrowOnError>): RequestResult<FirewallBindingsUpdateResponses, FirewallBindingsUpdateErrors, ThrowOnError> => (options.client ?? client).put<FirewallBindingsUpdateResponses, FirewallBindingsUpdateErrors, ThrowOnError>({
     security: [

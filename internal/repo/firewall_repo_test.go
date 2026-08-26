@@ -804,3 +804,107 @@ func TestCreateStoresDisabledRatherThanSilentlyEnabling(t *testing.T) {
 		}
 	})
 }
+
+// TestAnUpdateWithNoScopeLeavesTheBindingWhereItIs.
+//
+// THE WIDENING TEST. Every client that predates the scope field sends only
+// priority and enabled. If absence were read as "both ids empty", each of those
+// requests would silently move a fleet-scoped binding to org-wide — pushing that
+// ruleset onto every host in the organization, including hosts in no fleet. It
+// is the worst accident this endpoint could have, and it would look like a
+// successful save.
+func TestAnUpdateWithNoScopeLeavesTheBindingWhereItIs(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	hive := seedHive(t, db, "prod")
+	rs := seedRuleset(t, r, "base")
+	b := &tenant.FirewallBinding{HiveID: &hive.ID, RulesetID: rs.ID, Priority: 100, Enabled: true}
+	if err := r.CreateBinding(ctx, b); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	// Exactly what an older client sends.
+	if err := r.UpdateBinding(ctx, b.ID, 50, false); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	var after tenant.FirewallBinding
+	if err := db.First(&after, "id = ?", b.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if after.HiveID == nil {
+		t.Fatal("an update that said nothing about scope widened the binding from one fleet " +
+			"to the whole organization")
+	}
+	if *after.HiveID != hive.ID {
+		t.Fatalf("scope moved to %s, want %s", *after.HiveID, hive.ID)
+	}
+	if after.Priority != 50 || after.Enabled {
+		t.Fatalf("the fields that WERE named did not change: priority=%d enabled=%v",
+			after.Priority, after.Enabled)
+	}
+}
+
+// TestAnExplicitScopeMovesTheBinding, which is the whole point — and an empty
+// hive id is how org-wide is spelled, so it must clear rather than be ignored.
+func TestAnExplicitScopeMovesTheBinding(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	hive := seedHive(t, db, "prod")
+	rs := seedRuleset(t, r, "base")
+	b := &tenant.FirewallBinding{HiveID: &hive.ID, RulesetID: rs.ID, Priority: 100, Enabled: true}
+	if err := r.CreateBinding(ctx, b); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	// Fleet -> org-wide.
+	if err := r.UpdateBindingWithScope(ctx, b.ID, 100, true, &BindingScopeChange{}); err != nil {
+		t.Fatalf("re-scope to org: %v", err)
+	}
+	var after tenant.FirewallBinding
+	_ = db.First(&after, "id = ?", b.ID).Error
+	if after.HiveID != nil {
+		t.Fatalf("still scoped to fleet %s after being moved org-wide", *after.HiveID)
+	}
+
+	// And back again.
+	if err := r.UpdateBindingWithScope(ctx, b.ID, 100, true,
+		&BindingScopeChange{HiveID: &hive.ID}); err != nil {
+		t.Fatalf("re-scope to fleet: %v", err)
+	}
+	_ = db.First(&after, "id = ?", b.ID).Error
+	if after.HiveID == nil || *after.HiveID != hive.ID {
+		t.Fatal("moving back to a fleet did not take")
+	}
+}
+
+// TestMovingOntoAnOccupiedScopeIsRefusedAsAConflict.
+//
+// The same ruleset bound twice at one scope renders twice, duplicating every
+// rule in it. The operator needs "already bound there", not a constraint name.
+func TestMovingOntoAnOccupiedScopeIsRefusedAsAConflict(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	hive := seedHive(t, db, "prod")
+	rs := seedRuleset(t, r, "base")
+
+	occupied := &tenant.FirewallBinding{RulesetID: rs.ID, Priority: 100, Enabled: true}
+	if err := r.CreateBinding(ctx, occupied); err != nil {
+		t.Fatalf("bind org-wide: %v", err)
+	}
+	moving := &tenant.FirewallBinding{HiveID: &hive.ID, RulesetID: rs.ID, Priority: 100, Enabled: true}
+	if err := r.CreateBinding(ctx, moving); err != nil {
+		t.Fatalf("bind to fleet: %v", err)
+	}
+
+	err := r.UpdateBindingWithScope(ctx, moving.ID, 100, true, &BindingScopeChange{})
+	if !errors.Is(err, ErrFirewallBindingExists) {
+		t.Fatalf("moving onto an occupied scope returned %v, want ErrFirewallBindingExists", err)
+	}
+}

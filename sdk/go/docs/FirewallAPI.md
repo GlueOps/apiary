@@ -7,7 +7,7 @@ Method | HTTP request | Description
 [**FirewallBindingsCreate**](FirewallAPI.md#FirewallBindingsCreate) | **Post** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization
 [**FirewallBindingsDelete**](FirewallAPI.md#FirewallBindingsDelete) | **Delete** /api/v1/firewall/bindings/{id} | Remove a binding
 [**FirewallBindingsList**](FirewallAPI.md#FirewallBindingsList) | **Get** /api/v1/firewall/bindings | List ruleset bindings
-[**FirewallBindingsUpdate**](FirewallAPI.md#FirewallBindingsUpdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
+[**FirewallBindingsUpdate**](FirewallAPI.md#FirewallBindingsUpdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding
 [**FirewallPreview**](FirewallAPI.md#FirewallPreview) | **Get** /api/v1/firewall/preview | Preview the rules a fleet would receive
 [**FirewallPublish**](FirewallAPI.md#FirewallPublish) | **Post** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet&#39;s rules as the next revision
 [**FirewallRevert**](FirewallAPI.md#FirewallRevert) | **Post** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision&#39;s ruleset
@@ -221,7 +221,9 @@ Other parameters are passed through a pointer to a apiFirewallBindingsListReques
 
 > DeletedResponseBody FirewallBindingsUpdate(ctx, id).UpdateBindingRequestBody(updateBindingRequestBody).Execute()
 
-Reprioritise or disable a binding
+Reprioritise, disable, or re-scope a binding
+
+
 
 ### Example
 

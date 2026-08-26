@@ -93,7 +93,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FirewallApi* | [**firewallBindingsCreate**](docs/FirewallApi.md#firewallbindingscreate) | **POST** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization
 *FirewallApi* | [**firewallBindingsDelete**](docs/FirewallApi.md#firewallbindingsdelete) | **DELETE** /api/v1/firewall/bindings/{id} | Remove a binding
 *FirewallApi* | [**firewallBindingsList**](docs/FirewallApi.md#firewallbindingslist) | **GET** /api/v1/firewall/bindings | List ruleset bindings
-*FirewallApi* | [**firewallBindingsUpdate**](docs/FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
+*FirewallApi* | [**firewallBindingsUpdate**](docs/FirewallApi.md#firewallbindingsupdate) | **PUT** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding
 *FirewallApi* | [**firewallPreview**](docs/FirewallApi.md#firewallpreview) | **GET** /api/v1/firewall/preview | Preview the rules a fleet would receive
 *FirewallApi* | [**firewallPublish**](docs/FirewallApi.md#firewallpublish) | **POST** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet\&#39;s rules as the next revision
 *FirewallApi* | [**firewallRevert**](docs/FirewallApi.md#firewallrevert) | **POST** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision\&#39;s ruleset
@@ -172,6 +172,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [ArriveResponseBody](docs/ArriveResponseBody.md)
 - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
 - [BeeView](docs/BeeView.md)
+- [BindingScopeBody](docs/BindingScopeBody.md)
 - [BindingView](docs/BindingView.md)
 - [CapacityView](docs/CapacityView.md)
 - [ChangePasswordRequestBody](docs/ChangePasswordRequestBody.md)

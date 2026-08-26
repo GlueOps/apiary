@@ -9,6 +9,7 @@ Name | Type
 `$schema` | string
 `enabled` | boolean
 `priority` | number
+`scope` | [BindingScopeBody](BindingScopeBody.md)
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   "$schema": null,
   "enabled": null,
   "priority": null,
+  "scope": null,
 } satisfies UpdateBindingRequestBody
 
 console.log(example)

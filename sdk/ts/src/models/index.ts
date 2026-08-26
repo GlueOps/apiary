@@ -9,6 +9,7 @@ export * from './ArriveRequestBody';
 export * from './ArriveResponseBody';
 export * from './AuthenticatorSelection';
 export * from './BeeView';
+export * from './BindingScopeBody';
 export * from './BindingView';
 export * from './CapacityView';
 export * from './ChangePasswordRequestBody';
