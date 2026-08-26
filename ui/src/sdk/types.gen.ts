@@ -391,6 +391,48 @@ export type CredentialParameter = {
     type: string;
 };
 
+export type DeclareHostsRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Hostnames or IPs. Not URLs and not host:port — the control plane connects over SSH.
+     */
+    addresses?: Array<string> | null;
+    /**
+     * The same thing as pasted text: one per line, or separated by commas or spaces. Blank lines and #-comments are ignored.
+     */
+    hosts?: string;
+    /**
+     * SSH user. Empty means root, which is what a Proxmox node has.
+     */
+    user?: string;
+};
+
+export type DeclareHostsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    created: number;
+    hosts: Array<DeclaredHostView> | null;
+};
+
+export type DeclaredHostView = {
+    address: string;
+    /**
+     * False when this address was already known. Not a failure: re-pasting a list is ordinary, and the existing machine is left exactly as it was rather than pushed back to pending.
+     */
+    created: boolean;
+    detail?: string;
+    id?: string;
+    /**
+     * Whether this machine is now waiting for the onboarding ticker.
+     */
+    queued: boolean;
+};
+
 export type DeleteAccountRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2086,6 +2128,26 @@ export type CreateTaskRequestBodyWritable = {
 export type CreateTaskResponseBodyWritable = {
     id: string;
     status: string;
+};
+
+export type DeclareHostsRequestBodyWritable = {
+    /**
+     * Hostnames or IPs. Not URLs and not host:port — the control plane connects over SSH.
+     */
+    addresses?: Array<string> | null;
+    /**
+     * The same thing as pasted text: one per line, or separated by commas or spaces. Blank lines and #-comments are ignored.
+     */
+    hosts?: string;
+    /**
+     * SSH user. Empty means root, which is what a Proxmox node has.
+     */
+    user?: string;
+};
+
+export type DeclareHostsResponseBodyWritable = {
+    created: number;
+    hosts: Array<DeclaredHostView> | null;
 };
 
 export type DeleteAccountRequestBodyWritable = {
@@ -4700,6 +4762,31 @@ export type FleetHypervisorsListResponses = {
 };
 
 export type FleetHypervisorsListResponse = FleetHypervisorsListResponses[keyof FleetHypervisorsListResponses];
+
+export type FleetHypervisorsDeclareData = {
+    body: DeclareHostsRequestBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/fleet/hypervisors';
+};
+
+export type FleetHypervisorsDeclareErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetHypervisorsDeclareError = FleetHypervisorsDeclareErrors[keyof FleetHypervisorsDeclareErrors];
+
+export type FleetHypervisorsDeclareResponses = {
+    /**
+     * Created
+     */
+    201: DeclareHostsResponseBody;
+};
+
+export type FleetHypervisorsDeclareResponse = FleetHypervisorsDeclareResponses[keyof FleetHypervisorsDeclareResponses];
 
 export type FleetHypervisorsGetData = {
     body?: never;

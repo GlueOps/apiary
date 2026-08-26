@@ -125,6 +125,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 *FleetApi* | [**fleetHostsArrive**](docs/FleetApi.md#fleethostsarrive) | **POST** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
 *FleetApi* | [**fleetHostsFleetless**](docs/FleetApi.md#fleethostsfleetless) | **GET** /api/v1/fleet/fleetless | List machines belonging to no hive
 *FleetApi* | [**fleetHypervisorsCordon**](docs/FleetApi.md#fleethypervisorscordon) | **POST** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
+*FleetApi* | [**fleetHypervisorsDeclare**](docs/FleetApi.md#fleethypervisorsdeclare) | **POST** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 *FleetApi* | [**fleetHypervisorsDepart**](docs/FleetApi.md#fleethypervisorsdepart) | **POST** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
 *FleetApi* | [**fleetHypervisorsGet**](docs/FleetApi.md#fleethypervisorsget) | **GET** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetApi* | [**fleetHypervisorsList**](docs/FleetApi.md#fleethypervisorslist) | **GET** /api/v1/fleet/hypervisors | List machines with their three status axes
@@ -195,6 +196,9 @@ All URIs are relative to *http://127.0.0.1:8080*
 - [CredentialCreation](docs/CredentialCreation.md)
 - [CredentialDescriptor](docs/CredentialDescriptor.md)
 - [CredentialParameter](docs/CredentialParameter.md)
+- [DeclareHostsRequestBody](docs/DeclareHostsRequestBody.md)
+- [DeclareHostsResponseBody](docs/DeclareHostsResponseBody.md)
+- [DeclaredHostView](docs/DeclaredHostView.md)
 - [DeleteAccountRequestBody](docs/DeleteAccountRequestBody.md)
 - [DeleteAccountResponseBody](docs/DeleteAccountResponseBody.md)
 - [DeleteBeeResponseBody](docs/DeleteBeeResponseBody.md)

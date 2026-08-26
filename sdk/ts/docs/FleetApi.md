@@ -22,6 +22,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 | [**fleetHostsArrive**](FleetApi.md#fleethostsarrive) | **POST** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive |
 | [**fleetHostsFleetless**](FleetApi.md#fleethostsfleetless) | **GET** /api/v1/fleet/fleetless | List machines belonging to no hive |
 | [**fleetHypervisorsCordon**](FleetApi.md#fleethypervisorscordon) | **POST** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor |
+| [**fleetHypervisorsDeclare**](FleetApi.md#fleethypervisorsdeclare) | **POST** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address |
 | [**fleetHypervisorsDepart**](FleetApi.md#fleethypervisorsdepart) | **POST** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive |
 | [**fleetHypervisorsGet**](FleetApi.md#fleethypervisorsget) | **GET** /api/v1/fleet/hypervisors/{id} | Get one hypervisor |
 | [**fleetHypervisorsList**](FleetApi.md#fleethypervisorslist) | **GET** /api/v1/fleet/hypervisors | List machines with their three status axes |
@@ -1381,6 +1382,84 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | OK |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## fleetHypervisorsDeclare
+
+> DeclareHostsResponseBody fleetHypervisorsDeclare(declareHostsRequestBody)
+
+Bring hosts into the fleet by address
+
+Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.  THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host\&#39;s authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.  Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetHypervisorsDeclareRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: OrgKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: OrgKeyAuth
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: ApiKeyAuth
+    apiKey: "YOUR API KEY",
+    // Configure HTTP bearer authorization: BearerAuth
+    accessToken: "YOUR BEARER TOKEN",
+  });
+  const api = new FleetApi(config);
+
+  const body = {
+    // DeclareHostsRequestBody
+    declareHostsRequestBody: ...,
+  } satisfies FleetHypervisorsDeclareRequest;
+
+  try {
+    const data = await api.fleetHypervisorsDeclare(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **declareHostsRequestBody** | [DeclareHostsRequestBody](DeclareHostsRequestBody.md) |  | |
+
+### Return type
+
+[**DeclareHostsResponseBody**](DeclareHostsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
 | **0** | Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

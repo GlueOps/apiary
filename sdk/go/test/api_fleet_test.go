@@ -256,6 +256,18 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 
 	})
 
+	t.Run("Test FleetAPIService FleetHypervisorsDeclare", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetHypervisorsDeclare(context.Background()).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetHypervisorsDepart", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test

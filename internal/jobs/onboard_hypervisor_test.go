@@ -27,11 +27,10 @@ func deps(r *fakeRunner, sets []tenant.FirewallSet, beats bool) OnboardDeps {
 			return sets, nil
 		},
 		NewRunner: func(string, string, []byte) (Runner, error) { return r, nil },
-		Bundle: AgentBundle{
-			Binary: []byte("ELF"),
-			Unit:   []byte("[Unit]"),
-			Env:    []byte("AGENT_BASE_URL=http://cp:8282"),
+		Bundle: func(string) (AgentBundle, error) {
+			return AgentBundle{Binary: []byte("ELF")}, nil
 		},
+		BaseURL: "http://cp:8282",
 		EnrolmentToken: func(context.Context, uuid.UUID) (string, error) {
 			return "tok-123", nil
 		},
@@ -168,7 +167,7 @@ func idx(h, n string) int {
 func TestOnboardRefusesToEnableAUnitWithNoBinary(t *testing.T) {
 	r := &fakeRunner{}
 	d := deps(r, mgmtSets("194.36.65.187"), true)
-	d.Bundle = AgentBundle{}
+	d.Bundle = func(string) (AgentBundle, error) { return AgentBundle{}, nil }
 
 	if err := Onboard(context.Background(), d, input()); err == nil {
 		t.Fatal("enabled a unit with nothing to run")
@@ -182,21 +181,40 @@ func TestOnboardRefusesToEnableAUnitWithNoBinary(t *testing.T) {
 
 // The binary, unit and config all reach the host — the gap that made the first
 // version of this worker enable a unit nothing had installed.
-func TestOnboardUploadsTheBundle(t *testing.T) {
+//
+// The BINARY only. The unit and the environment file are no longer uploaded from
+// here: the agent writes both itself during `enrol --install`, so a second copy
+// shipped from the control plane would be a second definition of the unit that
+// has to agree with the agent's own — and the one an operator installs by hand
+// would drift from the one onboarding installs.
+func TestOnboardUploadsTheBinary(t *testing.T) {
 	r := &fakeRunner{}
 	if err := Onboard(context.Background(), deps(r, mgmtSets("194.36.65.187"), true), input()); err != nil {
 		t.Fatalf("onboard failed: %v", err)
 	}
-	want := []string{"/usr/local/bin/apiary-agent", "/etc/systemd/system/apiary-agent.service", "/etc/apiary-agent/agent.env"}
-	for _, w := range want {
-		found := false
-		for _, u := range r.uploads {
-			if u == w {
-				found = true
-			}
+
+	// Staged and moved, not written in place. Linux refuses to write over a
+	// running executable, so an onboard re-run against a host whose agent is up
+	// would fail on the copy — and quietly enough to read as a successful
+	// install of the new binary.
+	staged := false
+	for _, u := range r.uploads {
+		if contains(u, ".apiary-agent.incoming") {
+			staged = true
 		}
-		if !found {
-			t.Fatalf("%s was never uploaded; uploads were %v", w, r.uploads)
+	}
+	if !staged {
+		t.Fatalf("the binary was not staged before being moved into place; uploads were %v",
+			r.uploads)
+	}
+	if r.indexOf("mv -f") == -1 || r.indexOf("/usr/local/bin/apiary-agent") == -1 {
+		t.Fatalf("the staged binary was never moved into place; commands were %v", r.cmds)
+	}
+
+	for _, u := range r.uploads {
+		if u == "/etc/systemd/system/apiary-agent.service" || u == "/etc/apiary-agent/agent.env" {
+			t.Fatalf("%s was uploaded from the control plane; the agent writes it itself, and "+
+				"two definitions of the unit drift", u)
 		}
 	}
 }

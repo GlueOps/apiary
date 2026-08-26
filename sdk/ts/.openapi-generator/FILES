@@ -35,6 +35,9 @@ docs/CredentialAssertion.md
 docs/CredentialCreation.md
 docs/CredentialDescriptor.md
 docs/CredentialParameter.md
+docs/DeclareHostsRequestBody.md
+docs/DeclareHostsResponseBody.md
+docs/DeclaredHostView.md
 docs/DeleteAccountRequestBody.md
 docs/DeleteAccountResponseBody.md
 docs/DeleteBeeResponseBody.md
@@ -218,6 +221,9 @@ src/models/CredentialAssertion.ts
 src/models/CredentialCreation.ts
 src/models/CredentialDescriptor.ts
 src/models/CredentialParameter.ts
+src/models/DeclareHostsRequestBody.ts
+src/models/DeclareHostsResponseBody.ts
+src/models/DeclaredHostView.ts
 src/models/DeleteAccountRequestBody.ts
 src/models/DeleteAccountResponseBody.ts
 src/models/DeleteBeeResponseBody.ts

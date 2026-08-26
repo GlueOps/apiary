@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/glueops/apiary/internal/agentdist"
 	"github.com/glueops/apiary/internal/config"
 	"github.com/glueops/apiary/internal/database"
 	"github.com/glueops/apiary/internal/jobs"
@@ -200,6 +201,18 @@ func runWorker() error {
 				}
 				return repo.Heartbeated(ctx, db, machineID, since)
 			},
+			// One source for the agent binary, shared with the self-upgrade endpoint.
+			// Onboarding and upgrading install the same bytes, so a host brought in
+			// today runs what an upgraded host runs.
+			Bundle: func(goarch string) (jobs.AgentBundle, error) {
+				bin, err := agentdist.Binary("linux", goarch)
+				if err != nil {
+					return jobs.AgentBundle{}, fmt.Errorf("onboard: this control plane carries "+
+						"no agent binary for linux/%s: %w", goarch, err)
+				}
+				return jobs.AgentBundle{Binary: bin}, nil
+			},
+			BaseURL: cfg.BaseURL,
 			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID, onboardErr error) (bool, error) {
 				db, err := fleetRepoFor(ctx, orgID)
 				if err != nil {

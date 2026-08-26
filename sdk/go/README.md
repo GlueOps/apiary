@@ -136,6 +136,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHostsArrive**](docs/FleetAPI.md#fleethostsarrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
 *FleetAPI* | [**FleetHostsFleetless**](docs/FleetAPI.md#fleethostsfleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 *FleetAPI* | [**FleetHypervisorsCordon**](docs/FleetAPI.md#fleethypervisorscordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
+*FleetAPI* | [**FleetHypervisorsDeclare**](docs/FleetAPI.md#fleethypervisorsdeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 *FleetAPI* | [**FleetHypervisorsDepart**](docs/FleetAPI.md#fleethypervisorsdepart) | **Post** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
 *FleetAPI* | [**FleetHypervisorsGet**](docs/FleetAPI.md#fleethypervisorsget) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetAPI* | [**FleetHypervisorsList**](docs/FleetAPI.md#fleethypervisorslist) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
@@ -206,6 +207,9 @@ Class | Method | HTTP request | Description
  - [CredentialCreation](docs/CredentialCreation.md)
  - [CredentialDescriptor](docs/CredentialDescriptor.md)
  - [CredentialParameter](docs/CredentialParameter.md)
+ - [DeclareHostsRequestBody](docs/DeclareHostsRequestBody.md)
+ - [DeclareHostsResponseBody](docs/DeclareHostsResponseBody.md)
+ - [DeclaredHostView](docs/DeclaredHostView.md)
  - [DeleteAccountRequestBody](docs/DeleteAccountRequestBody.md)
  - [DeleteAccountResponseBody](docs/DeleteAccountResponseBody.md)
  - [DeleteBeeResponseBody](docs/DeleteBeeResponseBody.md)

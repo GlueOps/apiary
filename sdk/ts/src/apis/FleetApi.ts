@@ -54,6 +54,16 @@ import {
     CreateTaskResponseBodyToJSON,
 } from '../models/CreateTaskResponseBody';
 import {
+    type DeclareHostsRequestBody,
+    DeclareHostsRequestBodyFromJSON,
+    DeclareHostsRequestBodyToJSON,
+} from '../models/DeclareHostsRequestBody';
+import {
+    type DeclareHostsResponseBody,
+    DeclareHostsResponseBodyFromJSON,
+    DeclareHostsResponseBodyToJSON,
+} from '../models/DeclareHostsResponseBody';
+import {
     type DeleteBeeResponseBody,
     DeleteBeeResponseBodyFromJSON,
     DeleteBeeResponseBodyToJSON,
@@ -249,6 +259,10 @@ export interface FleetHostsArriveRequest {
 export interface FleetHypervisorsCordonRequest {
     id: string;
     cordonRequestBody: Omit<CordonRequestBody, '$schema'>;
+}
+
+export interface FleetHypervisorsDeclareRequest {
+    declareHostsRequestBody: Omit<DeclareHostsRequestBody, '$schema'>;
 }
 
 export interface FleetHypervisorsDepartRequest {
@@ -1429,6 +1443,75 @@ export class FleetApi extends runtime.BaseAPI {
      */
     async fleetHypervisorsCordon(requestParameters: FleetHypervisorsCordonRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<HypervisorView> {
         const response = await this.fleetHypervisorsCordonRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for fleetHypervisorsDeclare without sending the request
+     */
+    async fleetHypervisorsDeclareRequestOpts(requestParameters: FleetHypervisorsDeclareRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['declareHostsRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'declareHostsRequestBody',
+                'Required parameter "declareHostsRequestBody" was null or undefined when calling fleetHypervisorsDeclare().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/fleet/hypervisors`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DeclareHostsRequestBodyToJSON(requestParameters['declareHostsRequestBody']),
+        };
+    }
+
+    /**
+     * Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.  THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host\'s authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.  Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+     * Bring hosts into the fleet by address
+     */
+    async fleetHypervisorsDeclareRaw(requestParameters: FleetHypervisorsDeclareRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeclareHostsResponseBody>> {
+        const requestOptions = await this.fleetHypervisorsDeclareRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DeclareHostsResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.  THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host\'s authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.  Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+     * Bring hosts into the fleet by address
+     */
+    async fleetHypervisorsDeclare(requestParameters: FleetHypervisorsDeclareRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeclareHostsResponseBody> {
+        const response = await this.fleetHypervisorsDeclareRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

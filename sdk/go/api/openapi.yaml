@@ -2305,6 +2305,41 @@ paths:
       summary: List machines with their three status axes
       tags:
       - Fleet
+    post:
+      description: |-
+        Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.
+
+        THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host's authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.
+
+        Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+      operationId: fleet-hypervisors-declare
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeclareHostsRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclareHostsResponseBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Bring hosts into the fleet by address
+      tags:
+      - Fleet
   /api/v1/fleet/hypervisors/{id}:
     get:
       operationId: fleet-hypervisors-get
@@ -4468,6 +4503,103 @@ components:
       required:
       - alg
       - type
+    DeclareHostsRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        addresses:
+        - addresses
+        - addresses
+        - addresses
+        - addresses
+        - addresses
+        hosts: hosts
+        user: user
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        addresses:
+          description: Hostnames or IPs. Not URLs and not host:port — the control
+            plane connects over SSH.
+          items:
+            type: string
+          maxItems: 512
+          nullable: true
+          type: array
+          default: null
+        hosts:
+          description: "The same thing as pasted text: one per line, or separated\
+            \ by commas or spaces. Blank lines and #-comments are ignored."
+          maxLength: 32768
+          type: string
+        user:
+          description: "SSH user. Empty means root, which is what a Proxmox node has."
+          maxLength: 64
+          type: string
+    DeclareHostsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        created: 0
+        hosts:
+        - address: address
+          created: true
+          detail: detail
+          id: id
+          queued: true
+        - address: address
+          created: true
+          detail: detail
+          id: id
+          queued: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          format: int64
+          type: integer
+        hosts:
+          items:
+            $ref: "#/components/schemas/DeclaredHostView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - created
+      - hosts
+    DeclaredHostView:
+      additionalProperties: false
+      example:
+        address: address
+        created: true
+        detail: detail
+        id: id
+        queued: true
+      properties:
+        address:
+          type: string
+        created:
+          description: "False when this address was already known. Not a failure:\
+            \ re-pasting a list is ordinary, and the existing machine is left exactly\
+            \ as it was rather than pushed back to pending."
+          type: boolean
+        detail:
+          type: string
+        id:
+          type: string
+        queued:
+          description: Whether this machine is now waiting for the onboarding ticker.
+          type: boolean
+      required:
+      - address
+      - created
+      - queued
     DeleteAccountRequestBody:
       additionalProperties: false
       example:

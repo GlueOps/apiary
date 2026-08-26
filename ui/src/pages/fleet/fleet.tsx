@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { IconKey, IconPlus, IconTerminal2 } from '@tabler/icons-react';
+import { IconKey, IconPlus, IconServerBolt, IconTerminal2 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -35,6 +35,7 @@ import {
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { BeeTable, beeLabel, hiveIdOf } from './bee-table';
+import { DeclareDialog } from './declare-dialog';
 import { EnrolmentDialog } from './enrolment-dialog';
 import { TaskLogs } from './task-logs';
 
@@ -46,6 +47,7 @@ type ClusterGroup = { id: string; name: string; bees: BeeView[] };
 export const Fleet = () => {
   const queryClient = useQueryClient();
   const [enrolOpen, setEnrolOpen] = useState(false);
+  const [declareOpen, setDeclareOpen] = useState(false);
   const [watching, setWatching] = useState<{
     taskId: string;
     hostname: string;
@@ -179,8 +181,11 @@ export const Fleet = () => {
           >
             <IconPlus /> Manage clusters
           </Button>
-          <Button size="sm" onClick={() => setEnrolOpen(true)}>
-            <IconKey /> Enrol a hypervisor
+          <Button size="sm" onClick={() => setDeclareOpen(true)}>
+            <IconServerBolt /> Add hypervisors
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setEnrolOpen(true)}>
+            <IconKey /> Enrol by hand
           </Button>
         </div>
       </div>
@@ -526,6 +531,7 @@ export const Fleet = () => {
       </Dialog>
 
       <EnrolmentDialog open={enrolOpen} onOpenChange={setEnrolOpen} />
+      <DeclareDialog open={declareOpen} onOpenChange={setDeclareOpen} />
     </div>
   );
 };

@@ -187,3 +187,33 @@ func ReadMachineID(ctx context.Context, r Runner) (string, error) {
 	}
 	return id, nil
 }
+
+// ReadArch asks the host what architecture it is, as a GOARCH.
+//
+// Asked rather than assumed. A control plane on amd64 onboarding an arm64 node —
+// which is the ordinary shape of a mixed fleet, and of any fleet with a Raspberry
+// Pi in it — would otherwise send a binary that installs cleanly and produces a
+// service that will not start, reported by systemd as status=203/EXEC.
+//
+// `uname -m` rather than anything cleverer: it is on every host that can run this
+// agent, it needs no interpreter, and the mapping below is the whole of the
+// translation from its vocabulary to Go's.
+func ReadArch(ctx context.Context, r Runner) (string, error) {
+	out, err := r.Run(ctx, "uname -m")
+	if err != nil {
+		return "", fmt.Errorf("onboard: read the host architecture: %w", err)
+	}
+	machine := strings.TrimSpace(out)
+	switch machine {
+	case "x86_64", "amd64":
+		return "amd64", nil
+	case "aarch64", "arm64":
+		return "arm64", nil
+	default:
+		// Refused rather than defaulted to amd64. Guessing here installs a binary
+		// the host cannot execute, and the resulting failure names neither the
+		// architecture nor the guess.
+		return "", fmt.Errorf("onboard: this host reports architecture %q, which this control "+
+			"plane has no agent for", machine)
+	}
+}
