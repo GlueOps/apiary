@@ -24,6 +24,16 @@ import {
     AgentFirewallResponseBodyToJSON,
 } from '../models/AgentFirewallResponseBody';
 import {
+    type AgentUpgradeRequestBody,
+    AgentUpgradeRequestBodyFromJSON,
+    AgentUpgradeRequestBodyToJSON,
+} from '../models/AgentUpgradeRequestBody';
+import {
+    type AgentUpgradeResponseBody,
+    AgentUpgradeResponseBodyFromJSON,
+    AgentUpgradeResponseBodyToJSON,
+} from '../models/AgentUpgradeResponseBody';
+import {
     type ArriveRequestBody,
     ArriveRequestBodyFromJSON,
     ArriveRequestBodyToJSON,
@@ -53,6 +63,16 @@ import {
     CreateTaskResponseBodyFromJSON,
     CreateTaskResponseBodyToJSON,
 } from '../models/CreateTaskResponseBody';
+import {
+    type DeclareHostsRequestBody,
+    DeclareHostsRequestBodyFromJSON,
+    DeclareHostsRequestBodyToJSON,
+} from '../models/DeclareHostsRequestBody';
+import {
+    type DeclareHostsResponseBody,
+    DeclareHostsResponseBodyFromJSON,
+    DeclareHostsResponseBodyToJSON,
+} from '../models/DeclareHostsResponseBody';
 import {
     type DeleteBeeResponseBody,
     DeleteBeeResponseBodyFromJSON,
@@ -189,6 +209,10 @@ import {
     UpdateHiveRequestBodyToJSON,
 } from '../models/UpdateHiveRequestBody';
 
+export interface FleetAgentUpgradeRequest {
+    agentUpgradeRequestBody: Omit<AgentUpgradeRequestBody, '$schema'>;
+}
+
 export interface FleetBeeAgentBinaryRequest {
     os: string;
     arch: string;
@@ -251,6 +275,10 @@ export interface FleetHypervisorsCordonRequest {
     cordonRequestBody: Omit<CordonRequestBody, '$schema'>;
 }
 
+export interface FleetHypervisorsDeclareRequest {
+    declareHostsRequestBody: Omit<DeclareHostsRequestBody, '$schema'>;
+}
+
 export interface FleetHypervisorsDepartRequest {
     id: string;
 }
@@ -288,6 +316,75 @@ export interface SshKeysRevokeRequest {
  * 
  */
 export class FleetApi extends runtime.BaseAPI {
+
+    /**
+     * Creates request options for fleetAgentUpgrade without sending the request
+     */
+    async fleetAgentUpgradeRequestOpts(requestParameters: FleetAgentUpgradeRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['agentUpgradeRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'agentUpgradeRequestBody',
+                'Required parameter "agentUpgradeRequestBody" was null or undefined when calling fleetAgentUpgrade().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/fleet/agent-upgrades`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AgentUpgradeRequestBodyToJSON(requestParameters['agentUpgradeRequestBody']),
+        };
+    }
+
+    /**
+     * Queues one upgrade task per agent. Each host downloads the binary this control plane serves, verifies it against the advertised digest, proves it runs, keeps the previous one, and restarts.  ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two things at once. Hosts do proceed in parallel with each other, which is safe here because an agent is not in the data path of anything it manages — an agent that fails to come back costs control of that host, not its guests.  Agents already on the target version, offline, or holding another task are SKIPPED and each says why. Queueing an offline agent would hand it a task it collects whenever it returns, which is often during the next incident.
+     * Upgrade every agent in a fleet
+     */
+    async fleetAgentUpgradeRaw(requestParameters: FleetAgentUpgradeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AgentUpgradeResponseBody>> {
+        const requestOptions = await this.fleetAgentUpgradeRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AgentUpgradeResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Queues one upgrade task per agent. Each host downloads the binary this control plane serves, verifies it against the advertised digest, proves it runs, keeps the previous one, and restarts.  ROLLING BY CONSTRUCTION: a bee may hold at most one task, so no host does two things at once. Hosts do proceed in parallel with each other, which is safe here because an agent is not in the data path of anything it manages — an agent that fails to come back costs control of that host, not its guests.  Agents already on the target version, offline, or holding another task are SKIPPED and each says why. Queueing an offline agent would hand it a task it collects whenever it returns, which is often during the next incident.
+     * Upgrade every agent in a fleet
+     */
+    async fleetAgentUpgrade(requestParameters: FleetAgentUpgradeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AgentUpgradeResponseBody> {
+        const response = await this.fleetAgentUpgradeRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for fleetBeeAgentBinary without sending the request
@@ -1429,6 +1526,75 @@ export class FleetApi extends runtime.BaseAPI {
      */
     async fleetHypervisorsCordon(requestParameters: FleetHypervisorsCordonRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<HypervisorView> {
         const response = await this.fleetHypervisorsCordonRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for fleetHypervisorsDeclare without sending the request
+     */
+    async fleetHypervisorsDeclareRequestOpts(requestParameters: FleetHypervisorsDeclareRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['declareHostsRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'declareHostsRequestBody',
+                'Required parameter "declareHostsRequestBody" was null or undefined when calling fleetHypervisorsDeclare().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/fleet/hypervisors`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DeclareHostsRequestBodyToJSON(requestParameters['declareHostsRequestBody']),
+        };
+    }
+
+    /**
+     * Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.  THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host\'s authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.  Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+     * Bring hosts into the fleet by address
+     */
+    async fleetHypervisorsDeclareRaw(requestParameters: FleetHypervisorsDeclareRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeclareHostsResponseBody>> {
+        const requestOptions = await this.fleetHypervisorsDeclareRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DeclareHostsResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Records intent for one or more machines and queues them for onboarding. The ticker claims each on its next pass, connects over SSH with the fleet key, installs the agent and enrols it.  THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host\'s authorized_keys first — Settings → Fleet SSH keys has the command — or every attempt fails as a refused connection.  Addresses can be pasted as a list: one per line, or separated by commas or spaces, with blank lines and #-comments ignored. Each is reported on separately, because a rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.
+     * Bring hosts into the fleet by address
+     */
+    async fleetHypervisorsDeclare(requestParameters: FleetHypervisorsDeclareRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeclareHostsResponseBody> {
+        const response = await this.fleetHypervisorsDeclareRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

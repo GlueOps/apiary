@@ -118,6 +118,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallRulesetsUpdate**](docs/FirewallAPI.md#firewallrulesetsupdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
+*FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
 *FleetAPI* | [**FleetBeeAppendLogs**](docs/FleetAPI.md#fleetbeeappendlogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
@@ -136,6 +137,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHostsArrive**](docs/FleetAPI.md#fleethostsarrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
 *FleetAPI* | [**FleetHostsFleetless**](docs/FleetAPI.md#fleethostsfleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 *FleetAPI* | [**FleetHypervisorsCordon**](docs/FleetAPI.md#fleethypervisorscordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
+*FleetAPI* | [**FleetHypervisorsDeclare**](docs/FleetAPI.md#fleethypervisorsdeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 *FleetAPI* | [**FleetHypervisorsDepart**](docs/FleetAPI.md#fleethypervisorsdepart) | **Post** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
 *FleetAPI* | [**FleetHypervisorsGet**](docs/FleetAPI.md#fleethypervisorsget) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetAPI* | [**FleetHypervisorsList**](docs/FleetAPI.md#fleethypervisorslist) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
@@ -183,6 +185,8 @@ Class | Method | HTTP request | Description
  - [AgentBuildView](docs/AgentBuildView.md)
  - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
  - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
+ - [AgentUpgradeRequestBody](docs/AgentUpgradeRequestBody.md)
+ - [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
@@ -206,6 +210,9 @@ Class | Method | HTTP request | Description
  - [CredentialCreation](docs/CredentialCreation.md)
  - [CredentialDescriptor](docs/CredentialDescriptor.md)
  - [CredentialParameter](docs/CredentialParameter.md)
+ - [DeclareHostsRequestBody](docs/DeclareHostsRequestBody.md)
+ - [DeclareHostsResponseBody](docs/DeclareHostsResponseBody.md)
+ - [DeclaredHostView](docs/DeclaredHostView.md)
  - [DeleteAccountRequestBody](docs/DeleteAccountRequestBody.md)
  - [DeleteAccountResponseBody](docs/DeleteAccountResponseBody.md)
  - [DeleteBeeResponseBody](docs/DeleteBeeResponseBody.md)
@@ -332,6 +339,7 @@ Class | Method | HTTP request | Description
  - [UpdateRoleRequestBody](docs/UpdateRoleRequestBody.md)
  - [UpdateRoleResponseBody](docs/UpdateRoleResponseBody.md)
  - [UpdateRulesetRequestBody](docs/UpdateRulesetRequestBody.md)
+ - [UpgradeCandidateView](docs/UpgradeCandidateView.md)
  - [UserEntity](docs/UserEntity.md)
  - [VerifyEmailRequestBody](docs/VerifyEmailRequestBody.md)
  - [VerifyEmailResponseBody](docs/VerifyEmailResponseBody.md)

@@ -22,6 +22,18 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
 
+	t.Run("Test FleetAPIService FleetAgentUpgrade", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetAgentUpgrade(context.Background()).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetBeeAgentBinary", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test
@@ -249,6 +261,18 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 		var id string
 
 		resp, httpRes, err := apiClient.FleetAPI.FleetHypervisorsCordon(context.Background(), id).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FleetAPIService FleetHypervisorsDeclare", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetHypervisorsDeclare(context.Background()).Execute()
 
 		require.Nil(t, err)
 		require.NotNil(t, resp)

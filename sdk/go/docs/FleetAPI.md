@@ -4,6 +4,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**FleetAgentUpgrade**](FleetAPI.md#FleetAgentUpgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 [**FleetBeeAgentBinary**](FleetAPI.md#FleetBeeAgentBinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 [**FleetBeeAgentDist**](FleetAPI.md#FleetBeeAgentDist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
 [**FleetBeeAppendLogs**](FleetAPI.md#FleetBeeAppendLogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
@@ -22,6 +23,7 @@ Method | HTTP request | Description
 [**FleetHostsArrive**](FleetAPI.md#FleetHostsArrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
 [**FleetHostsFleetless**](FleetAPI.md#FleetHostsFleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 [**FleetHypervisorsCordon**](FleetAPI.md#FleetHypervisorsCordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
+[**FleetHypervisorsDeclare**](FleetAPI.md#FleetHypervisorsDeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 [**FleetHypervisorsDepart**](FleetAPI.md#FleetHypervisorsDepart) | **Post** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
 [**FleetHypervisorsGet**](FleetAPI.md#FleetHypervisorsGet) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 [**FleetHypervisorsList**](FleetAPI.md#FleetHypervisorsList) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
@@ -32,6 +34,72 @@ Method | HTTP request | Description
 [**SshKeysMint**](FleetAPI.md#SshKeysMint) | **Post** /api/v1/ssh-keys | Mint a fleet SSH key
 [**SshKeysRevoke**](FleetAPI.md#SshKeysRevoke) | **Delete** /api/v1/ssh-keys/{id} | Revoke a fleet SSH key
 
+
+
+## FleetAgentUpgrade
+
+> AgentUpgradeResponseBody FleetAgentUpgrade(ctx).AgentUpgradeRequestBody(agentUpgradeRequestBody).Execute()
+
+Upgrade every agent in a fleet
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	agentUpgradeRequestBody := *openapiclient.NewAgentUpgradeRequestBody() // AgentUpgradeRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetAgentUpgrade(context.Background()).AgentUpgradeRequestBody(agentUpgradeRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetAgentUpgrade``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetAgentUpgrade`: AgentUpgradeResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetAgentUpgrade`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetAgentUpgradeRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **agentUpgradeRequestBody** | [**AgentUpgradeRequestBody**](AgentUpgradeRequestBody.md) |  | 
+
+### Return type
+
+[**AgentUpgradeResponseBody**](AgentUpgradeResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
 
 
 ## FleetBeeAgentBinary
@@ -1230,6 +1298,72 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**HypervisorView**](HypervisorView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetHypervisorsDeclare
+
+> DeclareHostsResponseBody FleetHypervisorsDeclare(ctx).DeclareHostsRequestBody(declareHostsRequestBody).Execute()
+
+Bring hosts into the fleet by address
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	declareHostsRequestBody := *openapiclient.NewDeclareHostsRequestBody() // DeclareHostsRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetHypervisorsDeclare(context.Background()).DeclareHostsRequestBody(declareHostsRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetHypervisorsDeclare``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetHypervisorsDeclare`: DeclareHostsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetHypervisorsDeclare`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetHypervisorsDeclareRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **declareHostsRequestBody** | [**DeclareHostsRequestBody**](DeclareHostsRequestBody.md) |  | 
+
+### Return type
+
+[**DeclareHostsResponseBody**](DeclareHostsResponseBody.md)
 
 ### Authorization
 

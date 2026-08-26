@@ -33,10 +33,22 @@ type OnboardDeps struct {
 	// something better within seconds of arriving.
 	EnrolmentToken func(ctx context.Context, orgID uuid.UUID) (string, error)
 
-	// Bundle is the binary, unit and configuration to install. Supplied by the
-	// caller rather than read here, so the worker does not need a filesystem and
-	// the same sequence can be driven by a test.
-	Bundle AgentBundle
+	// Bundle is the binary to install. Supplied by the caller rather than read
+	// here, so the worker does not need a filesystem and the same sequence can be
+	// driven by a test.
+	//
+	// A FUNCTION OF THE HOST'S ARCHITECTURE, because the control plane does not
+	// know it until it has connected. Onboarding an arm64 node from an amd64
+	// control plane by sending whatever binary happened to be first is an install
+	// that succeeds and a service that will not start.
+	Bundle func(goarch string) (AgentBundle, error)
+
+	// BaseURL is the address the agent should enrol against and dial afterwards.
+	//
+	// Passed explicitly rather than left to the agent's default of
+	// http://localhost:8080, which on a hypervisor is the hypervisor — the one
+	// address guaranteed to be wrong.
+	BaseURL string
 
 	// Heartbeated reports whether the agent on this host has checked in since t.
 	//
@@ -138,7 +150,19 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 		return err
 	}
 
-	if err := installAgent(ctx, runner, d.Bundle); err != nil {
+	// Asked of the host rather than assumed. See OnboardDeps.Bundle.
+	goarch, err := ReadArch(ctx, runner)
+	if err != nil {
+		return err
+	}
+	if d.Bundle == nil {
+		return fmt.Errorf("onboard: no agent binary source configured")
+	}
+	bundle, err := d.Bundle(goarch)
+	if err != nil {
+		return err
+	}
+	if err := installAgent(ctx, runner, bundle); err != nil {
 		return err
 	}
 
@@ -216,64 +240,56 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 	return nil
 }
 
-// AgentBundle is everything a host needs to run the agent.
+// AgentBundle is what the control plane has to put on a host.
+//
+// THE BINARY AND NOTHING ELSE. It used to carry the systemd unit and the
+// environment file too, and both were always empty because nothing populated
+// them — an automated onboard therefore failed at "refusing to enable a unit
+// with no binary to run", which is the honest report of a path that had never
+// been wired.
+//
+// They are gone rather than filled in, because the agent already writes both:
+// `apiary-agent install` embeds the unit and derives the environment file from
+// its own configuration. Uploading a second copy from here would mean two
+// definitions of the unit that have to agree, and the one an operator installs
+// by hand would drift from the one onboarding installs — which is exactly the
+// kind of difference nobody notices until a watchdog is missing from half the
+// fleet.
 type AgentBundle struct {
 	// Binary for the host's architecture.
 	Binary []byte
-	// Unit is the systemd service file.
-	Unit []byte
-	// Env is the agent's environment file: AGENT_-prefixed settings, chiefly
-	// AGENT_BASE_URL.
-	//
-	// An environment file rather than a config file, because the agent reads a
-	// config file only when --config is passed and the unit does not pass it.
-	// Uploading a config.yaml it never opens is the kind of mistake that looks
-	// correct in review and fails as "connection refused to localhost:8080".
-	//
-	// Contains no credential: the agent enrols to obtain its own.
-	Env []byte
 }
 
-// installAgent puts the binary, unit and configuration in place and starts it.
+// installAgent puts the binary on the host.
 //
-// Every step is idempotent, because River retries and a partially applied
-// install must converge rather than accumulate. Uploads are atomic writes, so a
-// transfer that dies halfway cannot leave a truncated executable that systemd
-// then tries to start — which fails in a way that looks like a broken agent
-// rather than a broken copy.
+// Just the binary. The unit and the environment file are written by the agent's
+// own `install` command, which runs as part of enrolment below — see
+// AgentBundle for why the control plane no longer carries copies of them.
+//
+// Idempotent, because River retries and a partially applied install must
+// converge rather than accumulate. The upload is an atomic write, so a transfer
+// that dies halfway cannot leave a truncated executable that systemd then tries
+// to start — which fails in a way that looks like a broken agent rather than a
+// broken copy.
 func installAgent(ctx context.Context, r Runner, b AgentBundle) error {
 	if len(b.Binary) == 0 {
-		return fmt.Errorf("onboard: refusing to enable a unit with no binary to run")
+		return fmt.Errorf("onboard: this control plane carries no agent binary for that host, " +
+			"so there is nothing to install; build one into internal/agentdist/dist")
 	}
-
-	if out, err := r.Run(ctx, "install -d -m 0755 /etc/apiary-agent /var/lib/apiary-agent /usr/local/bin"); err != nil {
+	if out, err := r.Run(ctx, "install -d -m 0755 /usr/local/bin"); err != nil {
 		return fmt.Errorf("onboard: create directories: %w (%s)", err, strings.TrimSpace(out))
 	}
-
-	uploads := []struct {
-		path string
-		mode uint32
-		body []byte
-	}{
-		{"/usr/local/bin/apiary-agent", 0o755, b.Binary},
-		{"/etc/systemd/system/apiary-agent.service", 0o644, b.Unit},
-		// 0600: it names the control plane and may later hold tuning an operator
-		// would rather not have every process on the host read.
-		{"/etc/apiary-agent/agent.env", 0o600, b.Env},
+	// Uploaded to a staging path and moved into place, not written over. Linux
+	// refuses to write over a running executable (ETXTBSY), so an onboard that
+	// re-runs against a host whose agent is already up would otherwise fail on
+	// the copy — and the failure is silent enough that it reads as the new
+	// binary having been installed.
+	const staged = "/usr/local/bin/.apiary-agent.incoming"
+	if err := r.Upload(ctx, staged, 0o755, b.Binary); err != nil {
+		return fmt.Errorf("onboard: upload the agent: %w", err)
 	}
-	for _, u := range uploads {
-		if len(u.body) == 0 {
-			continue
-		}
-		if err := r.Upload(ctx, u.path, u.mode, u.body); err != nil {
-			return fmt.Errorf("onboard: upload %s: %w", u.path, err)
-		}
-	}
-
-	// daemon-reload only. Starting happens after enrolment, because the unit
-	// refuses to run without an identity.
-	if out, err := r.Run(ctx, "systemctl daemon-reload"); err != nil {
-		return fmt.Errorf("onboard: daemon-reload: %w (%s)", err, strings.TrimSpace(out))
+	if out, err := r.Run(ctx, "mv -f "+staged+" /usr/local/bin/apiary-agent"); err != nil {
+		return fmt.Errorf("onboard: install the agent binary: %w (%s)", err, strings.TrimSpace(out))
 	}
 	return nil
 }
@@ -297,8 +313,18 @@ func enrolAgent(ctx context.Context, r Runner, d OnboardDeps, in OnboardInput) e
 
 	// --base-url explicitly, not left to the environment file: enrol runs as a
 	// one-shot command outside systemd, so nothing has loaded that file yet.
-	cmd := fmt.Sprintf("set -a; . /etc/apiary-agent/agent.env 2>/dev/null; set +a; "+
-		"/usr/local/bin/apiary-agent enrol --token %s", shellQuote(token))
+	// --install, so the same command that obtains the credential also writes the
+	// unit and starts the service. Enrolment alone leaves a host credentialled
+	// and unsupervised: no unit, nothing restarting the agent if it dies, and
+	// nothing bringing it back after a reboot.
+	//
+	// --base-url explicitly rather than left to the environment file: enrol runs
+	// as a one-shot command outside systemd, so nothing has loaded that file yet
+	// — and on the first onboard the file does not exist, because `install` is
+	// what creates it.
+	cmd := fmt.Sprintf("AGENT_BASE_URL=%s /usr/local/bin/apiary-agent enrol --token %s "+
+		"--base-url %s --install",
+		shellQuote(d.BaseURL), shellQuote(token), shellQuote(d.BaseURL))
 	out, err := r.Run(ctx, cmd)
 	if err != nil {
 		// The token is NOT included in the error. A failed enrolment is exactly

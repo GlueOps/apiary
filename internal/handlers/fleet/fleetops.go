@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -453,6 +454,72 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, mapErr(ctx, err)
 		}
 		return &UpdateHiveResponse{Body: hiveDetail(h, counts[h.ID])}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID:   "fleet-hypervisors-declare",
+		Method:        http.MethodPost,
+		Path:          "/fleet/hypervisors",
+		Summary:       "Bring hosts into the fleet by address",
+		DefaultStatus: http.StatusCreated,
+		Description: "Records intent for one or more machines and queues them for onboarding. " +
+			"The ticker claims each on its next pass, connects over SSH with the fleet key, " +
+			"installs the agent and enrols it.\n\n" +
+			"THE HOST MUST ALREADY TRUST THE FLEET KEY. Install its public half in the host's " +
+			"authorized_keys first — Settings → Fleet SSH keys has the command — or every " +
+			"attempt fails as a refused connection.\n\n" +
+			"Addresses can be pasted as a list: one per line, or separated by commas or spaces, " +
+			"with blank lines and #-comments ignored. Each is reported on separately, because a " +
+			"rack declared all-or-nothing would roll back thirty-one good hosts over one repeat.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *DeclareHostsRequest) (*DeclareHostsResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		addresses := in.Body.Addresses
+		if in.Body.Hosts != "" {
+			parsed, perr := tenant.ParseHostList(in.Body.Hosts)
+			if perr != nil {
+				return nil, huma.Error422UnprocessableEntity(perr.Error())
+			}
+			addresses = append(addresses, parsed...)
+		}
+		if len(addresses) == 0 {
+			return nil, huma.Error422UnprocessableEntity(
+				"give at least one address, either in `addresses` or as pasted text in `hosts`")
+		}
+
+		hosts := make([]tenant.DeclaredHost, 0, len(addresses))
+		for _, a := range addresses {
+			if verr := tenant.ValidateHostAddress(a); verr != nil {
+				return nil, huma.Error422UnprocessableEntity(verr.Error())
+			}
+			hosts = append(hosts, tenant.DeclaredHost{Address: strings.TrimSpace(a), User: in.Body.User})
+		}
+
+		results, err := repo.DeclareHosts(ctx, db, hosts)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &DeclareHostsResponse{}
+		out.Body.Hosts = make([]DeclaredHostView, 0, len(results))
+		for _, r := range results {
+			if r.Created {
+				out.Body.Created++
+			}
+			out.Body.Hosts = append(out.Body.Hosts, DeclaredHostView{
+				Address: r.Address, ID: r.ID, Created: r.Created, Queued: r.Queued, Detail: r.Detail,
+			})
+		}
+		return out, nil
 	})
 
 	huma.Register(hapi, huma.Operation{
@@ -1334,4 +1401,33 @@ func nodeCountFor(counts map[uuid.UUID]int, h tenant.Hypervisor) int {
 		return 0
 	}
 	return counts[*h.HiveID]
+}
+
+// DeclareHostsRequest names machines to bring into the fleet.
+//
+// TWO WAYS TO SAY IT, on purpose. `addresses` is what a client sends; `hosts` is
+// what a person pastes — out of a spreadsheet, an inventory file or a terminal —
+// and requiring that to be reformatted into a JSON array by hand is exactly
+// where a typo enters a list of machines about to be connected to.
+type DeclareHostsRequest struct {
+	Body struct {
+		Addresses []string `json:"addresses,omitempty" maxItems:"512" doc:"Hostnames or IPs. Not URLs and not host:port — the control plane connects over SSH."`
+		Hosts     string   `json:"hosts,omitempty" maxLength:"32768" doc:"The same thing as pasted text: one per line, or separated by commas or spaces. Blank lines and #-comments are ignored."`
+		User      string   `json:"user,omitempty" maxLength:"64" doc:"SSH user. Empty means root, which is what a Proxmox node has."`
+	}
+}
+
+type DeclaredHostView struct {
+	Address string `json:"address"`
+	ID      string `json:"id,omitempty"`
+	Created bool   `json:"created" doc:"False when this address was already known. Not a failure: re-pasting a list is ordinary, and the existing machine is left exactly as it was rather than pushed back to pending."`
+	Queued  bool   `json:"queued" doc:"Whether this machine is now waiting for the onboarding ticker."`
+	Detail  string `json:"detail,omitempty"`
+}
+
+type DeclareHostsResponse struct {
+	Body struct {
+		Created int                `json:"created"`
+		Hosts   []DeclaredHostView `json:"hosts"`
+	}
 }

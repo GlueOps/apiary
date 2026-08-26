@@ -24,6 +24,16 @@ func (f *fakeRunner) Run(_ context.Context, cmd string) (string, error) {
 	if f.failOn != "" && strings.Contains(cmd, f.failOn) {
 		return "boom", errors.New("exit 1")
 	}
+	// The two questions onboarding asks the HOST about itself. Answering them
+	// with the empty string — which every other command gets — makes the job fail
+	// before it reaches whatever a test is actually about, and the failure names
+	// an architecture rather than the step under test.
+	switch {
+	case strings.Contains(cmd, "uname -m"):
+		return "x86_64\n", nil
+	case strings.Contains(cmd, "machine-id"):
+		return "8f3c1d2e4b5a69784b2c1d0e3f4a5b6c\n", nil
+	}
 	return "", nil
 }
 

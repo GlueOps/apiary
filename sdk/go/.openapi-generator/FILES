@@ -26,6 +26,8 @@ docs/AdminAPI.md
 docs/AgentBuildView.md
 docs/AgentDistResponseBody.md
 docs/AgentFirewallResponseBody.md
+docs/AgentUpgradeRequestBody.md
+docs/AgentUpgradeResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
 docs/AuthAPI.md
@@ -50,6 +52,9 @@ docs/CredentialAssertion.md
 docs/CredentialCreation.md
 docs/CredentialDescriptor.md
 docs/CredentialParameter.md
+docs/DeclareHostsRequestBody.md
+docs/DeclareHostsResponseBody.md
+docs/DeclaredHostView.md
 docs/DeleteAccountRequestBody.md
 docs/DeleteAccountResponseBody.md
 docs/DeleteBeeResponseBody.md
@@ -185,6 +190,7 @@ docs/UpdateRequestBody.md
 docs/UpdateRoleRequestBody.md
 docs/UpdateRoleResponseBody.md
 docs/UpdateRulesetRequestBody.md
+docs/UpgradeCandidateView.md
 docs/UserEntity.md
 docs/VerifyEmailRequestBody.md
 docs/VerifyEmailResponseBody.md
@@ -197,6 +203,8 @@ model_access_rule_view.go
 model_agent_build_view.go
 model_agent_dist_response_body.go
 model_agent_firewall_response_body.go
+model_agent_upgrade_request_body.go
+model_agent_upgrade_response_body.go
 model_api_key_view.go
 model_arrive_request_body.go
 model_arrive_response_body.go
@@ -221,6 +229,9 @@ model_credential_assertion.go
 model_credential_creation.go
 model_credential_descriptor.go
 model_credential_parameter.go
+model_declare_hosts_request_body.go
+model_declare_hosts_response_body.go
+model_declared_host_view.go
 model_delete_account_request_body.go
 model_delete_account_response_body.go
 model_delete_bee_response_body.go
@@ -347,6 +358,7 @@ model_update_request_body.go
 model_update_role_request_body.go
 model_update_role_response_body.go
 model_update_ruleset_request_body.go
+model_upgrade_candidate_view.go
 model_user_entity.go
 model_verify_email_request_body.go
 model_verify_email_response_body.go
