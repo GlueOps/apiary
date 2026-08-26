@@ -23,7 +23,11 @@ func publishDB(t *testing.T) *gorm.DB {
 
 func seedPublishHive(t *testing.T, db *gorm.DB) tenant.Hive {
 	t.Helper()
-	h := tenant.Hive{ID: uuid.New(), Name: "lab", Provider: "proxmox"}
+	// Unique per call. Hive names carry a unique index and every test in this file
+	// shares one schema, so a fixed name passes alone and collides the moment the
+	// package runs as a whole — which is how it reaches CI green locally and red
+	// there.
+	h := tenant.Hive{ID: uuid.New(), Name: "lab-" + uuid.NewString()[:8], Provider: "proxmox"}
 	if err := db.Create(&h).Error; err != nil {
 		t.Fatalf("seed hive: %v", err)
 	}
