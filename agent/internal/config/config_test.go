@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +103,53 @@ func TestLoadStillHonoursTheOverride(t *testing.T) {
 	}
 	if cfg.BaseURL != "http://override:1234" {
 		t.Fatalf("BaseURL = %q, want the explicit override to win", cfg.BaseURL)
+	}
+}
+
+// TestEveryConfigFieldCanBeSetFromTheEnvironment.
+//
+// THE BUG THIS PINS. viper's AutomaticEnv resolves on Get; Unmarshal only asks
+// about keys that exist in SOME source. A key with a default exists, a key with
+// nothing does not — so node_name, proxmox_token_id and proxmox_secret, the three
+// with no default, were unreadable from the environment entirely.
+//
+// That is why no agent ever had a Proxmox client. Setting AGENT_PROXMOX_TOKEN_ID
+// did nothing, the constructor correctly reported no token, and the refusal told
+// operators to set exactly the variables the code could not read.
+//
+// Driven off the struct by reflection rather than a hand-written list, because a
+// hand-written list is the thing that went out of date: the failure is a field
+// added without a binding, and only the struct knows when one appears.
+func TestEveryConfigFieldCanBeSetFromTheEnvironment(t *testing.T) {
+	typ := reflect.TypeOf(Config{})
+
+	for i := range typ.NumField() {
+		f := typ.Field(i)
+		key := f.Tag.Get("mapstructure")
+		if key == "" {
+			continue
+		}
+		// Only string fields are exercised: a duration needs a parseable value and
+		// the binding is what is under test, not the parsing.
+		if f.Type.Kind() != reflect.String {
+			continue
+		}
+
+		t.Run(key, func(t *testing.T) {
+			env := "AGENT_" + strings.ToUpper(key)
+			want := "set-from-" + key
+			t.Setenv(env, want)
+
+			cfg, err := Load("", "", "")
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			got := reflect.ValueOf(cfg).Field(i).String()
+			if got != want {
+				t.Fatalf("%s did not reach Config.%s (got %q); the key is not bound, so the "+
+					"environment cannot set it and an operator following the error message "+
+					"changes nothing", env, f.Name, got)
+			}
+		})
 	}
 }

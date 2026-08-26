@@ -41,6 +41,33 @@ func Load(configPath, baseURLOverride, statePathOverride string) (Config, error)
 	v.SetDefault("proxmox_url", "https://127.0.0.1:8006/api2/json")
 	v.SetDefault("join_password_path", "/etc/apiary-agent/cluster-join.secret")
 
+	// EVERY key is bound explicitly, including the ones that have defaults.
+	//
+	// AutomaticEnv does NOT reach Unmarshal for a key viper has never heard of:
+	// it resolves on Get, and Unmarshal only asks about keys that exist in some
+	// source. A key with a default exists; a key with nothing does not. So
+	// node_name, proxmox_token_id and proxmox_secret — the three with no default —
+	// were unreadable from the environment entirely.
+	//
+	// That is why no agent has ever had a Proxmox client. Setting
+	// AGENT_PROXMOX_TOKEN_ID did nothing, the constructor correctly reported that
+	// no token was configured, and the refusal I wrote sent operators to set
+	// exactly the variables this code could not read.
+	//
+	// Bound rather than given empty defaults, because a default of "" makes the
+	// key exist and hides the next one added without a binding. The list is the
+	// contract: a field here and not in that list is a field the environment
+	// cannot set.
+	for _, key := range []string{
+		"base_url", "state_path",
+		"poll_min", "poll_max", "heartbeat_every", "command_timeout",
+		"node_name", "proxmox_url", "proxmox_token_id", "proxmox_secret",
+		"join_password_path",
+	} {
+		// The error is only ever "no key given", which cannot happen for a literal.
+		_ = v.BindEnv(key)
+	}
+
 	// The environment file the agent's own `install` writes, and the one systemd
 	// loads for the service. Read FIRST so a command run from a shell sees the
 	// same settings the service does.
