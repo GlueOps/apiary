@@ -41,6 +41,21 @@
   // branches, which removed exactly the four stale go.sum lines Renovate left.
   postUpdateOptions: ["gomodTidy"],
 
+  // GENERATED TREES ARE NOT DEPENDENCY SURFACES.
+  //
+  // sdk/ts and sdk/go are openapi-generator output — every file in them,
+  // package.json and tsconfig.json included, is listed in their own
+  // .openapi-generator/FILES manifest. The versions written there come from the
+  // generator's templates, not from a decision anyone here made, so a Renovate
+  // update to them proposes editing a build artifact: the next `go run .
+  // generate sdk` reverts it, and CI's generated-artifacts job fails on the diff
+  // in the meantime.
+  //
+  // sdk/ts/package.json pinning typescript at "^4.0 || ^5.0" is the example that
+  // found this — it appeared in the TypeScript 7 pull request alongside the two
+  // manifests that are real.
+  ignorePaths: ["sdk/ts/**", "sdk/go/**"],
+
   // AUTOMERGE, because the alternative is what this repository already had: on
   // 2026-08-25 twenty pull requests were open at once, every one of them green,
   // every one waiting for somebody to click. That rate does not fall, so the
