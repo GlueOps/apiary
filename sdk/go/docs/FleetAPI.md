@@ -4,6 +4,8 @@ All URIs are relative to *http://127.0.0.1:8080*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**FleetBeeAgentBinary**](FleetAPI.md#FleetBeeAgentBinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
+[**FleetBeeAgentDist**](FleetAPI.md#FleetBeeAgentDist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
 [**FleetBeeAppendLogs**](FleetAPI.md#FleetBeeAppendLogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
 [**FleetBeeEnrol**](FleetAPI.md#FleetBeeEnrol) | **Post** /api/v1/agent/enrol | Enrol a fleet agent into an organization
 [**FleetBeeFirewall**](FleetAPI.md#FleetBeeFirewall) | **Get** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
@@ -30,6 +32,140 @@ Method | HTTP request | Description
 [**SshKeysMint**](FleetAPI.md#SshKeysMint) | **Post** /api/v1/ssh-keys | Mint a fleet SSH key
 [**SshKeysRevoke**](FleetAPI.md#SshKeysRevoke) | **Delete** /api/v1/ssh-keys/{id} | Revoke a fleet SSH key
 
+
+
+## FleetBeeAgentBinary
+
+> string FleetBeeAgentBinary(ctx, os, arch).Execute()
+
+Download the agent binary for one platform
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	os := "os_example" // string | 
+	arch := "arch_example" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetBeeAgentBinary(context.Background(), os, arch).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetBeeAgentBinary``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetBeeAgentBinary`: string
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetBeeAgentBinary`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**os** | **string** |  | 
+**arch** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetBeeAgentBinaryRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+
+### Return type
+
+**string**
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetBeeAgentDist
+
+> AgentDistResponseBody FleetBeeAgentDist(ctx).Execute()
+
+What agent binaries this control plane can serve
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetBeeAgentDist(context.Background()).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetBeeAgentDist``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetBeeAgentDist`: AgentDistResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetBeeAgentDist`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+This endpoint does not need any parameter.
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetBeeAgentDistRequest struct via the builder pattern
+
+
+### Return type
+
+[**AgentDistResponseBody**](AgentDistResponseBody.md)
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
 
 
 ## FleetBeeAppendLogs

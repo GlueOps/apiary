@@ -86,6 +86,31 @@ export type AccessRuleView = {
     value: string;
 };
 
+export type AgentBuildView = {
+    arch: string;
+    os: string;
+    /**
+     * Verified by the agent before it installs anything. Without it an upgrade is 'execute whatever arrived'.
+     */
+    sha256: string;
+    size: number;
+};
+
+export type AgentDistResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Empty when this server carries no agent binaries, which is normal for a development build. An agent treats that as nothing to do rather than as a failure.
+     */
+    builds: Array<AgentBuildView> | null;
+    /**
+     * The control plane's version. These binaries shipped with it, so an agent compares its own against this.
+     */
+    version: string;
+};
+
 export type AgentFirewallResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1910,6 +1935,17 @@ export type AccessRuleViewWritable = {
     value: string;
 };
 
+export type AgentDistResponseBodyWritable = {
+    /**
+     * Empty when this server carries no agent binaries, which is normal for a development build. An agent treats that as nothing to do rather than as a failure.
+     */
+    builds: Array<AgentBuildView> | null;
+    /**
+     * The control plane's version. These binaries shipped with it, so an agent compares its own against this.
+     */
+    version: string;
+};
+
 export type AgentFirewallResponseBodyWritable = {
     /**
      * The complete nft ruleset, to be loaded with nft -f. It begins with a flush because it is desired state rather than a patch: anything already loaded that it does not declare must go.
@@ -2988,6 +3024,59 @@ export type AdminImpersonateEndResponses = {
 };
 
 export type AdminImpersonateEndResponse = AdminImpersonateEndResponses[keyof AdminImpersonateEndResponses];
+
+export type FleetBeeAgentDistData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/dist';
+};
+
+export type FleetBeeAgentDistErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetBeeAgentDistError = FleetBeeAgentDistErrors[keyof FleetBeeAgentDistErrors];
+
+export type FleetBeeAgentDistResponses = {
+    /**
+     * OK
+     */
+    200: AgentDistResponseBody;
+};
+
+export type FleetBeeAgentDistResponse = FleetBeeAgentDistResponses[keyof FleetBeeAgentDistResponses];
+
+export type FleetBeeAgentBinaryData = {
+    body?: never;
+    path: {
+        os: string;
+        arch: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/dist/{os}/{arch}';
+};
+
+export type FleetBeeAgentBinaryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetBeeAgentBinaryError = FleetBeeAgentBinaryErrors[keyof FleetBeeAgentBinaryErrors];
+
+export type FleetBeeAgentBinaryResponses = {
+    /**
+     * OK
+     */
+    200: string;
+};
+
+export type FleetBeeAgentBinaryResponse = FleetBeeAgentBinaryResponses[keyof FleetBeeAgentBinaryResponses];
 
 export type FleetBeeEnrolData = {
     body: EnrolRequestBodyWritable;

@@ -14,6 +14,11 @@
 
 import * as runtime from '../runtime';
 import {
+    type AgentDistResponseBody,
+    AgentDistResponseBodyFromJSON,
+    AgentDistResponseBodyToJSON,
+} from '../models/AgentDistResponseBody';
+import {
     type AgentFirewallResponseBody,
     AgentFirewallResponseBodyFromJSON,
     AgentFirewallResponseBodyToJSON,
@@ -184,6 +189,11 @@ import {
     UpdateHiveRequestBodyToJSON,
 } from '../models/UpdateHiveRequestBody';
 
+export interface FleetBeeAgentBinaryRequest {
+    os: string;
+    arch: string;
+}
+
 export interface FleetBeeAppendLogsRequest {
     id: string;
     logsRequestBody: Omit<LogsRequestBody, '$schema'>;
@@ -278,6 +288,120 @@ export interface SshKeysRevokeRequest {
  * 
  */
 export class FleetApi extends runtime.BaseAPI {
+
+    /**
+     * Creates request options for fleetBeeAgentBinary without sending the request
+     */
+    async fleetBeeAgentBinaryRequestOpts(requestParameters: FleetBeeAgentBinaryRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['os'] == null) {
+            throw new runtime.RequiredError(
+                'os',
+                'Required parameter "os" was null or undefined when calling fleetBeeAgentBinary().'
+            );
+        }
+
+        if (requestParameters['arch'] == null) {
+            throw new runtime.RequiredError(
+                'arch',
+                'Required parameter "arch" was null or undefined when calling fleetBeeAgentBinary().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Secret"] = await this.configuration.apiKey("X-AGENT-Secret"); // AgentKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Key"] = await this.configuration.apiKey("X-AGENT-Key"); // AgentKeyAuth authentication
+        }
+
+
+        let urlPath = `/api/v1/agent/dist/{os}/{arch}`;
+        urlPath = urlPath.replace('{os}', encodeURIComponent(String(requestParameters['os'])));
+        urlPath = urlPath.replace('{arch}', encodeURIComponent(String(requestParameters['arch'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Authenticated, even though the same bytes sit in the SPA\'s embedded tree. Serving them as a static asset would hand the fleet\'s agent binary to anyone who could reach the login page.  Verify the response against the sha256 from /agent/dist before running it.
+     * Download the agent binary for one platform
+     */
+    async fleetBeeAgentBinaryRaw(requestParameters: FleetBeeAgentBinaryRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
+        const requestOptions = await this.fleetBeeAgentBinaryRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<string>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Authenticated, even though the same bytes sit in the SPA\'s embedded tree. Serving them as a static asset would hand the fleet\'s agent binary to anyone who could reach the login page.  Verify the response against the sha256 from /agent/dist before running it.
+     * Download the agent binary for one platform
+     */
+    async fleetBeeAgentBinary(requestParameters: FleetBeeAgentBinaryRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
+        const response = await this.fleetBeeAgentBinaryRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for fleetBeeAgentDist without sending the request
+     */
+    async fleetBeeAgentDistRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Secret"] = await this.configuration.apiKey("X-AGENT-Secret"); // AgentKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Key"] = await this.configuration.apiKey("X-AGENT-Key"); // AgentKeyAuth authentication
+        }
+
+
+        let urlPath = `/api/v1/agent/dist`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * A hypervisor in a managed estate has no route to the internet, so the control plane is the only host it can fetch a new agent from. Without this an upgrade means copying a binary to every machine by hand, which is how a fleet ends up running four different versions.  An EMPTY build list is not a failure. A server compiled without agent binaries is an ordinary development build, and an agent reads it as nothing to do.
+     * What agent binaries this control plane can serve
+     */
+    async fleetBeeAgentDistRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AgentDistResponseBody>> {
+        const requestOptions = await this.fleetBeeAgentDistRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AgentDistResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * A hypervisor in a managed estate has no route to the internet, so the control plane is the only host it can fetch a new agent from. Without this an upgrade means copying a binary to every machine by hand, which is how a fleet ends up running four different versions.  An EMPTY build list is not a failure. A server compiled without agent binaries is an ordinary development build, and an agent reads it as nothing to do.
+     * What agent binaries this control plane can serve
+     */
+    async fleetBeeAgentDist(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AgentDistResponseBody> {
+        const response = await this.fleetBeeAgentDistRaw(initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for fleetBeeAppendLogs without sending the request

@@ -27,6 +27,21 @@ before:
     # Generated output is now verified on pull requests instead (see
     # .github/workflows/ci.yml), so drift fails a PR rather than a release.
     - yarn --cwd ui/ build
+    # The agent, cross-compiled into internal/agentdist/dist so the SERVER can
+    # serve it. A hypervisor in a managed estate has no route to the internet, so
+    # the control plane is the only host it can fetch an upgrade from.
+    #
+    # It belongs in a hook and not only in the build entry below, because these
+    # bytes are EMBEDDED at compile time: the server build reads the directory,
+    # so the binaries have to exist before it runs. The build entry still exists
+    # and still produces the released artifacts — this is a second, earlier copy
+    # for embedding, and it is stripped rather than stamped because nothing reads
+    # a version out of it. The catalogue reports the SERVER's version, which is
+    # what these shipped with.
+    #
+    # Output is gitignored, like the UI build above, so it cannot dirty the tree
+    # and fail goreleaser's validate step after a tag has been pushed.
+    - just agent-dist
 
 builds:
   - id: apiary

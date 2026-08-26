@@ -22,6 +22,33 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
 
+	t.Run("Test FleetAPIService FleetBeeAgentBinary", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var os string
+		var arch string
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetBeeAgentBinary(context.Background(), os, arch).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FleetAPIService FleetBeeAgentDist", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetBeeAgentDist(context.Background()).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetBeeAppendLogs", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test

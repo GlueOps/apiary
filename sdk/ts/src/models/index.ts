@@ -4,6 +4,8 @@ export * from './APIKeyView';
 export * from './AcceptRequestBody';
 export * from './AcceptResponseBody';
 export * from './AccessRuleView';
+export * from './AgentBuildView';
+export * from './AgentDistResponseBody';
 export * from './AgentFirewallResponseBody';
 export * from './ArriveRequestBody';
 export * from './ArriveResponseBody';

@@ -14,13 +14,16 @@ package fleet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/glueops/apiary/internal/agentdist"
 	"github.com/glueops/apiary/internal/apimiddleware"
 	"github.com/glueops/apiary/internal/app"
+	"github.com/glueops/apiary/internal/buildinfo"
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
@@ -331,6 +334,65 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 	})
 
 	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-bee-agent-dist",
+		Method:      http.MethodGet,
+		Path:        "/agent/dist",
+		Summary:     "What agent binaries this control plane can serve",
+		Description: "A hypervisor in a managed estate has no route to the internet, so the " +
+			"control plane is the only host it can fetch a new agent from. Without this an " +
+			"upgrade means copying a binary to every machine by hand, which is how a fleet ends " +
+			"up running four different versions.\n\n" +
+			"An EMPTY build list is not a failure. A server compiled without agent binaries is " +
+			"an ordinary development build, and an agent reads it as nothing to do.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityAgent,
+	}, func(ctx context.Context, _ *AgentDistRequest) (*AgentDistResponse, error) {
+		if _, ok := apimiddleware.BeeFromContext(ctx); !ok {
+			return nil, huma.Error401Unauthorized("not an authenticated bee")
+		}
+		dist, err := agentdist.Catalogue(buildinfo.Version)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("could not read the agent distribution", err)
+		}
+		out := &AgentDistResponse{}
+		out.Body.Version = dist.Version
+		out.Body.Builds = make([]AgentBuildView, 0, len(dist.Builds))
+		for _, b := range dist.Builds {
+			out.Body.Builds = append(out.Body.Builds, AgentBuildView{
+				OS: b.OS, Arch: b.Arch, Size: b.Size, SHA256: b.SHA256,
+			})
+		}
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-bee-agent-binary",
+		Method:      http.MethodGet,
+		Path:        "/agent/dist/{os}/{arch}",
+		Summary:     "Download the agent binary for one platform",
+		Description: "Authenticated, even though the same bytes sit in the SPA's embedded tree. " +
+			"Serving them as a static asset would hand the fleet's agent binary to anyone who " +
+			"could reach the login page.\n\n" +
+			"Verify the response against the sha256 from /agent/dist before running it.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityAgent,
+	}, func(ctx context.Context, in *AgentBinaryRequest) (*AgentBinaryResponse, error) {
+		if _, ok := apimiddleware.BeeFromContext(ctx); !ok {
+			return nil, huma.Error401Unauthorized("not an authenticated bee")
+		}
+		body, err := agentdist.Binary(in.OS, in.Arch)
+		if err != nil {
+			return nil, huma.Error404NotFound(fmt.Sprintf(
+				"this control plane carries no agent binary for %s/%s", in.OS, in.Arch))
+		}
+		return &AgentBinaryResponse{
+			ContentType:        "application/octet-stream",
+			ContentDisposition: `attachment; filename="apiary-agent"`,
+			Body:               body,
+		}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
 		OperationID: "fleet-bee-report-task",
 		Method:      http.MethodPost,
 		Path:        "/agent/tasks/{id}/status",
@@ -394,4 +456,36 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		return out, nil
 	})
 	return nil
+}
+
+type AgentDistRequest struct{}
+
+type AgentDistResponse struct {
+	Body struct {
+		Version string           `json:"version" doc:"The control plane's version. These binaries shipped with it, so an agent compares its own against this."`
+		Builds  []AgentBuildView `json:"builds" doc:"Empty when this server carries no agent binaries, which is normal for a development build. An agent treats that as nothing to do rather than as a failure."`
+	}
+}
+
+type AgentBuildView struct {
+	OS     string `json:"os"`
+	Arch   string `json:"arch"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256" doc:"Verified by the agent before it installs anything. Without it an upgrade is 'execute whatever arrived'."`
+}
+
+type AgentBinaryRequest struct {
+	OS   string `path:"os" maxLength:"16"`
+	Arch string `path:"arch" maxLength:"16"`
+}
+
+// AgentBinaryResponse carries the executable itself.
+//
+// Raw bytes rather than base64 in JSON: the binary is around twenty megabytes,
+// and base64 would inflate it by a third and force both ends to hold the whole
+// thing in memory to encode and decode it.
+type AgentBinaryResponse struct {
+	ContentType        string `header:"Content-Type"`
+	ContentDisposition string `header:"Content-Disposition"`
+	Body               []byte
 }

@@ -8,6 +8,8 @@ docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
 docs/AdminApi.md
+docs/AgentBuildView.md
+docs/AgentDistResponseBody.md
 docs/AgentFirewallResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
@@ -190,6 +192,8 @@ src/models/APIKeyView.ts
 src/models/AcceptRequestBody.ts
 src/models/AcceptResponseBody.ts
 src/models/AccessRuleView.ts
+src/models/AgentBuildView.ts
+src/models/AgentDistResponseBody.ts
 src/models/AgentFirewallResponseBody.ts
 src/models/ArriveRequestBody.ts
 src/models/ArriveResponseBody.ts
