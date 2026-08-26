@@ -21,6 +21,13 @@ var ErrDepartureRefused = errors.New("depart: refused by a precondition")
 // the consumer side so the sequence is testable without a tenant database or a
 // cluster to take apart.
 type DepartDeps struct {
+	// RecordOutcome stores why this departure failed, or clears it on success.
+	//
+	// A dependency rather than a direct write, so this package still needs no
+	// tenant database handle of its own and the whole sequence can be driven by a
+	// test with no Postgres.
+	RecordOutcome func(ctx context.Context, orgID, hypervisorID uuid.UUID, operation string, err error) error
+
 	// FleetKey returns the control plane's key for an organization.
 	FleetKey func(ctx context.Context, orgID uuid.UUID) (pub string, priv []byte, err error)
 

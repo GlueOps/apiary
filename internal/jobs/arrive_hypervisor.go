@@ -18,6 +18,21 @@ var ErrArrivalRefused = errors.New("arrive: refused by a precondition")
 
 // ArriveDeps is what arrival needs from the rest of the system.
 type ArriveDeps struct {
+	// ProxmoxCredential returns the API token an agent in the TARGET fleet should
+	// hold, and BaseURL is the control plane address to write beside it.
+	//
+	// Named by fleet rather than by machine, because at the moment this is needed
+	// the machine's own row still says it is fleetless. A join replaces the node's
+	// token database with the target cluster's, so the credential it must end up
+	// with belongs to the cluster it is joining.
+	ProxmoxCredential func(ctx context.Context, orgID, hiveID uuid.UUID) (ProxmoxCredential, error)
+	BaseURL           string
+
+	// RecordOutcome stores why this arrival failed, or clears it on success. A
+	// dependency for the same reason as the departure's: this package keeps
+	// needing no tenant database handle of its own.
+	RecordOutcome func(ctx context.Context, orgID, hypervisorID uuid.UUID, operation string, err error) error
+
 	FleetKey  func(ctx context.Context, orgID uuid.UUID) (pub string, priv []byte, err error)
 	Snapshot  func(ctx context.Context, orgID, hypervisorID, hiveID uuid.UUID) (ArrivalSnapshot, error)
 	NewRunner func(addr, user string, priv []byte) (Runner, error)
@@ -284,6 +299,46 @@ func Arrive(ctx context.Context, d ArriveDeps, in ArriveInput) (err error) {
 			nodeName); err != nil {
 			return fmt.Errorf("arrive: the host joined %q but recording its membership failed, "+
 				"so the control plane still shows it as fleetless: %w", snap.TargetHive.Name, err)
+		}
+	}
+
+	// THE AGENT'S TOKEN IS NOW WRONG, and this is where it is corrected.
+	//
+	// A join replaces /etc/pve/priv/token.cfg with the target cluster's copy — it
+	// is on pmxcfs, so it is the cluster's database rather than the node's. The
+	// credential this agent was given when it was onboarded belonged to a
+	// different cluster, or to no cluster at all, and it no longer exists on this
+	// host. Left alone, every fleet task on a freshly joined node fails to
+	// authenticate against its own API, which reads as the join having broken
+	// something.
+	//
+	// AFTER the join is proven and the membership recorded, so a failure here
+	// cannot leave a host holding the target's credential without being in the
+	// target. Logged rather than returned, for the reason the capacity-sync
+	// enqueue below gives: the migration WORKED, and returning would re-run
+	// AuthorizeJoinKey and show the operator a failed job for a move that
+	// succeeded. The next onboard or a hand-written file repairs it.
+	if d.ProxmoxCredential != nil {
+		cred, cerr := d.ProxmoxCredential(ctx, in.OrganizationID, snap.TargetHive.ID)
+		switch {
+		case cerr != nil:
+			slog.WarnContext(ctx, "the host joined but its Proxmox credential could not be "+
+				"resolved; cluster tasks on it will refuse until one is written",
+				"hypervisor_id", in.HypervisorID, "hive_id", snap.TargetHive.ID, "error", cerr)
+		default:
+			if werr := WriteAgentCredential(ctx, joiner, d.BaseURL, cred); werr != nil {
+				slog.WarnContext(ctx, "the host joined but its Proxmox credential could not be "+
+					"written", "hypervisor_id", in.HypervisorID, "error", werr)
+			} else if _, rerr := joiner.Run(ctx,
+				"systemctl restart apiary-agent.service 2>/dev/null || true"); rerr != nil {
+				// Restarted because the agent builds its Proxmox client once, at
+				// startup, from the environment file. Writing the file without a
+				// restart leaves the old credential in memory until something else
+				// happens to restart the service.
+				slog.WarnContext(ctx, "wrote the new credential but could not restart the agent; "+
+					"it will pick the credential up on its next restart",
+					"hypervisor_id", in.HypervisorID, "error", rerr)
+			}
 		}
 	}
 

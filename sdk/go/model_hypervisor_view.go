@@ -38,6 +38,11 @@ type HypervisorView struct {
 	HiveId *string `json:"hive_id,omitempty"`
 	HiveName *string `json:"hive_name,omitempty"`
 	Id string `json:"id"`
+	// Which operation this outcome belongs to, e.g. depart.
+	LastOperation *string `json:"last_operation,omitempty"`
+	LastOperationAt *time.Time `json:"last_operation_at,omitempty"`
+	// Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed.
+	LastOperationError *string `json:"last_operation_error,omitempty"`
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
 	// The provider's node name, not a hostname we chose. Absent until this machine joins a cluster.
 	Name *string `json:"name,omitempty"`
@@ -402,6 +407,102 @@ func (o *HypervisorView) SetId(v string) {
 	o.Id = v
 }
 
+// GetLastOperation returns the LastOperation field value if set, zero value otherwise.
+func (o *HypervisorView) GetLastOperation() string {
+	if o == nil || IsNil(o.LastOperation) {
+		var ret string
+		return ret
+	}
+	return *o.LastOperation
+}
+
+// GetLastOperationOk returns a tuple with the LastOperation field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HypervisorView) GetLastOperationOk() (*string, bool) {
+	if o == nil || IsNil(o.LastOperation) {
+		return nil, false
+	}
+	return o.LastOperation, true
+}
+
+// HasLastOperation returns a boolean if a field has been set.
+func (o *HypervisorView) HasLastOperation() bool {
+	if o != nil && !IsNil(o.LastOperation) {
+		return true
+	}
+
+	return false
+}
+
+// SetLastOperation gets a reference to the given string and assigns it to the LastOperation field.
+func (o *HypervisorView) SetLastOperation(v string) {
+	o.LastOperation = &v
+}
+
+// GetLastOperationAt returns the LastOperationAt field value if set, zero value otherwise.
+func (o *HypervisorView) GetLastOperationAt() time.Time {
+	if o == nil || IsNil(o.LastOperationAt) {
+		var ret time.Time
+		return ret
+	}
+	return *o.LastOperationAt
+}
+
+// GetLastOperationAtOk returns a tuple with the LastOperationAt field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HypervisorView) GetLastOperationAtOk() (*time.Time, bool) {
+	if o == nil || IsNil(o.LastOperationAt) {
+		return nil, false
+	}
+	return o.LastOperationAt, true
+}
+
+// HasLastOperationAt returns a boolean if a field has been set.
+func (o *HypervisorView) HasLastOperationAt() bool {
+	if o != nil && !IsNil(o.LastOperationAt) {
+		return true
+	}
+
+	return false
+}
+
+// SetLastOperationAt gets a reference to the given time.Time and assigns it to the LastOperationAt field.
+func (o *HypervisorView) SetLastOperationAt(v time.Time) {
+	o.LastOperationAt = &v
+}
+
+// GetLastOperationError returns the LastOperationError field value if set, zero value otherwise.
+func (o *HypervisorView) GetLastOperationError() string {
+	if o == nil || IsNil(o.LastOperationError) {
+		var ret string
+		return ret
+	}
+	return *o.LastOperationError
+}
+
+// GetLastOperationErrorOk returns a tuple with the LastOperationError field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HypervisorView) GetLastOperationErrorOk() (*string, bool) {
+	if o == nil || IsNil(o.LastOperationError) {
+		return nil, false
+	}
+	return o.LastOperationError, true
+}
+
+// HasLastOperationError returns a boolean if a field has been set.
+func (o *HypervisorView) HasLastOperationError() bool {
+	if o != nil && !IsNil(o.LastOperationError) {
+		return true
+	}
+
+	return false
+}
+
+// SetLastOperationError gets a reference to the given string and assigns it to the LastOperationError field.
+func (o *HypervisorView) SetLastOperationError(v string) {
+	o.LastOperationError = &v
+}
+
 // GetLastSyncedAt returns the LastSyncedAt field value if set, zero value otherwise.
 func (o *HypervisorView) GetLastSyncedAt() time.Time {
 	if o == nil || IsNil(o.LastSyncedAt) {
@@ -709,6 +810,15 @@ func (o HypervisorView) ToMap() (map[string]interface{}, error) {
 		toSerialize["hive_name"] = o.HiveName
 	}
 	toSerialize["id"] = o.Id
+	if !IsNil(o.LastOperation) {
+		toSerialize["last_operation"] = o.LastOperation
+	}
+	if !IsNil(o.LastOperationAt) {
+		toSerialize["last_operation_at"] = o.LastOperationAt
+	}
+	if !IsNil(o.LastOperationError) {
+		toSerialize["last_operation_error"] = o.LastOperationError
+	}
 	if !IsNil(o.LastSyncedAt) {
 		toSerialize["last_synced_at"] = o.LastSyncedAt
 	}

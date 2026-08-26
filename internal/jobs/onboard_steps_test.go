@@ -17,6 +17,11 @@ type fakeRunner struct {
 	reconnectErr error
 	uploads      []string
 	uploadSizes  []int
+	// uploadBodies keeps what was written, so a test can assert on CONTENT and
+	// not merely that something of the right size arrived — which is the
+	// difference between "a credential file was written" and "the credential in
+	// it is the current one".
+	uploadBodies [][]byte
 }
 
 func (f *fakeRunner) Run(_ context.Context, cmd string) (string, error) {
@@ -40,6 +45,7 @@ func (f *fakeRunner) Run(_ context.Context, cmd string) (string, error) {
 func (f *fakeRunner) Upload(_ context.Context, path string, _ uint32, content []byte) error {
 	f.uploads = append(f.uploads, path)
 	f.uploadSizes = append(f.uploadSizes, len(content))
+	f.uploadBodies = append(f.uploadBodies, append([]byte(nil), content...))
 	return nil
 }
 

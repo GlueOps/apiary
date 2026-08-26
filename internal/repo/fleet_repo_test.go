@@ -98,8 +98,12 @@ func TestEnrolIsIdempotentOnTheMachineID(t *testing.T) {
 
 	newKey := uuid.New()
 	secondRes, err := r.EnrolBee(context.Background(), EnrolBeeInput{
-		MachineID: machine, Address: "hv-01-renamed", APIKeyID: newKey,
-		Now: time.Now().UTC(),
+		// A renamed HOSTNAME and a new PEER address. The two are asserted
+		// separately below: the peer is what the address follows, and the hostname
+		// is what it must not.
+		MachineID: machine, Address: "hv-01-renamed", PeerAddress: "10.10.20.9",
+		APIKeyID: newKey,
+		Now:      time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("re-enrol: %v", err)
@@ -120,9 +124,20 @@ func TestEnrolIsIdempotentOnTheMachineID(t *testing.T) {
 			"its onboarding history, cluster membership and swarm assignment all stayed on the "+
 			"first one", firstMachine.ID, secondMachine.ID)
 	}
-	if secondMachine.Address != "hv-01-renamed" {
-		t.Fatalf("re-enrolment did not update the machine's address (got %q); the control plane "+
-			"would keep reaching for the old one", secondMachine.Address)
+	// The address follows the PEER, not the hostname.
+	//
+	// It used to follow the hostname, and that is what broke every departure: an
+	// agent knows what it calls itself and not how anybody else reaches it. A
+	// Proxmox node calls itself "pve2", which resolves on the cluster network and
+	// nowhere else, so the control plane dialled a name that did not exist and
+	// retried on a backoff with nothing on screen to say so.
+	if secondMachine.Address == "hv-01-renamed" {
+		t.Fatal("the machine's address followed the agent's hostname; a host that calls itself " +
+			"pve2 is not reachable at pve2 from anywhere but its own cluster network")
+	}
+	if secondMachine.Address != "10.10.20.9" {
+		t.Fatalf("re-enrolment did not follow the address the request came from (got %q); a "+
+			"machine that moved would keep a stale address", secondMachine.Address)
 	}
 	var machines int64
 	if err := db.Model(&tenant.Hypervisor{}).Where("machine_id = ?", machine).

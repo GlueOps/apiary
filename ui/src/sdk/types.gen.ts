@@ -730,6 +730,7 @@ export type HeartbeatRequestBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    agent_digest?: string;
     agent_version?: string;
     /**
      * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
@@ -828,6 +829,15 @@ export type HypervisorView = {
     hive_id?: string;
     hive_name?: string;
     id: string;
+    /**
+     * Which operation this outcome belongs to, e.g. depart.
+     */
+    last_operation?: string;
+    last_operation_at?: string;
+    /**
+     * Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed.
+     */
+    last_operation_error?: string;
     last_synced_at?: string;
     /**
      * The provider's node name, not a hostname we chose. Absent until this machine joins a cluster.
@@ -1463,6 +1473,8 @@ export type RefreshResponseBody = {
 export type RefusalView = {
     code: string;
     detail: string;
+    remedy?: string;
+    summary?: string;
 };
 
 export type RegisterRequestBody = {
@@ -2367,6 +2379,7 @@ export type GetMyOrganizationsResponseBodyWritable = {
 };
 
 export type HeartbeatRequestBodyWritable = {
+    agent_digest?: string;
     agent_version?: string;
     /**
      * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
@@ -2449,6 +2462,15 @@ export type HypervisorViewWritable = {
     hive_id?: string;
     hive_name?: string;
     id: string;
+    /**
+     * Which operation this outcome belongs to, e.g. depart.
+     */
+    last_operation?: string;
+    last_operation_at?: string;
+    /**
+     * Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed.
+     */
+    last_operation_error?: string;
     last_synced_at?: string;
     /**
      * The provider's node name, not a hostname we chose. Absent until this machine joins a cluster.

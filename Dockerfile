@@ -38,7 +38,6 @@ COPY ${TARGETPLATFORM}/apiary /usr/local/bin/apiary
 # `emptyOutDir: true`, so the next local `yarn build` would delete it. Kept
 # separate, replacing the agent does not mean rebuilding and redeploying the
 # control plane.
-COPY ${TARGETPLATFORM}/apiary-agent /usr/local/share/apiary/apiary-agent
 
 USER apiary
 EXPOSE 8080

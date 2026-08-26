@@ -75,9 +75,25 @@ func TestCheckArrivalRefusals(t *testing.T) {
 			t.Fatalf("want guests_present, got %v", arrivalCodes(rs))
 		}
 		for _, r := range rs {
-			if r.Code == RefuseArrivalGuests && !strings.Contains(r.Detail, "STOPPED") {
-				t.Error("the message must say stopped guests count — pvecm counts them and the " +
-					"operator will be looking for running VMs")
+			if r.Code != RefuseArrivalGuests {
+				continue
+			}
+			// Checked across all three fields. That stopped guests count is the
+			// non-obvious half — pvecm counts them and the operator is looking for
+			// running VMs — and which field carries it is a presentation choice.
+			// Losing it altogether is not, and that is what shortening a message for
+			// width does first.
+			whole := r.Summary + " " + r.Detail + " " + r.Remedy
+			if !strings.Contains(strings.ToLower(whole), "stopped") {
+				t.Error("nothing in this refusal says stopped guests count — pvecm counts them " +
+					"and the operator will be looking for running VMs")
+			}
+			if r.Summary == "" {
+				t.Error("no summary: the card groups refusals by code and would have to show " +
+					"one host's guest count as if it applied to all of them")
+			}
+			if r.Remedy == "" {
+				t.Error("no remedy: the operator is told what is wrong and not what to do")
 			}
 		}
 	})

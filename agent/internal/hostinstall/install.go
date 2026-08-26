@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -127,9 +128,18 @@ func installWith(ctx context.Context, r Runner, w writer, p Plan) error {
 		return err
 	}
 	if p.BaseURL != "" {
-		// 0600: it names the control plane and may later hold tuning an operator
-		// would rather not have every process on the host read.
-		env := fmt.Appendf(nil, "AGENT_BASE_URL=%s\n", p.BaseURL)
+		// MERGED, not overwritten. Onboarding writes this file first to hand the
+		// agent its Proxmox credential, and install runs afterwards as part of
+		// `enrol --install` — so writing the whole file here would delete the
+		// credential moments after it arrived, and every cluster task would then
+		// refuse on a host that had just been given everything it needed.
+		//
+		// 0600: it names the control plane and holds a Proxmox token, which is a
+		// credential that can create and destroy guests.
+		env, err := mergeEnv(EnvPath, map[string]string{"AGENT_BASE_URL": p.BaseURL})
+		if err != nil {
+			return err
+		}
 		if err := w(EnvPath, 0o600, env); err != nil {
 			return err
 		}
@@ -183,4 +193,55 @@ func pointExecStartAt(unit []byte, execPath string) ([]byte, error) {
 			execMarker)
 	}
 	return bytes.Join(lines, []byte("\n")), nil
+}
+
+// mergeEnv rewrites an environment file, replacing only the keys given.
+//
+// Keys are written in the order they were already in, with new ones appended,
+// so a file an operator has read before still reads the same way. Comments and
+// blank lines are preserved for the same reason: this is a file people edit, and
+// silently reformatting it on every convergence is how an operator stops
+// trusting that their edits survive.
+func mergeEnv(path string, set map[string]string) ([]byte, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+
+	written := make(map[string]bool, len(set))
+	var out []string
+	for _, line := range strings.Split(string(existing), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			out = append(out, line)
+			continue
+		}
+		key, _, ok := strings.Cut(trimmed, "=")
+		key = strings.TrimSpace(key)
+		if ok {
+			if v, replacing := set[key]; replacing {
+				out = append(out, key+"="+v)
+				written[key] = true
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+
+	// Appended in a stable order, so two runs over the same inputs produce the
+	// same file and a diff shows only what actually changed.
+	remaining := make([]string, 0, len(set))
+	for k := range set {
+		if !written[k] {
+			remaining = append(remaining, k)
+		}
+	}
+	sort.Strings(remaining)
+	for _, k := range remaining {
+		out = append(out, k+"="+set[k])
+	}
+
+	body := strings.Join(out, "\n")
+	body = strings.TrimRight(body, "\n") + "\n"
+	return []byte(body), nil
 }

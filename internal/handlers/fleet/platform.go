@@ -420,6 +420,28 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			spec = json.RawMessage(`{}`)
 		}
 
+		// GATED HERE, so the API, Terraform and the UI all get the same answer.
+		//
+		// The agent used to decide this alone by asking the Proxmox cluster API —
+		// which is why a dist-upgrade needed a token for a job that is entirely
+		// local. Every fact the decision needs is in this database, and refusing at
+		// creation puts the reason in front of the operator who asked instead of in
+		// a task that fails minutes later.
+		//
+		// Only dist-upgrade: it is the one kind that can interrupt what a host is
+		// running. Ping, join and evict have their own gates or none.
+		if in.Body.Kind == "fleet.host.dist-upgrade" {
+			refusals, gerr := repo.CheckUpgradeForBee(ctx, db, beeID, spec,
+				deps.Config.FleetObservationMaxAge, time.Now().UTC())
+			if gerr != nil {
+				return nil, mapErr(ctx, gerr)
+			}
+			if len(refusals) > 0 {
+				return nil, refusalConflict("this host cannot be upgraded yet",
+					refusalViews(refusals))
+			}
+		}
+
 		task := tenant.FleetTask{
 			BeeID: beeID, Kind: in.Body.Kind, Spec: datatypes.JSON(spec),
 			Status: tenant.FleetTaskPending, CreatedByID: *p.UserID,
@@ -480,7 +502,14 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 				"there is nothing for an agent to upgrade to")
 		}
 
-		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, *p.UserID,
+		// Every digest this control plane can serve. An agent running any of them
+		// is current, whatever version anybody stamped on it.
+		digests := make(map[string]bool, len(dist.Builds))
+		for _, b := range dist.Builds {
+			digests[b.SHA256] = true
+		}
+
+		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, *p.UserID,
 			in.Body.Force, time.Now().UTC(), 2*time.Minute)
 		if err != nil {
 			return nil, mapErr(ctx, err)

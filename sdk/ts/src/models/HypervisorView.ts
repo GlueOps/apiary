@@ -101,6 +101,24 @@ export interface HypervisorView {
      */
     id: string;
     /**
+     * Which operation this outcome belongs to, e.g. depart.
+     * @type {string}
+     * @memberof HypervisorView
+     */
+    lastOperation?: string;
+    /**
+     * 
+     * @type {Date}
+     * @memberof HypervisorView
+     */
+    lastOperationAt?: Date;
+    /**
+     * Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed.
+     * @type {string}
+     * @memberof HypervisorView
+     */
+    lastOperationError?: string;
+    /**
      * 
      * @type {Date}
      * @memberof HypervisorView
@@ -235,6 +253,9 @@ export function HypervisorViewFromJSONTyped(json: any, ignoreDiscriminator: bool
         'hiveId': json['hive_id'] == null ? undefined : json['hive_id'],
         'hiveName': json['hive_name'] == null ? undefined : json['hive_name'],
         'id': json['id'],
+        'lastOperation': json['last_operation'] == null ? undefined : json['last_operation'],
+        'lastOperationAt': json['last_operation_at'] == null ? undefined : (new Date(json['last_operation_at'])),
+        'lastOperationError': json['last_operation_error'] == null ? undefined : json['last_operation_error'],
         'lastSyncedAt': json['last_synced_at'] == null ? undefined : (new Date(json['last_synced_at'])),
         'name': json['name'] == null ? undefined : json['name'],
         'observationStale': json['observation_stale'],
@@ -269,6 +290,9 @@ export function HypervisorViewToJSONTyped(value?: Omit<HypervisorView, '$schema'
         'hive_id': value['hiveId'],
         'hive_name': value['hiveName'],
         'id': value['id'],
+        'last_operation': value['lastOperation'],
+        'last_operation_at': value['lastOperationAt'] == null ? value['lastOperationAt'] : value['lastOperationAt'].toISOString(),
+        'last_operation_error': value['lastOperationError'],
         'last_synced_at': value['lastSyncedAt'] == null ? value['lastSyncedAt'] : value['lastSyncedAt'].toISOString(),
         'name': value['name'],
         'observation_stale': value['observationStale'],

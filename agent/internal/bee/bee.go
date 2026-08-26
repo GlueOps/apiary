@@ -22,11 +22,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/glueops/apiary-agent/internal/firewall"
+	"github.com/glueops/apiary-agent/internal/selfupgrade"
 	"github.com/glueops/apiary-agent/internal/store"
 	apiary "github.com/glueops/apiary/sdk/go"
 )
@@ -80,6 +83,11 @@ type Bee struct {
 	// hold.
 	desiredFirewall atomic.Value
 
+	// sendDigest is cleared the first time a control plane rejects the agent
+	// digest as an unknown field, which is how an older server answers a newer
+	// agent. Starts true.
+	sendDigest atomic.Bool
+
 	// declareMu serialises Declare against the report loop's own heartbeat, so a
 	// declaration cannot be lost to a heartbeat that raced it.
 	declareMu sync.Mutex
@@ -98,7 +106,11 @@ func New(opts Options, executors map[string]Executor) *Bee {
 	if opts.LogBatch <= 0 {
 		opts.LogBatch = 200
 	}
-	return &Bee{opts: opts, executors: executors, notify: newNotifier()}
+	b := &Bee{opts: opts, executors: executors, notify: newNotifier()}
+	// Sent until a control plane says it does not know the field. See the 422
+	// handling in heartbeatLocked.
+	b.sendDigest.Store(true)
+	return b
 }
 
 func (b *Bee) Run(ctx context.Context) error {
@@ -178,9 +190,26 @@ type heartbeatOpts struct {
 func (b *Bee) heartbeat(ctx context.Context, o heartbeatOpts) (bool, error) {
 	b.declareMu.Lock()
 	defer b.declareMu.Unlock()
+	return b.heartbeatLocked(ctx, o)
+}
+
+// heartbeatLocked is heartbeat with declareMu already held, so the 422 retry
+// above can re-enter without deadlocking on a lock it is already inside.
+func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error) {
 
 	body := *apiary.NewHeartbeatRequestBody()
 	body.SetAgentVersion(b.opts.AgentVersion)
+	// The digest of the binary actually running. The control plane decides
+	// whether this host needs upgrading on this rather than on the version,
+	// because a version is a label somebody stamped and only a release stamps the
+	// server and the binaries it serves from one tag.
+	//
+	// Withheld once a control plane has rejected it — see sendDigest.
+	if b.sendDigest.Load() {
+		if d, err := selfupgrade.SelfDigest(); err == nil {
+			body.SetAgentDigest(d)
+		}
+	}
 	body.SetWaitSeconds(int64(o.wait.Seconds()))
 	// Reported every time, so convergence is a fact the control plane observes
 	// rather than one it assumes from having published.
@@ -195,8 +224,28 @@ func (b *Bee) heartbeat(ctx context.Context, o heartbeatOpts) (bool, error) {
 		body.SetUnavailableReason(o.unavailableReason)
 	}
 
-	res, _, err := b.opts.Client.FleetAPI.FleetBeeHeartbeat(ctx).HeartbeatRequestBody(body).Execute()
+	res, httpRes, err := b.opts.Client.FleetAPI.FleetBeeHeartbeat(ctx).HeartbeatRequestBody(body).Execute()
 	if err != nil {
+		// A 422 means the control plane refused the BODY, and the only field this
+		// agent sends that an older one may not know is the digest. huma rejects an
+		// unknown body field before the handler runs, so an agent newer than its
+		// control plane would otherwise fail every heartbeat and look offline while
+		// being perfectly healthy.
+		//
+		// Self-upgrade normally makes this impossible — the binary comes FROM the
+		// control plane, so an agent cannot be newer than the server that served it
+		// — but a rolling deploy has both versions live at once, and a
+		// hand-installed agent has no such guarantee at all.
+		//
+		// Stopped rather than retried per request: once a control plane has said it
+		// does not know the field, sending it again only produces the same 422.
+		if httpRes != nil && httpRes.StatusCode == http.StatusUnprocessableEntity &&
+			b.sendDigest.Swap(false) {
+			slog.WarnContext(ctx, "the control plane rejected the agent digest; "+
+				"it is older than this agent. Continuing without it — upgrades will be "+
+				"decided on the version instead, which cannot converge if the two disagree")
+			return b.heartbeatLocked(ctx, o)
+		}
 		return false, err
 	}
 	// Recorded, not acted on here. Converging takes seconds and can roll back with
@@ -357,7 +406,7 @@ func (b *Bee) execute(ctx context.Context, t store.Task) {
 	b.notify.Status("running %s", t.Kind)
 	defer b.notify.Status("waiting for work")
 
-	if err := exec(ctx, t, env); err != nil {
+	if err := runExecutor(ctx, exec, t, env); err != nil {
 		if errors.Is(err, context.Canceled) {
 			// Shutting down, not failing. Leaving the task RUNNING locally means
 			// a restarted bee resumes it rather than reporting a failure that
@@ -387,4 +436,36 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	case <-time.After(d):
 		return true
 	}
+}
+
+// runExecutor runs one executor and turns a panic into a failed task.
+//
+// WITHOUT THIS, ONE BAD TASK TAKES THE HOST DOWN PERMANENTLY. A panic in an
+// executor kills the process; systemd restarts it — Restart=always with no rate
+// limit, deliberately — the agent collects the SAME task, and panics again. The
+// host is then in a crash loop that no amount of waiting resolves, and the only
+// evidence is a stack trace in the journal of a machine nobody is looking at.
+//
+// That is not hypothetical. A dist-upgrade task reached attempt 125 against a
+// host whose Proxmox client was nil, panicking on every one, for hours.
+//
+// The blast radius is what makes it worth a recover: tasks are queued per bee,
+// so a fleet-wide operation that panics takes down EVERY agent in the fleet the
+// same way. A failed task is recoverable and visible; a fleet of crash-looping
+// agents is neither.
+//
+// The panic is reported as the task's error, so it lands in the control plane
+// where somebody will see it rather than in a journal where nobody will.
+func runExecutor(ctx context.Context, exec Executor, t store.Task, env *Env) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// The stack goes to the log, which is where a stack belongs; the task
+			// carries the short form, because it is rendered beside the machine.
+			slog.ErrorContext(ctx, "task executor panicked",
+				"kind", t.Kind, "task_id", t.ID, "panic", r,
+				"stack", string(debug.Stack()))
+			err = fmt.Errorf("the agent panicked running %s: %v", t.Kind, r)
+		}
+	}()
+	return exec(ctx, t, env)
 }

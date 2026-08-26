@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -44,6 +45,14 @@ type OnboardDeps struct {
 	// that succeeds and a service that will not start.
 	Bundle func(goarch string) (AgentBundle, error)
 
+	// ProxmoxCredential returns the API token the agent on this machine should
+	// use, or an empty credential when the machine belongs to no fleet.
+	//
+	// The HIVE's credential, which is forced rather than chosen — Proxmox keeps
+	// tokens on pmxcfs, so they are cluster-wide and a join destroys whatever the
+	// joining node had. See WriteAgentCredential.
+	ProxmoxCredential func(ctx context.Context, orgID, hypervisorID uuid.UUID) (ProxmoxCredential, error)
+
 	// BaseURL is the address the agent should enrol against and dial afterwards.
 	//
 	// Passed explicitly rather than left to the agent's default of
@@ -73,8 +82,17 @@ type OnboardDeps struct {
 // OnboardInput identifies one host to bring into a fleet.
 type OnboardInput struct {
 	OrganizationID uuid.UUID
-	Address        string
-	User           string
+
+	// HypervisorID is the machine record being onboarded, and is what the
+	// Proxmox credential is resolved through — a machine's credential is its
+	// hive's, and only the row knows which hive that is.
+	//
+	// Optional, like it is on the job args: without one the host is still
+	// onboarded and simply receives no cluster credential.
+	HypervisorID uuid.UUID
+
+	Address string
+	User    string
 	// MachineID is how the resulting MACHINE record is recognised, and how
 	// onboarding knows which agent's heartbeat proves success. Raw here; the
 	// column holds its digest.
@@ -165,6 +183,25 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 	}
 	if err := installAgent(ctx, runner, bundle); err != nil {
 		return err
+	}
+
+	// BEFORE enrolment, because `enrol --install` merges into this file rather
+	// than replacing it — so the credential has to already be there for install
+	// to preserve it. Written the other way round, the agent would be given its
+	// token and lose it seconds later.
+	if d.ProxmoxCredential != nil {
+		cred, cerr := d.ProxmoxCredential(ctx, in.OrganizationID, in.HypervisorID)
+		if cerr != nil {
+			// Not fatal. A host with no usable cluster credential is still worth
+			// onboarding: it heartbeats, converges its firewall and can be joined to
+			// a fleet — it just refuses cluster tasks, and says why. Failing here
+			// would make a credential problem look like an onboarding problem.
+			slog.WarnContext(ctx, "could not resolve a Proxmox credential for this machine; "+
+				"cluster tasks will refuse until one is written",
+				"hypervisor_id", in.HypervisorID, "error", cerr)
+		} else if err := WriteAgentCredential(ctx, runner, d.BaseURL, cred); err != nil {
+			return err
+		}
 	}
 
 	// The machine id may not have been known before we connected, and the host is

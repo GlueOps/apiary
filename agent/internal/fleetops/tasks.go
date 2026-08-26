@@ -3,6 +3,7 @@ package fleetops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -39,14 +40,67 @@ type Env struct {
 
 // Deps are the collaborators an executor needs.
 type Deps struct {
-	Cluster  Cluster
+	Cluster Cluster
+
+	// ClusterErr is why Cluster is nil, kept so a refused task can say what
+	// actually went wrong.
+	//
+	// It used to be logged at startup and discarded, and the refusal then had to
+	// GUESS a cause — it blamed the token's permissions, which sent an operator to
+	// check ACLs on a token that was fully privileged. The real reason was that no
+	// token was configured at all. A message that confidently names the wrong
+	// cause is worse than one that names none.
+	ClusterErr error
+
 	Runner   Runner
 	Node     string // this host's Proxmox node name
 	Reboot   func(ctx context.Context) error
 	JoinPass func() (string, error)
 }
 
+// ErrNoCluster reports that this host has no Proxmox API client, so a task that
+// needs one cannot run.
+//
+// The agent logs "fleet tasks will refuse rather than run" at startup when it
+// cannot build a client — usually because the token has no ACLs. That promise
+// was not kept: Deps.Cluster was left nil and every task that touched it
+// dereferenced nil and panicked, which systemd turned into a crash loop.
+//
+// Refusing is what the startup message already claimed, and a refused task is
+// visible in the control plane where a stack trace in a journal is not.
+var ErrNoCluster = errors.New(
+	"fleetops: this host has no Proxmox API client, so it cannot perform cluster work")
+
+// requireCluster refuses before a task touches a nil client.
+//
+// Checked at the top of every task that needs one rather than defended inside
+// each step: a nil dereference three calls deep reports as a segfault address,
+// and the operator has to read a stack trace to learn that a credential is
+// missing.
+//
+// The refusal carries the REAL reason where there is one. Guessing produced a
+// message blaming a token's permissions on a host whose token was fully
+// privileged and simply never configured — and an operator who trusts that goes
+// and checks ACLs.
+func requireCluster(d Deps) error {
+	if d.Cluster != nil {
+		return nil
+	}
+	if d.ClusterErr != nil {
+		return fmt.Errorf("%w: %w", ErrNoCluster, d.ClusterErr)
+	}
+	return ErrNoCluster
+}
+
 // ---------------------------------------------------------------- dist-upgrade
+
+// Reboot policies, named so the checks below cannot drift from the spec's
+// documented values.
+const (
+	rebootIfNeeded = "if-needed"
+	rebootAlways   = "always"
+	rebootNever    = "never"
+)
 
 type DistUpgradeSpec struct {
 	// AllowGuestDowntime permits the upgrade when guests are still running here.
@@ -54,7 +108,9 @@ type DistUpgradeSpec struct {
 	// refuse rather than to drop VMs.
 	AllowGuestDowntime bool `json:"allow_guest_downtime"`
 
-	// Reboot: "if-needed" (default), "always", or "never".
+	// Reboot: "if-needed" (default), "always", or "never". The control plane's
+	// gate reads the same strings — see tenant.RebootNever — because it has to
+	// know whether a reboot is possible before it can decide anything.
 	Reboot string `json:"reboot"`
 
 	// ExpectedDownSeconds is what the host declares before rebooting. It should
@@ -70,12 +126,13 @@ type DistUpgradeSpec struct {
 // function, sees phaseRebooting, and finishes rather than upgrading again. Get
 // that wrong and a rotation loops forever on every host in the datacenter.
 func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec string) error {
+
 	var spec DistUpgradeSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
 	}
 	if spec.Reboot == "" {
-		spec.Reboot = "if-needed"
+		spec.Reboot = rebootIfNeeded
 	}
 
 	// We are back from the reboot we caused.
@@ -85,18 +142,37 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		return verifyAfterReboot(ctx, d, e)
 	}
 
-	e.Phase(phasePreflight)
-	report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
-	if err != nil {
-		return err
+	// THE PREFLIGHT IS ABOUT THE REBOOT, so it runs only when one might happen.
+	//
+	// It used to run unconditionally, which refused `reboot: never` while guests
+	// were running — a check for a reboot that never happens, blocking an upgrade
+	// that cannot disturb them. Installing packages does not interrupt a guest.
+	//
+	// And it is now BEST EFFORT rather than required. The control plane gates this
+	// before the task is created, from facts it already holds, so the decision has
+	// been made by something that knows the whole fleet. This is a second opinion
+	// with live data — worth having when the host can give one, and not worth
+	// refusing a purely local job over when it cannot. That is why a dist-upgrade
+	// no longer needs a Proxmox token at all: nothing about apt-get and a reboot
+	// is orchestrated through the API.
+	if spec.Reboot != rebootNever {
+		if d.Cluster == nil {
+			e.Logf("agent", "no Proxmox client here, so the local preflight is skipped; the "+
+				"control plane gated this upgrade before it was queued")
+		} else {
+			e.Phase(phasePreflight)
+			report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
+			if err != nil {
+				return err
+			}
+			for _, n := range report.Notes {
+				e.Logf("agent", "%s", n)
+			}
+			if err := report.err("dist-upgrade"); err != nil {
+				return err
+			}
+		}
 	}
-	for _, n := range report.Notes {
-		e.Logf("agent", "%s", n)
-	}
-	if err := report.err("dist-upgrade"); err != nil {
-		return err
-	}
-
 	e.Phase(phaseUpgrading)
 	e.Logf("agent", "updating package lists")
 	if err := d.Runner.Run(ctx, e.Logf, "apt-get", "update"); err != nil {
@@ -112,7 +188,7 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 
 	needs := rebootRequired()
 	switch {
-	case spec.Reboot == "never":
+	case spec.Reboot == rebootNever:
 		if needs {
 			e.Logf("agent", "a reboot is required but reboot=never; this host is running an old kernel")
 		}
@@ -181,6 +257,10 @@ type JoinSpec struct {
 // which is the same mistake the queued-email design exists to avoid. The bee
 // reads it from local configuration placed on the host at provisioning time.
 func Join(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	if err := requireCluster(d); err != nil {
+		return err
+	}
+
 	var spec JoinSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
@@ -242,6 +322,10 @@ type EvictSpec struct {
 // That warning is logged into the task output because it is the part operators
 // forget, and the consequence lands on the cluster rather than the host.
 func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	if err := requireCluster(d); err != nil {
+		return err
+	}
+
 	var spec EvictSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)

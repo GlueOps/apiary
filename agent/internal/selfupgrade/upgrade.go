@@ -22,9 +22,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Runner executes commands, so the sequence is testable without replacing
@@ -139,3 +141,48 @@ func Apply(ctx context.Context, r Runner, p Plan) (Result, error) {
 	res.Restarted = true
 	return res, nil
 }
+
+// SelfDigest is the sha256 of the binary currently running, as "sha256:<hex>".
+//
+// Computed once and cached: it cannot change while this process lives, since
+// replacing the file leaves the running image untouched — that is the whole
+// reason an upgrade renames rather than writes.
+//
+// It exists so "does this host need upgrading" is decided on what is ACTUALLY ON
+// DISK rather than on a version label. The two disagree in an ordinary
+// development build, and when they do a version comparison never converges: the
+// agent upgrades, restarts, reports the same version, and is judged out of date
+// again.
+func SelfDigest() (string, error) {
+	selfDigestOnce.Do(func() {
+		exe, err := os.Executable()
+		if err != nil {
+			selfDigestErr = fmt.Errorf("digest self: locate this binary: %w", err)
+			return
+		}
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = resolved
+		}
+		f, err := os.Open(exe)
+		if err != nil {
+			selfDigestErr = fmt.Errorf("digest self: open %s: %w", exe, err)
+			return
+		}
+		defer func() { _ = f.Close() }()
+		h := sha256.New()
+		// Streamed rather than read whole: the binary is around twenty megabytes
+		// and this runs on a hypervisor.
+		if _, err := io.Copy(h, f); err != nil {
+			selfDigestErr = fmt.Errorf("digest self: read %s: %w", exe, err)
+			return
+		}
+		selfDigestVal = "sha256:" + hex.EncodeToString(h.Sum(nil))
+	})
+	return selfDigestVal, selfDigestErr
+}
+
+var (
+	selfDigestOnce sync.Once
+	selfDigestVal  string
+	selfDigestErr  error
+)

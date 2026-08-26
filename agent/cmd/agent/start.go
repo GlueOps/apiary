@@ -119,12 +119,17 @@ func fleetDeps(cfg Config) fleetops.Deps {
 	}
 	client, err := fleetops.NewLocalClient(cfg.ProxmoxURL, cfg.ProxmoxTokenID, cfg.ProxmoxSecret)
 	if err != nil {
+		// KEPT, not only logged. A refused task has to say what actually went
+		// wrong, and a startup log on a hypervisor is not where anybody looks when
+		// a task fails in the control plane hours later.
 		slog.Warn("no Proxmox API client; fleet tasks will refuse rather than run", "error", err)
+		d.ClusterErr = err
 		return d
 	}
 	cl, err := fleetops.NewCluster(client)
 	if err != nil {
 		slog.Warn("could not build a cluster view; fleet tasks will refuse rather than run", "error", err)
+		d.ClusterErr = err
 		return d
 	}
 	d.Cluster = cl

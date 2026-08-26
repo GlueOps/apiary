@@ -75,12 +75,20 @@ func upgradeTask(cfg Config) bee.Executor {
 			return fmt.Errorf("the control plane serves no agent for %s/%s",
 				runtime.GOOS, runtime.GOARCH)
 		}
-		if dist.GetVersion() == Version {
-			// Already there. Reported as success rather than refused: the fleet asked
-			// for this host to be on that version and it is, and a failed task would
-			// send somebody to investigate a host that is correct.
-			e.Logf("agent", "already running %s; nothing to install", Version)
+		// COMPARED ON THE DIGEST, not the version.
+		//
+		// This is also the backstop for the control plane queueing a task it should
+		// not have: even if the version comparison there said "out of date", an
+		// agent already running these exact bytes has nothing to do, and doing it
+		// anyway is a restart of the whole fleet to reach the state it was in.
+		if self, derr := selfupgrade.SelfDigest(); derr == nil && self == sha {
+			e.Logf("agent", "already running this build (%s); nothing to install", sha[:19])
 			return nil
+		} else if derr != nil {
+			// Not fatal: the digest of the DOWNLOAD is still verified before
+			// anything is installed, which is the check that matters. Losing this
+			// one costs a needless reinstall, not safety.
+			e.Logf("agent", "could not hash the running binary (%v); installing anyway", derr)
 		}
 
 		e.Phase("downloading")

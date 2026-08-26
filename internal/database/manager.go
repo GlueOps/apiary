@@ -4,6 +4,8 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +58,7 @@ type TenantManager struct {
 
 func OpenControlDB(dsn string) (*gorm.DB, error) {
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: quietLogger(),
 	})
 }
 
@@ -315,7 +317,7 @@ func (m *TenantManager) openTenant(ctx context.Context, orgID string) (*TenantCo
 	}
 
 	tenantDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: quietLogger(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to tenant db: %w", err)
@@ -355,4 +357,33 @@ func (m *TenantManager) decryptConnectionString(org *control.Organization) (stri
 		return "", fmt.Errorf("failed to decrypt connection string for org %s: %w", org.ID, err)
 	}
 	return string(plain), nil
+}
+
+// quietLogger is GORM's default logger with ONE flag changed.
+//
+// ErrRecordNotFound is how First reports an empty result, and one query asks
+// that question constantly: the agent heartbeat looks for a bee's single
+// outstanding task, and an idle fleet has none. Every bee, on every poll, logged
+// a warning carrying the full SQL — a handful of hosts produce a steady stream
+// of them, and a log whose normal case is a warning is a log where a real
+// warning cannot be seen.
+//
+// NO ERROR LOGGING IS LOST. GORM's Trace logs when
+//
+//	err != nil && LogLevel >= Error && (!errors.Is(err, ErrRecordNotFound) || !IgnoreRecordNotFoundError)
+//
+// so anything that is not ErrRecordNotFound still satisfies the first clause and
+// still logs, whatever this flag says. Slow queries are a separate branch and are
+// untouched. The error also still reaches the caller either way — this changes
+// what GORM announces, not what happens.
+//
+// Everything else matches logger.Default deliberately, so the diff is one flag
+// rather than a quiet change of destination or formatting.
+func quietLogger() logger.Interface {
+	return logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: true,
+		Colorful:                  true,
+	})
 }

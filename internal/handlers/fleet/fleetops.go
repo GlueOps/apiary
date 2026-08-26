@@ -25,14 +25,26 @@ import (
 // code to decide what to offer next — "sync now" for drain_unknown, nothing at
 // all for hive_too_small — and prose is not a contract.
 type RefusalView struct {
-	Code   string `json:"code" example:"guests_present"`
+	// Code is the stable half — like an HTTP status, what a client switches on
+	// and what an operator learns to recognise.
+	Code string `json:"code" example:"guests_present"`
+	// Summary states the rule generically, with no numbers and no host in it, so
+	// refusals of the same rule across many machines can be shown once. Grouping
+	// on Detail instead means showing one host's figures as if they applied to
+	// every host in the group.
+	Summary string `json:"summary,omitempty"`
+	// Detail states what is wrong on THIS machine, and names the offending
+	// number.
 	Detail string `json:"detail"`
+	// Remedy states what to do, separately, so it can be rendered where somebody
+	// is looking for it rather than repeated inline to people who already know.
+	Remedy string `json:"remedy,omitempty"`
 }
 
 func refusalViews(rs []tenant.DepartureRefusal) []RefusalView {
 	out := make([]RefusalView, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail})
+		out = append(out, RefusalView{Code: r.Code, Summary: r.Summary, Detail: r.Detail, Remedy: r.Remedy})
 	}
 	return out
 }
@@ -40,7 +52,7 @@ func refusalViews(rs []tenant.DepartureRefusal) []RefusalView {
 func arrivalRefusalViews(rs []tenant.ArrivalRefusal) []RefusalView {
 	out := make([]RefusalView, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail})
+		out = append(out, RefusalView{Code: r.Code, Summary: r.Summary, Detail: r.Detail, Remedy: r.Remedy})
 	}
 	return out
 }
@@ -86,6 +98,17 @@ type HypervisorView struct {
 	ProvisioningState   string `json:"provisioning_state" enum:"pending,provisioning,provisioned,failed" doc:"Has the agent been installed? Stored, because it is a workflow rather than an observation. Independent of whether the machine is cordoned or reachable."`
 	ProvisioningAttempt int    `json:"provisioning_attempt,omitempty" doc:"How many onboarding runs this machine has cost. Capped; a machine at the cap needs an explicit redrive."`
 	ProvisioningError   string `json:"provisioning_error,omitempty" doc:"The last onboarding failure, kept so 'failed' is actionable without going to the logs."`
+
+	// Why the last fleet operation on this machine failed.
+	//
+	// Surfaced because a DEPARTURE has no state column of its own: it either
+	// succeeds and the machine leaves its cluster, or it fails and the job retries
+	// on a backoff with nothing on screen to say so. An operator then sees a
+	// cordoned, drained node that will not leave and no reason anywhere they would
+	// think to look.
+	LastOperation      string `json:"last_operation,omitempty" doc:"Which operation this outcome belongs to, e.g. depart."`
+	LastOperationError string `json:"last_operation_error,omitempty" doc:"Empty when the last attempt succeeded — cleared rather than left, since a stale failure sends an operator to investigate something already fixed."`
+	LastOperationAt    string `json:"last_operation_at,omitempty" format:"date-time"`
 
 	Schedulable bool   `json:"schedulable" doc:"False means cordoned: the placement query excludes it, so no new guests land here."`
 	DrainState  string `json:"drain_state" enum:"active,draining,drained,unknown" doc:"Derived, never stored. 'unknown' means the observation is too stale to say whether the node is empty — it is not a synonym for 'draining'."`
@@ -1333,6 +1356,8 @@ func buildHypervisorViews(
 			ProvisioningState:   hv.ProvisioningState,
 			ProvisioningAttempt: hv.ProvisioningAttempt,
 			ProvisioningError:   hv.ProvisioningError,
+			LastOperation:       hv.LastOperation,
+			LastOperationError:  hv.LastOperationError,
 			Schedulable:         hv.Schedulable,
 			DrainState:          drain.State,
 			ObservedGuests:      drain.ObservedGuests,
@@ -1351,6 +1376,9 @@ func buildHypervisorViews(
 		}
 		if hv.LastSyncedAt != nil {
 			v.LastSyncedAt = hv.LastSyncedAt.UTC().Format(time.RFC3339)
+		}
+		if hv.LastOperationAt != nil {
+			v.LastOperationAt = hv.LastOperationAt.UTC().Format(time.RFC3339)
 		}
 		if hv.BeeID != nil {
 			v.BeeID = hv.BeeID.String()

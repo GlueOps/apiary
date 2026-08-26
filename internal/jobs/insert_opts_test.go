@@ -33,6 +33,8 @@ func TestEveryUniqueByStateCarriesRiversRequiredStates(t *testing.T) {
 	// in review.
 	for _, a := range []river.JobArgsWithInsertOpts{
 		ClaimPendingOnboardsArgs{},
+		DepartHypervisorArgs{},
+		ArriveHypervisorArgs{},
 		SyncHiveCapacityArgs{},
 		SyncAllHivesArgs{},
 	} {

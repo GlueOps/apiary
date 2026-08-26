@@ -5080,8 +5080,12 @@ components:
         arrival_refusals:
         - code: code
           detail: detail
+          remedy: remedy
+          summary: summary
         - code: code
           detail: detail
+          remedy: remedy
+          summary: summary
         bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5248,6 +5252,7 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
+        agent_digest: agent_digest
         agent_version: agent_version
         applied_firewall_digest: applied_firewall_digest
         applied_firewall_revision: 0
@@ -5260,6 +5265,9 @@ components:
           description: A URL to the JSON Schema for this object.
           format: uri
           readOnly: true
+          type: string
+        agent_digest:
+          maxLength: 71
           type: string
         agent_version:
           maxLength: 64
@@ -5419,13 +5427,20 @@ components:
         departure_refusals:
         - code: code
           detail: detail
+          remedy: remedy
+          summary: summary
         - code: code
           detail: detail
+          remedy: remedy
+          summary: summary
         drain_state: active
         held_placements: 0
         hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         hive_name: hive_name
         id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        last_operation: last_operation
+        last_operation_at: 2000-01-23T04:56:07.000+00:00
+        last_operation_error: last_operation_error
         last_synced_at: 2000-01-23T04:56:07.000+00:00
         name: name
         observation_stale: true
@@ -5488,6 +5503,17 @@ components:
           type: string
         id:
           format: uuid
+          type: string
+        last_operation:
+          description: "Which operation this outcome belongs to, e.g. depart."
+          type: string
+        last_operation_at:
+          format: date-time
+          type: string
+        last_operation_error:
+          description: "Empty when the last attempt succeeded — cleared rather than\
+            \ left, since a stale failure sends an operator to investigate something\
+            \ already fixed."
           type: string
         last_synced_at:
           format: date-time
@@ -5880,8 +5906,12 @@ components:
           arrival_refusals:
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5892,8 +5922,12 @@ components:
           arrival_refusals:
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
@@ -5972,13 +6006,20 @@ components:
           departure_refusals:
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           drain_state: active
           held_placements: 0
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hive_name: hive_name
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          last_operation: last_operation
+          last_operation_at: 2000-01-23T04:56:07.000+00:00
+          last_operation_error: last_operation_error
           last_synced_at: 2000-01-23T04:56:07.000+00:00
           name: name
           observation_stale: true
@@ -5997,13 +6038,20 @@ components:
           departure_refusals:
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           - code: code
             detail: detail
+            remedy: remedy
+            summary: summary
           drain_state: active
           held_placements: 0
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           hive_name: hive_name
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          last_operation: last_operation
+          last_operation_at: 2000-01-23T04:56:07.000+00:00
+          last_operation_error: last_operation_error
           last_synced_at: 2000-01-23T04:56:07.000+00:00
           name: name
           observation_stale: true
@@ -7488,10 +7536,16 @@ components:
       example:
         code: code
         detail: detail
+        remedy: remedy
+        summary: summary
       properties:
         code:
           type: string
         detail:
+          type: string
+        remedy:
+          type: string
+        summary:
           type: string
       required:
       - code

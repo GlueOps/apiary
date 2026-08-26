@@ -1,7 +1,7 @@
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { RefusalView } from '@/sdk';
 
 /**
@@ -57,40 +57,143 @@ export function drainHint(state: string): string {
  * second implementation in the browser is how a button comes to be enabled for
  * an operation the server will refuse. This component only decides how to say it.
  */
-export function RefusalList({
-  refusals,
-  onSync,
-}: {
-  refusals: RefusalView[];
-  onSync?: () => void;
-}) {
+/**
+ * The short name of a refusal, for a badge.
+ *
+ * Derived from the CODE rather than shipped as another field. The code is
+ * already the stable half and already reads as a phrase once its underscores are
+ * gone — "guests_present" becomes "guests present" — and a fourth string per
+ * refusal would be a fourth thing to keep in agreement with the other three.
+ */
+export function refusalLabel(code: string) {
+  return code.replaceAll('_', ' ');
+}
+
+/**
+ * Which rules are blocking THIS host.
+ *
+ * The card at the bottom says what each rule means and how to fix it, once. It
+ * cannot say which hosts it applies to without listing them, and a list of
+ * hostnames inside a table cell is the sideways-scrolling problem again. So the
+ * row carries the names of its own rules and the card explains them — the same
+ * split as a legend on a chart.
+ */
+export function RefusalBadges({ refusals }: { refusals: RefusalView[] }) {
   if (refusals.length === 0) return null;
   return (
-    <ul className="space-y-1.5 text-xs">
+    <span className="mt-1 flex flex-wrap gap-1">
       {refusals.map((r) => (
-        <li key={r.code} className="flex gap-2">
-          <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden />
-          <span className="text-muted-foreground">
-            {r.detail}
-            {/* drain_unknown is the one refusal an operator resolves by doing
-                nothing to the host at all, so it gets the action inline rather
-                than leaving them to work out that a sync is what is wanted. */}
-            {r.code === 'drain_unknown' && onSync ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  onClick={onSync}
-                  className="underline underline-offset-2 hover:text-foreground"
-                >
-                  Sync this cluster now
-                </button>
-              </>
-            ) : null}
-          </span>
-        </li>
+        <Badge
+          key={r.code}
+          variant="outline"
+          className="border-amber-500/40 text-[10px] font-normal text-amber-600 dark:text-amber-500"
+          title={r.detail}
+        >
+          {refusalLabel(r.code)}
+        </Badge>
       ))}
-    </ul>
+    </span>
+  );
+}
+
+/**
+ * Every distinct refusal on the page, with its remedy, once.
+ *
+ * The remedies were briefly rendered under each machine's own list of reasons,
+ * which put the same paragraphs beside every host that shared a problem — a
+ * fleet where nothing is cordoned repeats "cordon it" per node, and each row
+ * grows wide enough to scroll sideways. The REASON is about one machine and
+ * belongs on its row; the FIX for a reason is the same wherever it appears, so
+ * it belongs once, at the bottom, where somebody goes looking for what to do.
+ *
+ * Keyed by CODE and rendered from SUMMARY, which is the generic form of the
+ * rule. Grouping on the detail instead would mean picking one host's figures to
+ * display — "the provider reports 2 guest(s)" shown for a group that also
+ * contains a host with five is not a shorter message, it is a wrong one.
+ *
+ * The count of affected hosts is shown instead, which is the number that is
+ * actually true of the group and more useful than any one host's: it says how
+ * much work the fix is.
+ */
+export function RemedyCard({ refusals, onSync }: { refusals: RefusalView[]; onSync?: () => void }) {
+  const byCode = new Map<string, { refusal: RefusalView; hosts: number }>();
+  for (const r of refusals) {
+    if (!r.remedy) continue;
+    const seen = byCode.get(r.code);
+    if (seen) seen.hosts += 1;
+    else byCode.set(r.code, { refusal: r, hosts: 1 });
+  }
+  if (byCode.size === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">What is blocking these hosts</CardTitle>
+        <CardDescription>
+          Each reason appears once, whichever hosts it applies to. The hosts themselves are marked
+          above.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th className="w-1/3 pr-4 pb-2 font-medium">Detail</th>
+              <th className="pb-2 font-medium">Remedy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...byCode.values()].map(({ refusal: r, hosts }) => (
+              <tr key={r.code} className="border-b align-top last:border-0">
+                <td className="py-2 pr-4 text-muted-foreground">
+                  <span className="flex gap-2">
+                    <IconAlertTriangle
+                      className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                      aria-hidden
+                    />
+                    <span>
+                      {/* The same badge the affected rows carry, so the two line
+                          up without the card having to list hostnames. */}
+                      <Badge
+                        variant="outline"
+                        className="mr-1.5 border-amber-500/40 text-[10px] font-normal text-amber-600 dark:text-amber-500"
+                      >
+                        {refusalLabel(r.code)}
+                      </Badge>
+                      {/* The generic form. Falling back to the detail only for a
+                          refusal that has no summary yet, where showing one
+                          host's figures is still better than showing nothing. */}
+                      {r.summary || r.detail}
+                      <span className="ml-1 text-muted-foreground/70">
+                        · {hosts} {hosts === 1 ? 'host' : 'hosts'}
+                      </span>
+                    </span>
+                  </span>
+                </td>
+                <td className="py-2">
+                  {r.remedy}
+                  {/* drain_unknown is the one refusal resolved by touching no
+                      host at all, so the action is offered rather than left for
+                      the operator to work out that a sync is what is wanted. */}
+                  {r.code === 'drain_unknown' && onSync ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={onSync}
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        Sync now
+                      </button>
+                    </>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 

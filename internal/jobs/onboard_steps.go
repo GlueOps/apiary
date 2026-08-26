@@ -217,3 +217,73 @@ func ReadArch(ctx context.Context, r Runner) (string, error) {
 			"plane has no agent for", machine)
 	}
 }
+
+// AgentEnvPath is the environment file systemd loads for the agent, and the one
+// `apiary-agent install` merges into.
+const AgentEnvPath = "/etc/apiary-agent/agent.env"
+
+// ProxmoxCredential is the API token an agent uses to talk to its own node.
+type ProxmoxCredential struct {
+	// TokenID is the full "user@realm!tokenname" form.
+	TokenID string
+	Secret  string
+	// APIURL is what the agent should dial. Empty leaves the agent's default,
+	// which is the local node over loopback — correct for an agent running ON the
+	// hypervisor, which is every agent.
+	APIURL string
+}
+
+// WriteAgentCredential puts a Proxmox token where the agent will read it.
+//
+// WITHOUT THIS NO FLEET TASK CAN RUN, on any host, in any fleet. Onboarding
+// installed the binary and enrolment wrote AGENT_BASE_URL; neither wrote a
+// Proxmox credential, so dist-upgrade, join and evict all refused with "no
+// Proxmox API client" on hosts whose operator had a fully privileged token
+// sitting in the control plane the whole time.
+//
+// THE CLUSTER'S TOKEN, not a per-host one, and that is forced rather than
+// chosen: Proxmox keeps API tokens in /etc/pve/priv/token.cfg, which is on
+// pmxcfs and therefore replicated across the cluster. A token minted for one
+// node exists on every node, a cluster JOIN replaces that database wholesale and
+// destroys whatever the joining node had, and a departure carries the cluster's
+// copy away. A per-host credential cannot survive the lifecycle this system
+// exists to automate, so the credential is the hive's.
+//
+// Uploaded as a FILE rather than passed on the enrol command line. The enrolment
+// token is passed as an argument deliberately — it is single-use and expires in
+// minutes — but this one is long-lived and can create and destroy guests, and an
+// argument is visible in the host's process list to every user on it.
+//
+// 0600 and its own directory at 0755: the file holds a credential, and nothing
+// but root needs to read it.
+func WriteAgentCredential(ctx context.Context, r Runner, baseURL string, c ProxmoxCredential) error {
+	if c.TokenID == "" || c.Secret == "" {
+		// Not an error. A machine that belongs to no fleet has no cluster
+		// credential to be given, and that is a real state every migrating host
+		// passes through. The agent refuses cluster tasks and says why.
+		return nil
+	}
+
+	if out, err := r.Run(ctx, "install -d -m 0755 /etc/apiary-agent"); err != nil {
+		return fmt.Errorf("onboard: create the agent's configuration directory: %w (%s)",
+			err, strings.TrimSpace(out))
+	}
+
+	lines := []string{
+		"# Managed by apiary. Written whole when a host is onboarded or joins a fleet.",
+		"AGENT_BASE_URL=" + baseURL,
+		"AGENT_PROXMOX_TOKEN_ID=" + c.TokenID,
+		"AGENT_PROXMOX_SECRET=" + c.Secret,
+	}
+	if c.APIURL != "" {
+		lines = append(lines, "AGENT_PROXMOX_URL="+c.APIURL)
+	}
+	body := strings.Join(lines, "\n") + "\n"
+
+	if err := r.Upload(ctx, AgentEnvPath, 0o600, []byte(body)); err != nil {
+		// The secret is NOT in the error. A failed upload is exactly the moment
+		// somebody pastes the message into a ticket.
+		return fmt.Errorf("onboard: write the agent's environment file: %w", err)
+	}
+	return nil
+}

@@ -157,6 +157,12 @@ type EnrolInput struct {
 	MachineID      string
 	Hostname       string
 	AgentVersion   string
+
+	// PeerAddress is where the enrolment request came from. See
+	// repo.preferredAddress: an agent knows its hostname and not how the control
+	// plane reaches it, and the address of the request that just arrived is the
+	// one candidate that is reachable by demonstration.
+	PeerAddress string
 }
 
 type EnrolResult struct {
@@ -222,6 +228,7 @@ func (s *FleetService) Enrol(ctx context.Context, in EnrolInput) (*EnrolResult, 
 		// differently and the lookup could never match.
 		MachineID:    tenant.MachineIDDigest(machine),
 		Address:      host,
+		PeerAddress:  in.PeerAddress,
 		AgentVersion: strings.TrimSpace(in.AgentVersion),
 		APIKeyID:     minted.Key.ID,
 		Now:          now,
@@ -320,6 +327,9 @@ type HeartbeatInput struct {
 	// without it there is nothing to reopen the right database with.
 	Session      *BeeSession
 	AgentVersion string
+	// AgentDigest is the sha256 of the binary this agent is running — what the
+	// upgrade decision is actually made on. See tenant.Bee.AgentDigest.
+	AgentDigest string
 
 	// UnavailableFor is the bee declaring, before it acts, roughly how long it
 	// will be gone. Zero leaves any standing declaration untouched.
@@ -358,6 +368,7 @@ func (s *FleetService) Heartbeat(ctx context.Context, in HeartbeatInput) (*Heart
 		BeeID:            in.Session.Bee.ID,
 		Now:              now,
 		AgentVersion:     in.AgentVersion,
+		AgentDigest:      in.AgentDigest,
 		ClearUnavailable: in.Back,
 	}
 	if !in.Back && in.UnavailableFor > 0 {

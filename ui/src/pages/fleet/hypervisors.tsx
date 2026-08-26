@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   IconLogout,
@@ -55,7 +55,7 @@ import {
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { StatusBadge, relative } from './bee-table';
-import { DrainBadge, Hint, LoadError, RefusalList, capacityLabel } from './drain';
+import { DrainBadge, Hint, LoadError, RefusalBadges, RemedyCard, capacityLabel } from './drain';
 
 /**
  * Pulls the message out of a 409 refusal.
@@ -121,11 +121,34 @@ export const Hypervisors = () => {
     { number: number; address: string; priority: string }[]
   >([{ number: 0, address: '', priority: '' }]);
 
-  const hypervisors = useQuery(fleetHypervisorsListOptions());
-  const fleetless = useQuery(fleetHostsFleetlessOptions());
-  const hives = useQuery(fleetHivesListOptions());
+  // Depart, join and onboard are QUEUED, not done. Clicking one and seeing the
+  // page unchanged is correct and useless: the work is happening in a worker,
+  // and until this refetches there is nothing on screen to say so.
+  //
+  // Polled at a rate that depends on whether anything is actually in flight,
+  // rather than a flat interval. A fleet page left open on a wall display would
+  // otherwise re-run several joins every few seconds forever to learn nothing;
+  // and a flat SLOW interval would leave an operator staring at a stale row for
+  // half a minute after clicking Depart, which is the problem this exists to fix.
+  //
+  // react-query already pauses polling while the tab is hidden, so a backgrounded
+  // page costs nothing.
+  const [pollFast, setPollFast] = useState(false);
+  const actedAt = useRef(0);
+  const refetchInterval = pollFast ? 2000 : 15000;
+
+  const hypervisors = useQuery({ ...fleetHypervisorsListOptions(), refetchInterval });
+  const fleetless = useQuery({ ...fleetHostsFleetlessOptions(), refetchInterval });
+  const hives = useQuery({ ...fleetHivesListOptions(), refetchInterval });
 
   const invalidate = () => {
+    // Poll quickly from THIS moment, not from when the work becomes visible.
+    //
+    // A queued departure sets nothing on the machine until a worker picks it up,
+    // so the data-derived signal below cannot see it yet — and that gap is
+    // exactly the one an operator is staring at, having just clicked the button.
+    actedAt.current = Date.now();
+    setPollFast(true);
     void queryClient.invalidateQueries({ queryKey: fleetHypervisorsListQueryKey() });
     void queryClient.invalidateQueries({ queryKey: fleetHostsFleetlessQueryKey() });
   };
@@ -182,6 +205,65 @@ export const Hypervisors = () => {
   });
 
   const nodes = hypervisors.data?.hypervisors ?? [];
+
+  // Whether the fleet is mid-operation, derived from the data rather than from
+  // what this tab happens to have clicked.
+  //
+  // That distinction matters: a departure started in another browser, or by a
+  // colleague, or by an API client, moves this page just as much as one started
+  // here — and a flag set by our own mutation would leave those invisible until
+  // somebody reloaded.
+  //
+  // Three signals, because the three operations report themselves differently.
+  // Onboarding has a state column. Departures and arrivals have none, so they
+  // are recognised by a recent last_operation_at — the window is generous
+  // because a job can sit queued before it runs. And a machine that is neither
+  // provisioned nor failed is somewhere in between.
+  const busy = nodes.some((n) => {
+    if (n.provisioning_state === 'pending' || n.provisioning_state === 'provisioning') return true;
+    if (!n.last_operation_at) return false;
+    return Date.now() - new Date(n.last_operation_at).getTime() < 3 * 60 * 1000;
+  });
+
+  useEffect(() => {
+    if (busy) {
+      setPollFast(true);
+      return;
+    }
+    // Nothing in flight. Keep polling quickly for a grace period after the last
+    // click, because a queued job is invisible in the data until it starts —
+    // dropping to the slow interval the instant a mutation returns would put the
+    // operator back to waiting fifteen seconds to see their own action.
+    const remaining = 60_000 - (Date.now() - actedAt.current);
+    if (remaining <= 0) {
+      setPollFast(false);
+      return;
+    }
+    const timer = setTimeout(() => setPollFast(false), remaining);
+    return () => clearTimeout(timer);
+  }, [busy]);
+
+  // Every refusal on the page, for the remedy card at the bottom.
+  //
+  // Collected here rather than inside each row because the fix for a reason is
+  // the same wherever it appears: rendering it per host repeats the same
+  // paragraph down the page and makes every row wide enough to scroll sideways.
+  const allRefusals = nodes.flatMap((n) => n.departure_refusals ?? []);
+
+  // Refusals by machine id, so the fleetless table can show the same badges.
+  //
+  // That table is fed by a different endpoint whose view carries no refusals,
+  // and without this a host listed there was counted in the card ("not a member
+  // · 1 host") with nothing on the page saying WHICH host — the exact gap the
+  // badges exist to close. The two lists describe the same machines, so the id
+  // is enough and no second copy of the gate has to travel.
+  const refusalsByMachine = new Map(nodes.map((n) => [n.id, n.departure_refusals ?? []]));
+
+  // A cluster to offer the sync against, for the one refusal an operator
+  // resolves by touching no host at all. The first configured one: a stale
+  // observation is almost always fleet-wide, and offering a picker for it would
+  // be more ceremony than the action deserves.
+  const syncableHiveId = (hives.data?.hives ?? []).find((h) => h.configured)?.id;
   const strays = fleetless.data?.hosts ?? [];
   const hiveList = hives.data?.hives ?? [];
 
@@ -281,6 +363,11 @@ export const Hypervisors = () => {
                           {n.address ? (
                             <span className="block text-xs text-muted-foreground">{n.address}</span>
                           ) : null}
+                          {/* Which rules are blocking THIS host. The card at the
+                              bottom explains each one and how to fix it; naming
+                              them here is what stops that card having to list
+                              hostnames in a table cell. */}
+                          <RefusalBadges refusals={n.departure_refusals ?? []} />
                         </TableCell>
                         <TableCell>
                           {n.schedulable ? (
@@ -383,18 +470,26 @@ export const Hypervisors = () => {
                               Depart
                             </Button>
                           </div>
-                          {(n.departure_refusals?.length ?? 0) > 0 ? (
+                          {n.last_operation_error ? (
                             <div className="text-left">
-                              <RefusalList
-                                refusals={n.departure_refusals ?? []}
-                                onSync={
-                                  cluster?.configured
-                                    ? () => sync.mutate({ path: { id: hiveId } })
-                                    : undefined
-                                }
-                              />
+                              <p className="text-xs font-medium text-destructive">
+                                Last {n.last_operation || 'operation'} failed
+                                {n.last_operation_at ? ` ${relative(n.last_operation_at)}` : ''}
+                              </p>
+                              <p
+                                className="max-w-md text-xs break-words text-muted-foreground"
+                                title={n.last_operation_error}
+                              >
+                                {n.last_operation_error}
+                              </p>
                             </div>
                           ) : null}
+                          {/* The reasons live in one card at the bottom of the
+                              page, not here. Repeated per host they put the same
+                              two lines beside every node that shares a problem
+                              and make every row scroll sideways. The disabled
+                              Depart button is what marks this host as blocked;
+                              the card says what is blocking it. */}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -430,7 +525,10 @@ export const Hypervisors = () => {
               <TableBody>
                 {strays.map((h) => (
                   <TableRow key={h.hypervisor_id}>
-                    <TableCell className="font-medium">{h.address}</TableCell>
+                    <TableCell className="font-medium">
+                      {h.address}
+                      <RefusalBadges refusals={refusalsByMachine.get(h.hypervisor_id) ?? []} />
+                    </TableCell>
                     <TableCell>
                       {/* Absent status is not offline: it means no agent is enrolled on
                           this machine at all. Rendering the offline badge would report
@@ -602,6 +700,11 @@ export const Hypervisors = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RemedyCard
+        refusals={allRefusals}
+        onSync={syncableHiveId ? () => sync.mutate({ path: { id: syncableHiveId } }) : undefined}
+      />
     </div>
   );
 };
