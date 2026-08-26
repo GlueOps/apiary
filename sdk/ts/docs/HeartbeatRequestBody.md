@@ -7,6 +7,7 @@
 Name | Type
 ------------ | -------------
 `$schema` | string
+`agentDigest` | string
 `agentVersion` | string
 `appliedFirewallDigest` | string
 `appliedFirewallRevision` | number
@@ -23,6 +24,7 @@ import type { HeartbeatRequestBody } from '@glueops/apiary-sdk'
 // TODO: Update the object below with actual values
 const example = {
   "$schema": null,
+  "agentDigest": null,
   "agentVersion": null,
   "appliedFirewallDigest": null,
   "appliedFirewallRevision": null,

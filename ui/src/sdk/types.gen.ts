@@ -730,6 +730,7 @@ export type HeartbeatRequestBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    agent_digest?: string;
     agent_version?: string;
     /**
      * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
@@ -2378,6 +2379,7 @@ export type GetMyOrganizationsResponseBodyWritable = {
 };
 
 export type HeartbeatRequestBodyWritable = {
+    agent_digest?: string;
     agent_version?: string;
     /**
      * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.

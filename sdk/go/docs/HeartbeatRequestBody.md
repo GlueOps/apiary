@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
+**AgentDigest** | Pointer to **string** |  | [optional] 
 **AgentVersion** | Pointer to **string** |  | [optional] 
 **AppliedFirewallDigest** | Pointer to **string** | Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged. | [optional] 
 **AppliedFirewallRevision** | Pointer to **int64** | The firewall revision this host has actually loaded. Omit or zero if it has applied none. | [optional] 
@@ -56,6 +57,31 @@ SetSchema sets Schema field to given value.
 `func (o *HeartbeatRequestBody) HasSchema() bool`
 
 HasSchema returns a boolean if a field has been set.
+
+### GetAgentDigest
+
+`func (o *HeartbeatRequestBody) GetAgentDigest() string`
+
+GetAgentDigest returns the AgentDigest field if non-nil, zero value otherwise.
+
+### GetAgentDigestOk
+
+`func (o *HeartbeatRequestBody) GetAgentDigestOk() (*string, bool)`
+
+GetAgentDigestOk returns a tuple with the AgentDigest field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAgentDigest
+
+`func (o *HeartbeatRequestBody) SetAgentDigest(v string)`
+
+SetAgentDigest sets AgentDigest field to given value.
+
+### HasAgentDigest
+
+`func (o *HeartbeatRequestBody) HasAgentDigest() bool`
+
+HasAgentDigest returns a boolean if a field has been set.
 
 ### GetAgentVersion
 

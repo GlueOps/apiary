@@ -198,6 +198,23 @@ type Bee struct {
 	// correct in the moment before it has resolved anything at all. Same rule as
 	// everywhere else here: a check that cannot reach a decision does not act on
 	// the absence.
+	// AgentDigest is the sha256 of the binary this agent is RUNNING, as
+	// "sha256:<hex>", reported by the agent about itself.
+	//
+	// The decision "does this host need upgrading" is made on this and not on
+	// AgentVersion, because a version is a label somebody stamped and a digest is
+	// what is actually on disk. The two disagree in an ordinary development
+	// build: the catalogue advertises the CONTROL PLANE's version while the
+	// binaries it serves carry whatever they were stamped with, and only a
+	// release stamps both from one tag.
+	//
+	// When they disagree the version comparison never converges. The agent
+	// upgrades, restarts, reports the same version it had, is judged out of date
+	// again, and upgrades again — a loop that reinstalls the fleet's agents
+	// forever and looks like the upgrade being broken. Comparing digests ends at
+	// the first pass whatever anybody stamped.
+	AgentDigest string `gorm:"type:varchar(71);not null;default:''" json:"agent_digest,omitempty"`
+
 	AppliedFirewallRevision int        `gorm:"not null;default:0" json:"applied_firewall_revision"`
 	AppliedFirewallDigest   string     `gorm:"type:varchar(71);not null;default:''" json:"applied_firewall_digest,omitempty"`
 	AppliedFirewallAt       *time.Time `gorm:"type:timestamptz" json:"applied_firewall_at,omitempty"`

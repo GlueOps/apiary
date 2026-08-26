@@ -53,6 +53,10 @@ func QueueAgentUpgrades(
 	db *gorm.DB,
 	hiveID *uuid.UUID,
 	targetVersion string,
+	// targetDigests are the sha256s of every binary this control plane serves.
+	// An agent whose own digest is among them is running one of them and has
+	// nothing to do, whatever any version says.
+	targetDigests map[string]bool,
 	byUser uuid.UUID,
 	force bool,
 	now time.Time,
@@ -76,7 +80,20 @@ func QueueAgentUpgrades(
 		c := UpgradeCandidate{BeeID: b.ID.String(), Version: b.AgentVersion}
 
 		switch {
-		case b.AgentVersion == targetVersion && !force:
+		// DECIDED ON THE DIGEST, not the version.
+		//
+		// The catalogue advertises the CONTROL PLANE's version while the binaries
+		// it serves carry whatever they were stamped with, and only a release
+		// stamps both from one tag. Where they disagree, a version comparison never
+		// converges: the agent upgrades, restarts, reports the same version it had,
+		// is judged out of date again, and upgrades again — a loop that reinstalls
+		// the fleet's agents forever and reads as the upgrade being broken.
+		case b.AgentDigest != "" && targetDigests[b.AgentDigest] && !force:
+			c.Skipped = "already running this build"
+		// An agent too old to report a digest falls back to the version. It is the
+		// only signal such an agent gives, and the first upgrade replaces it with
+		// one that does report a digest — so the fallback is self-clearing.
+		case b.AgentDigest == "" && b.AgentVersion == targetVersion && !force:
 			c.Skipped = "already running " + targetVersion
 		case b.LivenessAt(now, offlineAfter) != tenant.BeeStatusOnline:
 			// Deliberately not queued for later. A task left waiting is collected

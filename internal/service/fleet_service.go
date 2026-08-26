@@ -327,6 +327,9 @@ type HeartbeatInput struct {
 	// without it there is nothing to reopen the right database with.
 	Session      *BeeSession
 	AgentVersion string
+	// AgentDigest is the sha256 of the binary this agent is running — what the
+	// upgrade decision is actually made on. See tenant.Bee.AgentDigest.
+	AgentDigest string
 
 	// UnavailableFor is the bee declaring, before it acts, roughly how long it
 	// will be gone. Zero leaves any standing declaration untouched.
@@ -365,6 +368,7 @@ func (s *FleetService) Heartbeat(ctx context.Context, in HeartbeatInput) (*Heart
 		BeeID:            in.Session.Bee.ID,
 		Now:              now,
 		AgentVersion:     in.AgentVersion,
+		AgentDigest:      in.AgentDigest,
 		ClearUnavailable: in.Back,
 	}
 	if !in.Back && in.UnavailableFor > 0 {

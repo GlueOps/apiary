@@ -480,7 +480,14 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 				"there is nothing for an agent to upgrade to")
 		}
 
-		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, *p.UserID,
+		// Every digest this control plane can serve. An agent running any of them
+		// is current, whatever version anybody stamped on it.
+		digests := make(map[string]bool, len(dist.Builds))
+		for _, b := range dist.Builds {
+			digests[b.SHA256] = true
+		}
+
+		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, *p.UserID,
 			in.Body.Force, time.Now().UTC(), 2*time.Minute)
 		if err != nil {
 			return nil, mapErr(ctx, err)

@@ -75,6 +75,17 @@ func seedBee(t *testing.T, db *gorm.DB, version string, lastSeen time.Time) tena
 	return b
 }
 
+// serving is the set of digests the control plane can hand out. Empty in most
+// of these tests, which exercises the version fallback an agent too old to
+// report a digest still relies on.
+func serving(digests ...string) map[string]bool {
+	out := make(map[string]bool, len(digests))
+	for _, d := range digests {
+		out[d] = true
+	}
+	return out
+}
+
 func bySkip(got []UpgradeCandidate, b tenant.Bee) UpgradeCandidate {
 	for _, c := range got {
 		if c.BeeID == b.ID.String() {
@@ -99,7 +110,7 @@ func TestAgentsAlreadyOnTheTargetVersionAreSkipped(t *testing.T) {
 	joinFleet(t, db, current, hive)
 	joinFleet(t, db, old, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -125,7 +136,7 @@ func TestAnOfflineAgentIsNotQueuedForLater(t *testing.T) {
 	offline := seedBee(t, db, "v1.0.0", now.Add(-time.Hour))
 	joinFleet(t, db, offline, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -152,7 +163,7 @@ func TestForceQueuesAnAgentAlreadyOnTheVersion(t *testing.T) {
 	b := seedBee(t, db, "v2.0.0", now)
 	joinFleet(t, db, b, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), true, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), true, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -174,10 +185,10 @@ func TestAnAgentIsQueuedAtMostOnce(t *testing.T) {
 	b := seedBee(t, db, "v1.0.0", now)
 	joinFleet(t, db, b, hive)
 
-	if _, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute); err != nil {
+	if _, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute); err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -205,7 +216,7 @@ func TestScopingToAFleetLeavesOtherFleetsAlone(t *testing.T) {
 	joinFleet(t, db, inA, hiveA)
 	joinFleet(t, db, inB, hiveB)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hiveA.ID, "v2.0.0", uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hiveA.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -214,5 +225,67 @@ func TestScopingToAFleetLeavesOtherFleetsAlone(t *testing.T) {
 	}
 	if got[0].BeeID != inA.ID.String() {
 		t.Fatalf("queued the wrong fleet's agent")
+	}
+}
+
+// TestAnAgentRunningTheServedBuildIsSkippedWhateverItsVersionSays.
+//
+// THE LOOP THIS PREVENTS. The catalogue advertises the CONTROL PLANE's version
+// while the binaries it serves carry whatever they were stamped with, and only a
+// release stamps both from one tag. Compared on version, a development build
+// judges every agent out of date forever: the agent upgrades, restarts, reports
+// the same version it had, is judged out of date again, and upgrades again.
+func TestAnAgentRunningTheServedBuildIsSkippedWhateverItsVersionSays(t *testing.T) {
+	db := upgradeDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	hive := seedFleet(t, db)
+	b := seedBee(t, db, "v0.0.2", now)
+	joinFleet(t, db, b, hive)
+	if err := db.Model(&tenant.Bee{}).Where("id = ?", b.ID).
+		Update("agent_digest", "sha256:abc").Error; err != nil {
+		t.Fatalf("set digest: %v", err)
+	}
+
+	// The version differs from the target and the digest matches. Version alone
+	// would queue this agent; the digest says it is already running these bytes.
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "dev", serving("sha256:abc"),
+		uuid.New(), false, now, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	if bySkip(got, b).Queued {
+		t.Fatal("an agent already running the served build was queued; comparing versions " +
+			"instead of digests is how a development build reinstalls the fleet forever")
+	}
+}
+
+// TestAnAgentRunningSomethingElseIsQueuedEvenWhenTheVersionMatches.
+//
+// The other direction, and the reason the digest is not merely a shortcut: a
+// host whose binary was replaced by hand carries the right version label and the
+// wrong bytes.
+func TestAnAgentRunningSomethingElseIsQueuedEvenWhenTheVersionMatches(t *testing.T) {
+	db := upgradeDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	hive := seedFleet(t, db)
+	b := seedBee(t, db, "v2.0.0", now)
+	joinFleet(t, db, b, hive)
+	if err := db.Model(&tenant.Bee{}).Where("id = ?", b.ID).
+		Update("agent_digest", "sha256:something-else").Error; err != nil {
+		t.Fatalf("set digest: %v", err)
+	}
+
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving("sha256:abc"),
+		uuid.New(), false, now, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	if !bySkip(got, b).Queued {
+		t.Fatal("an agent whose binary is not the served one was skipped because its version " +
+			"label matched")
 	}
 }

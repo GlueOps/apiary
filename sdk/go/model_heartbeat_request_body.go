@@ -21,6 +21,7 @@ var _ MappedNullable = &HeartbeatRequestBody{}
 type HeartbeatRequestBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
+	AgentDigest *string `json:"agent_digest,omitempty"`
 	AgentVersion *string `json:"agent_version,omitempty"`
 	// Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
 	AppliedFirewallDigest *string `json:"applied_firewall_digest,omitempty"`
@@ -82,6 +83,38 @@ func (o *HeartbeatRequestBody) HasSchema() bool {
 // SetSchema gets a reference to the given string and assigns it to the Schema field.
 func (o *HeartbeatRequestBody) SetSchema(v string) {
 	o.Schema = &v
+}
+
+// GetAgentDigest returns the AgentDigest field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetAgentDigest() string {
+	if o == nil || IsNil(o.AgentDigest) {
+		var ret string
+		return ret
+	}
+	return *o.AgentDigest
+}
+
+// GetAgentDigestOk returns a tuple with the AgentDigest field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetAgentDigestOk() (*string, bool) {
+	if o == nil || IsNil(o.AgentDigest) {
+		return nil, false
+	}
+	return o.AgentDigest, true
+}
+
+// HasAgentDigest returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasAgentDigest() bool {
+	if o != nil && !IsNil(o.AgentDigest) {
+		return true
+	}
+
+	return false
+}
+
+// SetAgentDigest gets a reference to the given string and assigns it to the AgentDigest field.
+func (o *HeartbeatRequestBody) SetAgentDigest(v string) {
+	o.AgentDigest = &v
 }
 
 // GetAgentVersion returns the AgentVersion field value if set, zero value otherwise.
@@ -320,6 +353,9 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
+	}
+	if !IsNil(o.AgentDigest) {
+		toSerialize["agent_digest"] = o.AgentDigest
 	}
 	if !IsNil(o.AgentVersion) {
 		toSerialize["agent_version"] = o.AgentVersion

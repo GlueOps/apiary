@@ -84,6 +84,13 @@ type EnrolResponse struct {
 type HeartbeatRequest struct {
 	Body struct {
 		AgentVersion string `json:"agent_version,omitempty" maxLength:"64"`
+		// AgentDigest is the sha256 of the binary this agent is running. The
+		// upgrade decision is made on this rather than on the version: a version is
+		// a label somebody stamped, and only a release stamps the control plane and
+		// the binaries it serves from one tag. Where they disagree a
+		// version comparison never converges — the agent upgrades, restarts,
+		// reports the same version and is judged out of date again.
+		AgentDigest string `json:"agent_digest,omitempty" maxLength:"71"`
 
 		UnavailableForSeconds int    `json:"unavailable_for_seconds,omitempty" minimum:"0" maximum:"86400" doc:"Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault."`
 		UnavailableReason     string `json:"unavailable_reason,omitempty" maxLength:"200"`
@@ -277,6 +284,7 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		res, err := svc.Heartbeat(ctx, service.HeartbeatInput{
 			Session:           sess,
 			AgentVersion:      in.Body.AgentVersion,
+			AgentDigest:       in.Body.AgentDigest,
 			UnavailableFor:    time.Duration(in.Body.UnavailableForSeconds) * time.Second,
 			UnavailableReason: in.Body.UnavailableReason,
 			Back:              in.Body.Back,

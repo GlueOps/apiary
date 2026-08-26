@@ -336,6 +336,9 @@ type HeartbeatInput struct {
 	Now   time.Time
 
 	AgentVersion string
+	// AgentDigest is the sha256 of the binary this agent is running, and what the
+	// upgrade decision is made on — see tenant.Bee.AgentDigest.
+	AgentDigest string
 
 	// UnavailableUntil is the bee declaring, IN ADVANCE, that it is about to be
 	// away — a reboot, a firmware flash, a kernel upgrade. Nil leaves any
@@ -349,6 +352,12 @@ func (r *FleetRepoGorm) RecordHeartbeat(ctx context.Context, in HeartbeatInput) 
 	updates := map[string]any{"last_seen_at": in.Now, "updated_at": in.Now}
 	if in.AgentVersion != "" {
 		updates["agent_version"] = in.AgentVersion
+	}
+	// Empty is not written. An older agent reports no digest, and blanking the
+	// column for it would make a host that has one look like a host that does
+	// not — which the upgrade decision reads as "needs upgrading".
+	if in.AgentDigest != "" {
+		updates["agent_digest"] = in.AgentDigest
 	}
 	switch {
 	case in.ClearUnavailable:

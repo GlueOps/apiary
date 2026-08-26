@@ -30,6 +30,12 @@ export interface HeartbeatRequestBody {
      * @type {string}
      * @memberof HeartbeatRequestBody
      */
+    agentDigest?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof HeartbeatRequestBody
+     */
     agentVersion?: string;
     /**
      * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
@@ -87,6 +93,7 @@ export function HeartbeatRequestBodyFromJSONTyped(json: any, ignoreDiscriminator
     return {
         
         '$schema': json['$schema'] == null ? undefined : json['$schema'],
+        'agentDigest': json['agent_digest'] == null ? undefined : json['agent_digest'],
         'agentVersion': json['agent_version'] == null ? undefined : json['agent_version'],
         'appliedFirewallDigest': json['applied_firewall_digest'] == null ? undefined : json['applied_firewall_digest'],
         'appliedFirewallRevision': json['applied_firewall_revision'] == null ? undefined : json['applied_firewall_revision'],
@@ -108,6 +115,7 @@ export function HeartbeatRequestBodyToJSONTyped(value?: Omit<HeartbeatRequestBod
 
     return {
         
+        'agent_digest': value['agentDigest'],
         'agent_version': value['agentVersion'],
         'applied_firewall_digest': value['appliedFirewallDigest'],
         'applied_firewall_revision': value['appliedFirewallRevision'],

@@ -3,6 +3,7 @@ package fleetops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -46,6 +47,34 @@ type Deps struct {
 	JoinPass func() (string, error)
 }
 
+// ErrNoCluster reports that this host has no Proxmox API client, so a task that
+// needs one cannot run.
+//
+// The agent logs "fleet tasks will refuse rather than run" at startup when it
+// cannot build a client — usually because the token has no ACLs. That promise
+// was not kept: Deps.Cluster was left nil and every task that touched it
+// dereferenced nil and panicked, which systemd turned into a crash loop.
+//
+// Refusing is what the startup message already claimed, and a refused task is
+// visible in the control plane where a stack trace in a journal is not.
+var ErrNoCluster = errors.New(
+	"fleetops: this host has no Proxmox API client, so it cannot perform cluster work; " +
+		"give the agent's token an API role — a scoped one such as PVEAuditor is enough to " +
+		"read state — and the task will run on its next attempt")
+
+// requireCluster refuses before a task touches a nil client.
+//
+// Checked at the top of every task that needs one rather than defended inside
+// each step: a nil dereference three calls deep reports as a segfault address,
+// and the operator has to read a stack trace to learn that a credential is
+// missing.
+func requireCluster(d Deps) error {
+	if d.Cluster == nil {
+		return ErrNoCluster
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- dist-upgrade
 
 type DistUpgradeSpec struct {
@@ -70,6 +99,10 @@ type DistUpgradeSpec struct {
 // function, sees phaseRebooting, and finishes rather than upgrading again. Get
 // that wrong and a rotation loops forever on every host in the datacenter.
 func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec string) error {
+	if err := requireCluster(d); err != nil {
+		return err
+	}
+
 	var spec DistUpgradeSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
@@ -181,6 +214,10 @@ type JoinSpec struct {
 // which is the same mistake the queued-email design exists to avoid. The bee
 // reads it from local configuration placed on the host at provisioning time.
 func Join(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	if err := requireCluster(d); err != nil {
+		return err
+	}
+
 	var spec JoinSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
@@ -242,6 +279,10 @@ type EvictSpec struct {
 // That warning is logged into the task output because it is the part operators
 // forget, and the consequence lands on the cluster rather than the host.
 func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
+	if err := requireCluster(d); err != nil {
+		return err
+	}
+
 	var spec EvictSpec
 	if err := json.Unmarshal([]byte(orEmptyJSON(rawSpec)), &spec); err != nil {
 		return fmt.Errorf("invalid spec: %w", err)
