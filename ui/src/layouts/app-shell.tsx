@@ -2,6 +2,7 @@ import {
   IconAlertTriangle,
   IconBuildingWarehouse,
   IconChevronRight,
+  IconCloudUpload,
   IconCpu,
   IconEye,
   IconKey,
@@ -128,6 +129,7 @@ const navItems: NavEntry[] = [
     children: [
       { title: 'Rules', href: '/firewall/rulesets', icon: IconShield },
       { title: 'Bindings', href: '/firewall/bindings', icon: IconRoute },
+      { title: 'Publish', href: '/firewall/publish', icon: IconCloudUpload },
     ],
   },
 ];
