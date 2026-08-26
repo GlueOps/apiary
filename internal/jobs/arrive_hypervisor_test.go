@@ -32,6 +32,8 @@ type arriveRunner struct {
 	nodeName       string
 	failOn         string
 	reconnectErr   error
+
+	uploads *[]uploadedFile
 }
 
 func (a *arriveRunner) Run(_ context.Context, cmd string) (string, error) {
@@ -90,11 +92,31 @@ func (a *arriveRunner) Run(_ context.Context, cmd string) (string, error) {
 	return "", nil
 }
 
-func (a *arriveRunner) Upload(context.Context, string, uint32, []byte) error { return nil }
-func (a *arriveRunner) Reconnect(context.Context) error                      { return a.reconnectErr }
+// Upload records what was written as well as where. A test asserting that a
+// credential file arrived has to check its CONTENT — "a file was written to that
+// path" and "the token in it is the current one" are different claims, and only
+// the second one matters after a join invalidates the old token.
+func (a *arriveRunner) Upload(_ context.Context, path string, _ uint32, body []byte) error {
+	if a.uploads != nil {
+		*a.uploads = append(*a.uploads, uploadedFile{
+			Host: a.name, Path: path, Body: append([]byte(nil), body...),
+		})
+	}
+	return nil
+}
+
+// uploadedFile is one recorded write, with the host that received it.
+type uploadedFile struct {
+	Host string
+	Path string
+	Body []byte
+}
+
+func (a *arriveRunner) Reconnect(context.Context) error { return a.reconnectErr }
 
 type arriveHarness struct {
 	log          []string
+	uploads      []uploadedFile
 	joiner       *arriveRunner
 	target       *arriveRunner
 	snapshot     ArrivalSnapshot
@@ -128,12 +150,12 @@ func newArriveHarness() *arriveHarness {
 		Links:           []tenant.CorosyncLink{{Number: 0, Address: "10.1.0.9"}},
 	}
 	h.joiner = &arriveRunner{
-		name: "joiner", log: &h.log,
+		name: "joiner", log: &h.log, uploads: &h.uploads,
 		clusterName: "dc2", quorate: true,
 		nodeDirs: "hv9", knownHostsOK: true, nodeName: "hv9",
 	}
 	h.target = &arriveRunner{
-		name: "target", log: &h.log,
+		name: "target", log: &h.log, uploads: &h.uploads,
 		clusterName: "dc2", quorate: true,
 		joinKeyMatches: 1, knownHostsOK: true,
 	}
@@ -809,5 +831,87 @@ func TestArriveRefusesWhenTheHostReportsNoNodeName(t *testing.T) {
 	}
 	if indexOf(h.log, "pvecm add") >= 0 {
 		t.Error("the join must not be attempted before the name is known")
+	}
+}
+
+// TestArrivalRewritesTheAgentsProxmoxCredential.
+//
+// THE TOKEN A JOIN INVALIDATES. Proxmox keeps API tokens in
+// /etc/pve/priv/token.cfg, which is on pmxcfs — a cluster database rather than a
+// node one — so joining REPLACES it with the target cluster's copy. Whatever
+// credential the agent was given at onboarding belonged to a different cluster,
+// or to none, and after the join it does not exist on that host.
+//
+// Left alone, every fleet task on a freshly joined node fails to authenticate
+// against its own API, and it reads as the join having broken something.
+func TestArrivalRewritesTheAgentsProxmoxCredential(t *testing.T) {
+	h := newArriveHarness()
+	d := h.deps()
+
+	var askedFor uuid.UUID
+	d.BaseURL = "http://cp:8282"
+	d.ProxmoxCredential = func(_ context.Context, _, hiveID uuid.UUID) (ProxmoxCredential, error) {
+		askedFor = hiveID
+		return ProxmoxCredential{TokenID: "root@pam!target", Secret: "target-secret"}, nil
+	}
+
+	if err := Arrive(context.Background(), d, ArriveInput{
+		OrganizationID: h.orgID, HypervisorID: uuid.New(),
+		TargetHiveID: h.snapshot.TargetHive.ID,
+	}); err != nil {
+		t.Fatalf("arrive: %v", err)
+	}
+
+	// The TARGET fleet's credential, not the machine's own — at this moment the
+	// machine's row still says it is fleetless.
+	if askedFor != h.snapshot.TargetHive.ID {
+		t.Fatalf("asked for the credential of %s, want the target hive %s",
+			askedFor, h.snapshot.TargetHive.ID)
+	}
+
+	var written []byte
+	for _, u := range h.uploads {
+		if u.Path == AgentEnvPath && u.Host == "joiner" {
+			written = u.Body
+		}
+	}
+	if written == nil {
+		t.Fatalf("the credential was never written to the JOINING host; uploads were %v",
+			h.uploads)
+	}
+	if !strings.Contains(string(written), "AGENT_PROXMOX_TOKEN_ID=root@pam!target") {
+		t.Fatalf("the target fleet's token is not in the file:\n%s", written)
+	}
+
+	// And the agent is restarted, because it builds its Proxmox client once at
+	// startup: writing the file without a restart leaves the dead credential in
+	// memory until something else happens to restart the service.
+	if indexOf(h.log, "restart apiary-agent") == -1 {
+		t.Fatalf("the agent was not restarted, so it keeps using the credential the join "+
+			"invalidated; commands were %v", h.log)
+	}
+}
+
+// TestArrivalSucceedsWhenTheCredentialCannotBeWritten.
+//
+// The migration WORKED. Returning an error would re-run AuthorizeJoinKey on a
+// retry — re-creating a root grant on the target and revoking it again — and
+// show the operator a failed job for a move that succeeded.
+func TestArrivalSucceedsWhenTheCredentialCannotBeWritten(t *testing.T) {
+	h := newArriveHarness()
+	d := h.deps()
+	d.BaseURL = "http://cp:8282"
+	d.ProxmoxCredential = func(_ context.Context, _, _ uuid.UUID) (ProxmoxCredential, error) {
+		return ProxmoxCredential{}, errors.New("no credential for that fleet")
+	}
+
+	if err := Arrive(context.Background(), d, ArriveInput{
+		OrganizationID: h.orgID, HypervisorID: uuid.New(),
+		TargetHiveID: h.snapshot.TargetHive.ID,
+	}); err != nil {
+		t.Fatalf("a credential failure failed the whole arrival: %v", err)
+	}
+	if len(h.joined) != 1 {
+		t.Fatalf("the membership was not recorded: %v", h.joined)
 	}
 }

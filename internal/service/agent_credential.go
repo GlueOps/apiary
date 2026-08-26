@@ -41,9 +41,27 @@ func (s *ProxmoxInventoryService) AgentProxmoxCredential(
 	if hv.HiveID == nil {
 		return "", "", "", nil
 	}
+	return s.AgentProxmoxCredentialForHive(ctx, orgID, *hv.HiveID)
+}
+
+// AgentProxmoxCredentialForHive returns the token an agent in one fleet should
+// hold.
+//
+// Named by FLEET rather than by machine because arrival needs it before the
+// machine belongs to that fleet. A join replaces the node's token database with
+// the target cluster's — see the note on pmxcfs above — so the credential the
+// agent must end up with is the one for the cluster it is JOINING, at a moment
+// when its own row still says it is fleetless.
+func (s *ProxmoxInventoryService) AgentProxmoxCredentialForHive(
+	ctx context.Context, orgID, hiveID uuid.UUID,
+) (tokenID, secret, apiURL string, err error) {
+	tCtx, err := s.tenants.GetTenantContext(ctx, orgID.String())
+	if err != nil {
+		return "", "", "", fmt.Errorf("agent credential: open the tenant database: %w", err)
+	}
 
 	var hive tenant.Hive
-	if err := tCtx.DB.WithContext(ctx).First(&hive, "id = ?", *hv.HiveID).Error; err != nil {
+	if err := tCtx.DB.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
 		return "", "", "", fmt.Errorf("agent credential: load the fleet: %w", err)
 	}
 	if hive.CredentialID == nil {

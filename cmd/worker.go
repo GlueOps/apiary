@@ -287,6 +287,17 @@ func runWorker() error {
 		// departure, and a separate job on purpose — a migration is a departure
 		// and then an arrival, with a real fleetless state between them.
 		river.AddWorker(workers, jobs.NewArriveHypervisorWorker(jobs.ArriveDeps{
+			// The TARGET fleet's credential, written after the join — a join replaces
+			// the node's token database with the cluster's, so whatever the agent
+			// held before no longer exists on that host.
+			ProxmoxCredential: func(ctx context.Context, orgID, hiveID uuid.UUID) (jobs.ProxmoxCredential, error) {
+				tokenID, secret, apiURL, err := inventory.AgentProxmoxCredentialForHive(ctx, orgID, hiveID)
+				if err != nil {
+					return jobs.ProxmoxCredential{}, err
+				}
+				return jobs.ProxmoxCredential{TokenID: tokenID, Secret: secret, APIURL: apiURL}, nil
+			},
+			BaseURL: cfg.BaseURL,
 			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID,
 				operation string, opErr error) error {
 				db, err := fleetRepoFor(ctx, orgID)
