@@ -97,3 +97,40 @@ describe('SshKeys — the automated onboarding prerequisite', () => {
     expect(document.body.textContent).not.toMatch(/BEGIN [A-Z ]*PRIVATE KEY/);
   });
 });
+
+describe('SshKeys — the install command', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('access_token', 'a-bearer-token');
+  });
+
+  it('installs to authorized_keys.d, never to /root/.ssh/authorized_keys', async () => {
+    stubFetch({ keys: [aKey] });
+    renderPage();
+    await screen.findByText(THE_FINGERPRINT);
+
+    const page = document.body.textContent ?? '';
+
+    // On a Proxmox node /root/.ssh/authorized_keys is a symlink onto pmxcfs, and
+    // a cluster join REPLACES that database wholesale. A key installed there
+    // disappears the moment the host joins a fleet, and the failure reads as the
+    // join having broken SSH.
+    expect(page).toContain('/etc/ssh/authorized_keys.d/apiary');
+    expect(page).not.toMatch(/>\s*\/root\/\.ssh\/authorized_keys/);
+  });
+
+  it('writes the sshd drop-in, without which the key is simply ignored', async () => {
+    stubFetch({ keys: [aKey] });
+    renderPage();
+    await screen.findByText(THE_FINGERPRINT);
+
+    const page = document.body.textContent ?? '';
+    expect(page).toContain('/etc/ssh/sshd_config.d/60-apiary.conf');
+    expect(page).toContain('AuthorizedKeysFile');
+
+    // Validated before the reload: a configuration sshd refuses to parse means
+    // it does not come back, and that is the one failure here nobody can undo
+    // remotely. Reload, not restart, so the session doing this survives.
+    expect(page).toContain('sshd -t');
+    expect(page).not.toContain('systemctl restart ssh');
+  });
+});

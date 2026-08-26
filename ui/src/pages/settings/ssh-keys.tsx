@@ -53,6 +53,35 @@ function KeyStatus({ k }: { k: KeyView }) {
   return <Badge variant="outline">Active</Badge>;
 }
 
+/**
+ * The commands that put a fleet key on a host durably.
+ *
+ * The same paths onboarding uses, and for the same reason: on a Proxmox node
+ * /root/.ssh/authorized_keys is a symlink onto pmxcfs, and a cluster join
+ * replaces that database wholesale. A key installed there disappears the moment
+ * the host joins a fleet — which reads as the join having broken SSH.
+ *
+ * The sshd drop-in is what makes the extra paths readable at all; without it
+ * sshd looks only at .ssh/authorized_keys and the key sits there being ignored.
+ * `sshd -t` before the reload, because a configuration sshd refuses to parse
+ * means it does not come back, and that is the one failure here nobody can undo
+ * remotely. A reload rather than a restart, so the session doing this survives
+ * being wrong.
+ */
+function installScript(publicKey: string) {
+  return [
+    'install -d -m 0755 /etc/ssh/authorized_keys.d',
+    `printf '%s\\n' ${JSON.stringify(publicKey)} > /etc/ssh/authorized_keys.d/apiary`,
+    'chmod 0644 /etc/ssh/authorized_keys.d/apiary',
+    "printf '%s\\n' 'AuthorizedKeysFile .ssh/authorized_keys " +
+      "/etc/ssh/authorized_keys.d/operators /etc/ssh/authorized_keys.d/apiary' " +
+      '> /etc/ssh/sshd_config.d/60-apiary.conf',
+    'chmod 0644 /etc/ssh/sshd_config.d/60-apiary.conf',
+    'sshd -t && (systemctl reload ssh 2>/dev/null || systemctl reload sshd)',
+    'ssh-keygen -lf /etc/ssh/authorized_keys.d/apiary',
+  ].join('\n');
+}
+
 function copy(value: string, what: string) {
   void navigator.clipboard.writeText(value);
   toast.success(`${what} copied`);
@@ -211,38 +240,36 @@ export function SshKeys() {
           <CardHeader>
             <CardTitle>Installing a key on a hypervisor</CardTitle>
             <CardDescription>
-              Run this on the host, as root, before onboarding it. Then verify the fingerprint
-              matches the one above — that is what tells you the key you installed is the key the
-              control plane holds.
+              Run this on the host, as root, before onboarding it. Then check the fingerprint it
+              prints against the one above — that is what tells you the key you installed is the key
+              this control plane holds.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <code className="block overflow-x-auto rounded bg-muted p-3 text-xs whitespace-pre">
-              {`mkdir -p /root/.ssh && chmod 700 /root/.ssh\n` +
-                `echo '${rows[0].public_key}' >> /root/.ssh/authorized_keys\n` +
-                `chmod 600 /root/.ssh/authorized_keys\n` +
-                `ssh-keygen -lf /root/.ssh/authorized_keys | tail -1`}
+              {installScript(rows[0].public_key)}
             </code>
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
-                copy(
-                  `mkdir -p /root/.ssh && chmod 700 /root/.ssh\n` +
-                    `echo '${rows[0].public_key}' >> /root/.ssh/authorized_keys\n` +
-                    `chmod 600 /root/.ssh/authorized_keys\n` +
-                    `ssh-keygen -lf /root/.ssh/authorized_keys | tail -1`,
-                  'Command',
-                )
-              }
+              onClick={() => copy(installScript(rows[0].public_key), 'Command')}
             >
               <IconCopy /> Copy command
             </Button>
             <p className="text-xs text-muted-foreground">
-              On a Proxmox host already in a cluster,{' '}
-              <code className="rounded bg-muted px-1 py-0.5">/root/.ssh/authorized_keys</code> is a
-              symlink onto the replicated filesystem, so this writes to every node in that cluster
-              at once — and is discarded if the node later joins a different one.
+              NOT <code className="rounded bg-muted px-1 py-0.5">/root/.ssh/authorized_keys</code>.
+              On a Proxmox node that path is a symlink to{' '}
+              <code className="rounded bg-muted px-1 py-0.5">/etc/pve/priv/authorized_keys</code>,
+              which lives on the replicated filesystem — so a key written there is cluster-wide, and
+              joining a cluster REPLACES that database and destroys every key in it. A host
+              onboarded through it would lose this key at the exact moment it joined a fleet, and
+              the failure would look like the join breaking SSH.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The paths below are plain local files that survive a join, a leave, a quorum loss and{' '}
+              <code className="rounded bg-muted px-1 py-0.5">pvecm updatecerts</code>. They are the
+              same ones onboarding installs, so running this by hand and letting the control plane
+              do it converge on the same result rather than fighting.
             </p>
           </CardContent>
         </Card>
