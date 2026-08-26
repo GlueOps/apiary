@@ -21,6 +21,7 @@ var _ MappedNullable = &HeartbeatResponseBody{}
 type HeartbeatResponseBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
+	Firewall *FirewallDesiredView `json:"firewall,omitempty"`
 	// This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
 	Task *TaskView `json:"task,omitempty"`
 }
@@ -74,6 +75,38 @@ func (o *HeartbeatResponseBody) SetSchema(v string) {
 	o.Schema = &v
 }
 
+// GetFirewall returns the Firewall field value if set, zero value otherwise.
+func (o *HeartbeatResponseBody) GetFirewall() FirewallDesiredView {
+	if o == nil || IsNil(o.Firewall) {
+		var ret FirewallDesiredView
+		return ret
+	}
+	return *o.Firewall
+}
+
+// GetFirewallOk returns a tuple with the Firewall field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatResponseBody) GetFirewallOk() (*FirewallDesiredView, bool) {
+	if o == nil || IsNil(o.Firewall) {
+		return nil, false
+	}
+	return o.Firewall, true
+}
+
+// HasFirewall returns a boolean if a field has been set.
+func (o *HeartbeatResponseBody) HasFirewall() bool {
+	if o != nil && !IsNil(o.Firewall) {
+		return true
+	}
+
+	return false
+}
+
+// SetFirewall gets a reference to the given FirewallDesiredView and assigns it to the Firewall field.
+func (o *HeartbeatResponseBody) SetFirewall(v FirewallDesiredView) {
+	o.Firewall = &v
+}
+
 // GetTask returns the Task field value if set, zero value otherwise.
 func (o *HeartbeatResponseBody) GetTask() TaskView {
 	if o == nil || IsNil(o.Task) {
@@ -118,6 +151,9 @@ func (o HeartbeatResponseBody) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
+	}
+	if !IsNil(o.Firewall) {
+		toSerialize["firewall"] = o.Firewall
 	}
 	if !IsNil(o.Task) {
 		toSerialize["task"] = o.Task

@@ -6,6 +6,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 |------------- | ------------- | -------------|
 | [**fleetBeeAppendLogs**](FleetApi.md#fleetbeeappendlogs) | **POST** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane |
 | [**fleetBeeEnrol**](FleetApi.md#fleetbeeenrol) | **POST** /api/v1/agent/enrol | Enrol a fleet agent into an organization |
+| [**fleetBeeFirewall**](FleetApi.md#fleetbeefirewall) | **GET** /api/v1/agent/firewall | Fetch the ruleset this host should enforce |
 | [**fleetBeeHeartbeat**](FleetApi.md#fleetbeeheartbeat) | **POST** /api/v1/agent/heartbeat | Report liveness and collect work |
 | [**fleetBeeReportTask**](FleetApi.md#fleetbeereporttask) | **POST** /api/v1/agent/tasks/{id}/status | Report progress or the outcome of a task |
 | [**fleetBeesDelete**](FleetApi.md#fleetbeesdelete) | **DELETE** /api/v1/fleet/bees/{id} | Remove a fleet agent |
@@ -171,6 +172,72 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **201** | Created |  -  |
+| **0** | Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## fleetBeeFirewall
+
+> AgentFirewallResponseBody fleetBeeFirewall()
+
+Fetch the ruleset this host should enforce
+
+The complete nft ruleset, not a patch — it begins with a flush, so a host that missed several revisions converges on this one rather than replaying a history it never saw.  An EMPTY response means hold what you have. It is returned for a machine in no fleet and for a fleet that has published nothing, and neither is an empty ruleset: flushing there would strip a host of its management access at the moment it is least reachable. Separate from the heartbeat because the body can be tens of kilobytes and would otherwise ride on every poll from every host to say \&#39;unchanged\&#39;.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  FleetApi,
+} from '@glueops/apiary-sdk';
+import type { FleetBeeFirewallRequest } from '@glueops/apiary-sdk';
+
+async function example() {
+  console.log("🚀 Testing @glueops/apiary-sdk SDK...");
+  const config = new Configuration({ 
+    // To configure API key authorization: AgentKeySecret
+    apiKey: "YOUR API KEY",
+    // To configure API key authorization: AgentKeyAuth
+    apiKey: "YOUR API KEY",
+  });
+  const api = new FleetApi(config);
+
+  try {
+    const data = await api.fleetBeeFirewall();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**AgentFirewallResponseBody**](AgentFirewallResponseBody.md)
+
+### Authorization
+
+[AgentKeySecret](../README.md#AgentKeySecret), [AgentKeyAuth](../README.md#AgentKeyAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`, `application/problem+json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | OK |  -  |
 | **0** | Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

@@ -21,6 +21,7 @@ func TestMain(m *testing.M) {
 		credentialTestSchema,
 		estateTestSchema,
 		firewallTestSchema,
+		publishTestSchema,
 		enrolmentTestSchema,
 		fleetTestSchema,
 		factsTestSchema,

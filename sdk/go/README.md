@@ -104,8 +104,10 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallBindingsCreate**](docs/FirewallAPI.md#firewallbindingscreate) | **Post** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization
 *FirewallAPI* | [**FirewallBindingsDelete**](docs/FirewallAPI.md#firewallbindingsdelete) | **Delete** /api/v1/firewall/bindings/{id} | Remove a binding
 *FirewallAPI* | [**FirewallBindingsList**](docs/FirewallAPI.md#firewallbindingslist) | **Get** /api/v1/firewall/bindings | List ruleset bindings
-*FirewallAPI* | [**FirewallBindingsUpdate**](docs/FirewallAPI.md#firewallbindingsupdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
+*FirewallAPI* | [**FirewallBindingsUpdate**](docs/FirewallAPI.md#firewallbindingsupdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding
 *FirewallAPI* | [**FirewallPreview**](docs/FirewallAPI.md#firewallpreview) | **Get** /api/v1/firewall/preview | Preview the rules a fleet would receive
+*FirewallAPI* | [**FirewallPublish**](docs/FirewallAPI.md#firewallpublish) | **Post** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet&#39;s rules as the next revision
+*FirewallAPI* | [**FirewallRevert**](docs/FirewallAPI.md#firewallrevert) | **Post** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision&#39;s ruleset
 *FirewallAPI* | [**FirewallRulesCreate**](docs/FirewallAPI.md#firewallrulescreate) | **Post** /api/v1/firewall/rulesets/{id}/rules | Add a rule to a ruleset
 *FirewallAPI* | [**FirewallRulesDelete**](docs/FirewallAPI.md#firewallrulesdelete) | **Delete** /api/v1/firewall/rules/{id} | Delete a rule
 *FirewallAPI* | [**FirewallRulesList**](docs/FirewallAPI.md#firewallruleslist) | **Get** /api/v1/firewall/rulesets/{id}/rules | List a ruleset&#39;s rules
@@ -114,8 +116,11 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallRulesetsDelete**](docs/FirewallAPI.md#firewallrulesetsdelete) | **Delete** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset
 *FirewallAPI* | [**FirewallRulesetsList**](docs/FirewallAPI.md#firewallrulesetslist) | **Get** /api/v1/firewall/rulesets | List firewall rulesets
 *FirewallAPI* | [**FirewallRulesetsUpdate**](docs/FirewallAPI.md#firewallrulesetsupdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
+*FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
+*FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
 *FleetAPI* | [**FleetBeeAppendLogs**](docs/FleetAPI.md#fleetbeeappendlogs) | **Post** /api/v1/agent/tasks/{id}/logs | Stream task output back to the control plane
 *FleetAPI* | [**FleetBeeEnrol**](docs/FleetAPI.md#fleetbeeenrol) | **Post** /api/v1/agent/enrol | Enrol a fleet agent into an organization
+*FleetAPI* | [**FleetBeeFirewall**](docs/FleetAPI.md#fleetbeefirewall) | **Get** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
 *FleetAPI* | [**FleetBeeHeartbeat**](docs/FleetAPI.md#fleetbeeheartbeat) | **Post** /api/v1/agent/heartbeat | Report liveness and collect work
 *FleetAPI* | [**FleetBeeReportTask**](docs/FleetAPI.md#fleetbeereporttask) | **Post** /api/v1/agent/tasks/{id}/status | Report progress or the outcome of a task
 *FleetAPI* | [**FleetBeesDelete**](docs/FleetAPI.md#fleetbeesdelete) | **Delete** /api/v1/fleet/bees/{id} | Remove a fleet agent
@@ -173,10 +178,12 @@ Class | Method | HTTP request | Description
  - [AcceptRequestBody](docs/AcceptRequestBody.md)
  - [AcceptResponseBody](docs/AcceptResponseBody.md)
  - [AccessRuleView](docs/AccessRuleView.md)
+ - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
  - [BeeView](docs/BeeView.md)
+ - [BindingScopeBody](docs/BindingScopeBody.md)
  - [BindingView](docs/BindingView.md)
  - [CapacityView](docs/CapacityView.md)
  - [ChangePasswordRequestBody](docs/ChangePasswordRequestBody.md)
@@ -210,6 +217,7 @@ Class | Method | HTTP request | Description
  - [ErrorDetail](docs/ErrorDetail.md)
  - [ErrorModel](docs/ErrorModel.md)
  - [EstateView](docs/EstateView.md)
+ - [FirewallDesiredView](docs/FirewallDesiredView.md)
  - [FleetlessHostView](docs/FleetlessHostView.md)
  - [ForgotPasswordRequestBody](docs/ForgotPasswordRequestBody.md)
  - [ForgotPasswordResponseBody](docs/ForgotPasswordResponseBody.md)
@@ -273,6 +281,8 @@ Class | Method | HTTP request | Description
  - [PreviewResponseBody1](docs/PreviewResponseBody1.md)
  - [PublicKeyCredentialCreationOptions](docs/PublicKeyCredentialCreationOptions.md)
  - [PublicKeyCredentialRequestOptions](docs/PublicKeyCredentialRequestOptions.md)
+ - [PublishRequestBody](docs/PublishRequestBody.md)
+ - [PublishResponseBody](docs/PublishResponseBody.md)
  - [RefreshRequestBody](docs/RefreshRequestBody.md)
  - [RefreshResponseBody](docs/RefreshResponseBody.md)
  - [RefusalView](docs/RefusalView.md)
@@ -286,6 +296,7 @@ Class | Method | HTTP request | Description
  - [ResendVerificationResponseBody](docs/ResendVerificationResponseBody.md)
  - [ResetPasswordRequestBody](docs/ResetPasswordRequestBody.md)
  - [ResetPasswordResponseBody](docs/ResetPasswordResponseBody.md)
+ - [RevertRequestBody](docs/RevertRequestBody.md)
  - [RevokeAPIKeyResponseBody](docs/RevokeAPIKeyResponseBody.md)
  - [RevokeResponseBody](docs/RevokeResponseBody.md)
  - [RevokeResponseBody1](docs/RevokeResponseBody1.md)
@@ -294,6 +305,9 @@ Class | Method | HTTP request | Description
  - [RuleView](docs/RuleView.md)
  - [RulesetView](docs/RulesetView.md)
  - [SetRequestBody](docs/SetRequestBody.md)
+ - [SnapshotBodyResponseBody](docs/SnapshotBodyResponseBody.md)
+ - [SnapshotView](docs/SnapshotView.md)
+ - [SnapshotsResponseBody](docs/SnapshotsResponseBody.md)
  - [SoleOwnershipsResponseBody](docs/SoleOwnershipsResponseBody.md)
  - [StartAuthResponseBody](docs/StartAuthResponseBody.md)
  - [StoredTaskLogLine](docs/StoredTaskLogLine.md)

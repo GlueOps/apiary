@@ -12,6 +12,7 @@ import { VerifyEmail } from '@/pages/auth/verify-email.tsx';
 import { Dashboard } from '@/pages/dashboard/dashboard.tsx';
 import { EstatesPage } from '@/pages/estates/EstatesPage.tsx';
 import { FirewallBindings } from '@/pages/firewall/bindings.tsx';
+import { FirewallPublish } from '@/pages/firewall/publish.tsx';
 import { FirewallRulesets } from '@/pages/firewall/rulesets.tsx';
 import { Fleet } from '@/pages/fleet/fleet.tsx';
 import { Clusters } from '@/pages/fleet/hives.tsx';
@@ -101,6 +102,11 @@ export const router = createBrowserRouter([
                 path: 'firewall/bindings',
                 element: <FirewallBindings />,
                 handle: { title: 'Firewall bindings' },
+              },
+              {
+                path: 'firewall/publish',
+                element: <FirewallPublish />,
+                handle: { title: 'Publish' },
               },
               {
                 path: 'settings/policies',

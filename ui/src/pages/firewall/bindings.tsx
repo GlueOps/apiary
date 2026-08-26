@@ -72,6 +72,7 @@ export const FirewallBindings = () => {
   const [editing, setEditing] = useState<BindingView | null>(null);
   const [editPriority, setEditPriority] = useState(String(DEFAULT_PRIORITY));
   const [editEnabled, setEditEnabled] = useState(true);
+  const [editScope, setEditScope] = useState<string>(ORG_WIDE);
   const [unbinding, setUnbinding] = useState<BindingView | null>(null);
 
   const bindingsQuery = useQuery(firewallBindingsListOptions());
@@ -151,6 +152,24 @@ export const FirewallBindings = () => {
   const appliesToPreview = (b: BindingView) => !b.hive_id || b.hive_id === previewHive;
 
   const newHiveId = newScope === ORG_WIDE ? undefined : newScope;
+
+  // Where the edit dialog would move this binding to, and whether that scope is
+  // already taken by the same ruleset.
+  //
+  // Checked here as well as by the server so the operator is told before saving.
+  // The server refuses it either way — the same ruleset bound twice at one scope
+  // renders twice and duplicates every rule in it — but a button that saves and
+  // then errors reads as a bug in the form rather than as a rule.
+  const editScopeTarget = editScope === ORG_WIDE ? undefined : editScope;
+  const editScopeConflict =
+    editing !== null &&
+    (editing.hive_id ?? undefined) !== editScopeTarget &&
+    bindings.some(
+      (b) =>
+        b.id !== editing.id &&
+        b.ruleset_id === editing.ruleset_id &&
+        (b.hive_id ?? undefined) === editScopeTarget,
+    );
   const duplicate = bindings.some(
     (b) => b.ruleset_id === newRulesetId && (b.hive_id ?? undefined) === newHiveId,
   );
@@ -270,6 +289,7 @@ export const FirewallBindings = () => {
                                 setEditing(b);
                                 setEditPriority(String(b.priority));
                                 setEditEnabled(b.enabled);
+                                setEditScope(b.hive_id ?? ORG_WIDE);
                               }}
                             >
                               Edit
@@ -420,10 +440,39 @@ export const FirewallBindings = () => {
               {editing?.ruleset_name} on {describeScope(editing?.hive_id, fleets)}
             </DialogTitle>
             <DialogDescription>
-              Priority and whether this binding renders are the only things a binding has to change.
-              To point it at a different ruleset or fleet, unbind and bind again.
+              Moving a binding changes which hosts render its rules at the next publish. To point it
+              at a different <em>ruleset</em>, unbind and bind again — that is a different policy,
+              not a move.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-scope">Scope</Label>
+            <Select value={editScope} onValueChange={(next) => setEditScope(String(next))}>
+              <SelectTrigger id="edit-scope" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ORG_WIDE}>Org-wide — every host, fleet or not</SelectItem>
+                {fleets.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.label}
+                    {f.hostnames.length ? ` · ${f.hostnames.join(', ')}` : ' · no agents yet'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {editScopeConflict ? (
+              <p className="text-sm text-amber-500">
+                {conflictMessage(describeScope(editScopeTarget, fleets))}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Narrowing to one fleet stops these rules rendering anywhere else at the next
+                publish. Hosts already running them keep them until their fleet publishes again.
+              </p>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="edit-priority">Priority</Label>
@@ -460,12 +509,21 @@ export const FirewallBindings = () => {
               Cancel
             </Button>
             <Button
-              disabled={update.isPending}
+              disabled={update.isPending || editScopeConflict}
               onClick={() =>
                 editing &&
                 update.mutate({
                   path: { id: editing.id },
-                  body: { enabled: editEnabled, priority: Number(editPriority) || 0 },
+                  body: {
+                    enabled: editEnabled,
+                    priority: Number(editPriority) || 0,
+                    // Always sent, because this form always knows the scope — it
+                    // was loaded from the binding being edited. The field is
+                    // optional on the wire so a client that does NOT know about
+                    // scope cannot widen a binding by omitting it; that is not
+                    // this form.
+                    scope: editScopeTarget ? { hive_id: editScopeTarget } : {},
+                  },
                 })
               }
             >

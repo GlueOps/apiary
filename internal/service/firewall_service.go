@@ -301,11 +301,55 @@ func (s *FirewallService) Bind(
 }
 
 func (s *FirewallService) UpdateBinding(ctx context.Context, orgID, id uuid.UUID, priority int, enabled bool) error {
+	return s.UpdateBindingScope(ctx, orgID, id, priority, enabled, nil)
+}
+
+// UpdateBindingScope updates a binding and, when scope is non-nil, moves it.
+//
+// The scope is validated with the SAME rules the create path uses, because a
+// binding moved into an invalid scope is indistinguishable from one created
+// there. In particular a swarm without its hive is refused: swarm names are
+// unique only within a hive, and BindingsForScope matches swarm bindings on the
+// swarm id ALONE — safe only because the pair is checked here. Accepting the
+// half would let a binding written for one cluster's "prod" group resolve
+// against another cluster's.
+func (s *FirewallService) UpdateBindingScope(
+	ctx context.Context, orgID, id uuid.UUID, priority int, enabled bool,
+	scope *repo.BindingScopeChange,
+) error {
 	r, err := s.repoFor(ctx, orgID)
 	if err != nil {
 		return err
 	}
-	return r.UpdateBinding(ctx, id, priority, enabled)
+	if scope != nil {
+		if scope.SwarmID != nil && scope.HiveID == nil {
+			return repo.ErrFirewallSwarmNeedsHive
+		}
+		if scope.HiveID != nil {
+			ok, err := r.HiveExists(ctx, *scope.HiveID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return repo.ErrFirewallHiveNotFound
+			}
+		}
+		if scope.SwarmID != nil {
+			// As a PAIR. A swarm from another hive would otherwise move happily and
+			// then apply to hosts the operator never named.
+			ok, err := r.SwarmExists(ctx, *scope.HiveID, *scope.SwarmID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return repo.ErrFirewallSwarmNotFound
+			}
+		}
+	}
+	if priority == 0 {
+		priority = 100
+	}
+	return r.UpdateBindingWithScope(ctx, id, priority, enabled, scope)
 }
 
 func (s *FirewallService) Unbind(ctx context.Context, orgID, id uuid.UUID) error {

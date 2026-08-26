@@ -86,6 +86,19 @@ export type AccessRuleView = {
     value: string;
 };
 
+export type AgentFirewallResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The complete nft ruleset, to be loaded with nft -f. It begins with a flush because it is desired state rather than a patch: anything already loaded that it does not declare must go.
+     */
+    content?: string;
+    digest?: string;
+    revision?: number;
+};
+
 export type ArriveRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -130,6 +143,17 @@ export type BeeView = {
     status: 'online' | 'unavailable' | 'offline';
     unavailable_reason?: string;
     unavailable_until?: string;
+};
+
+export type BindingScopeBody = {
+    /**
+     * The fleet this binding applies to. Empty means every host in the organization, including hosts in no fleet.
+     */
+    hive_id?: string;
+    /**
+     * A group inside that fleet. Requires hive_id: swarm names are unique only within a fleet, so a bare swarm id names a group without saying whose.
+     */
+    swarm_id?: string;
 };
 
 export type BindingView = {
@@ -543,6 +567,17 @@ export type EstateView = {
     scope_version: number;
 };
 
+export type FirewallDesiredView = {
+    /**
+     * Of the rendered body. Compared as well as the revision, so a host that loaded the right revision from a corrupted or hand-edited file is still seen as diverged.
+     */
+    digest: string;
+    /**
+     * Only ever increases. A backout is a NEW revision carrying an older body, so an agent comparing revisions can use != or < and behave identically.
+     */
+    revision: number;
+};
+
 export type FleetlessHostView = {
     address: string;
     arrival_refusals: Array<RefusalView> | null;
@@ -602,6 +637,14 @@ export type HeartbeatRequestBody = {
     readonly $schema?: string;
     agent_version?: string;
     /**
+     * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
+     */
+    applied_firewall_digest?: string;
+    /**
+     * The firewall revision this host has actually loaded. Omit or zero if it has applied none.
+     */
+    applied_firewall_revision?: number;
+    /**
      * Withdraws a standing declaration: the host has returned.
      */
     back?: boolean;
@@ -621,6 +664,7 @@ export type HeartbeatResponseBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    firewall?: FirewallDesiredView;
     /**
      * This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
      */
@@ -1274,6 +1318,31 @@ export type PublicKeyCredentialRequestOptions = {
     userVerification?: string;
 };
 
+export type PublishRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Why this policy is being published. Read later by whoever is deciding whether to back it out, which is the moment it matters most.
+     */
+    reason?: string;
+};
+
+export type PublishResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    bytes: number;
+    digest: string;
+    revision: number;
+    /**
+     * True when the rendered policy matched the published one and no revision was created. Not a failure: publishing twice is the ordinary way to reach it.
+     */
+    unchanged: boolean;
+};
+
 export type RefreshRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1392,6 +1461,18 @@ export type ResetPasswordResponseBody = {
      */
     readonly $schema?: string;
     message: string;
+};
+
+export type RevertRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    reason?: string;
+    /**
+     * The revision whose BODY to republish. The new revision number is higher than the current one — a backout never moves the number down.
+     */
+    to_revision: number;
 };
 
 export type RevokeApiKeyResponseBody = {
@@ -1518,6 +1599,37 @@ export type SetRequestBody = {
     state: 'enabled' | 'disabled';
 };
 
+export type SnapshotBodyResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    content: string;
+    digest: string;
+    revision: number;
+};
+
+export type SnapshotView = {
+    bytes: number;
+    created_at: string;
+    /**
+     * Whether this is the revision the fleet is being told to converge on.
+     */
+    current: boolean;
+    digest: string;
+    reason?: string;
+    revert_of?: number;
+    revision: number;
+};
+
+export type SnapshotsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    snapshots: Array<SnapshotView> | null;
+};
+
 export type SoleOwnershipsResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1629,6 +1741,7 @@ export type UpdateBindingRequestBody = {
     readonly $schema?: string;
     enabled: boolean;
     priority?: number;
+    scope?: BindingScopeBody;
 };
 
 export type UpdateHiveRequestBody = {
@@ -1795,6 +1908,15 @@ export type AccessRuleViewWritable = {
     seeded: boolean;
     updated_at: string;
     value: string;
+};
+
+export type AgentFirewallResponseBodyWritable = {
+    /**
+     * The complete nft ruleset, to be loaded with nft -f. It begins with a flush because it is desired state rather than a patch: anything already loaded that it does not declare must go.
+     */
+    content?: string;
+    digest?: string;
+    revision?: number;
 };
 
 export type ArriveRequestBodyWritable = {
@@ -2088,6 +2210,14 @@ export type GetMyOrganizationsResponseBodyWritable = {
 export type HeartbeatRequestBodyWritable = {
     agent_version?: string;
     /**
+     * Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
+     */
+    applied_firewall_digest?: string;
+    /**
+     * The firewall revision this host has actually loaded. Omit or zero if it has applied none.
+     */
+    applied_firewall_revision?: number;
+    /**
      * Withdraws a standing declaration: the host has returned.
      */
     back?: boolean;
@@ -2103,6 +2233,7 @@ export type HeartbeatRequestBodyWritable = {
 };
 
 export type HeartbeatResponseBodyWritable = {
+    firewall?: FirewallDesiredView;
     /**
      * This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
      */
@@ -2484,6 +2615,23 @@ export type PreviewResponseBody1Writable = {
     rules: Array<RuleViewWritable> | null;
 };
 
+export type PublishRequestBodyWritable = {
+    /**
+     * Why this policy is being published. Read later by whoever is deciding whether to back it out, which is the moment it matters most.
+     */
+    reason?: string;
+};
+
+export type PublishResponseBodyWritable = {
+    bytes: number;
+    digest: string;
+    revision: number;
+    /**
+     * True when the rendered policy matched the published one and no revision was created. Not a failure: publishing twice is the ordinary way to reach it.
+     */
+    unchanged: boolean;
+};
+
 export type RefreshRequestBodyWritable = {
     refresh_token: string;
 };
@@ -2548,6 +2696,14 @@ export type ResetPasswordRequestBodyWritable = {
 
 export type ResetPasswordResponseBodyWritable = {
     message: string;
+};
+
+export type RevertRequestBodyWritable = {
+    reason?: string;
+    /**
+     * The revision whose BODY to republish. The new revision number is higher than the current one — a backout never moves the number down.
+     */
+    to_revision: number;
 };
 
 export type RevokeApiKeyResponseBodyWritable = {
@@ -2642,6 +2798,16 @@ export type SetRequestBodyWritable = {
     state: 'enabled' | 'disabled';
 };
 
+export type SnapshotBodyResponseBodyWritable = {
+    content: string;
+    digest: string;
+    revision: number;
+};
+
+export type SnapshotsResponseBodyWritable = {
+    snapshots: Array<SnapshotView> | null;
+};
+
 export type SoleOwnershipsResponseBodyWritable = {
     blocks_account_deletion: boolean;
     organizations: Array<Item> | null;
@@ -2685,6 +2851,7 @@ export type TaskLogsResponseBodyWritable = {
 export type UpdateBindingRequestBodyWritable = {
     enabled: boolean;
     priority?: number;
+    scope?: BindingScopeBody;
 };
 
 export type UpdateHiveRequestBodyWritable = {
@@ -2846,6 +3013,31 @@ export type FleetBeeEnrolResponses = {
 };
 
 export type FleetBeeEnrolResponse = FleetBeeEnrolResponses[keyof FleetBeeEnrolResponses];
+
+export type FleetBeeFirewallData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/firewall';
+};
+
+export type FleetBeeFirewallErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetBeeFirewallError = FleetBeeFirewallErrors[keyof FleetBeeFirewallErrors];
+
+export type FleetBeeFirewallResponses = {
+    /**
+     * OK
+     */
+    200: AgentFirewallResponseBody;
+};
+
+export type FleetBeeFirewallResponse = FleetBeeFirewallResponses[keyof FleetBeeFirewallResponses];
 
 export type FleetBeeHeartbeatData = {
     body: HeartbeatRequestBodyWritable;
@@ -3772,6 +3964,115 @@ export type FirewallBindingsUpdateResponses = {
 };
 
 export type FirewallBindingsUpdateResponse = FirewallBindingsUpdateResponses[keyof FirewallBindingsUpdateResponses];
+
+export type FirewallPublishData = {
+    body: PublishRequestBodyWritable;
+    path: {
+        hive_id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/hives/{hive_id}/publish';
+};
+
+export type FirewallPublishErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallPublishError = FirewallPublishErrors[keyof FirewallPublishErrors];
+
+export type FirewallPublishResponses = {
+    /**
+     * Created
+     */
+    201: PublishResponseBody;
+};
+
+export type FirewallPublishResponse = FirewallPublishResponses[keyof FirewallPublishResponses];
+
+export type FirewallRevertData = {
+    body: RevertRequestBodyWritable;
+    path: {
+        hive_id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/hives/{hive_id}/revert';
+};
+
+export type FirewallRevertErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallRevertError = FirewallRevertErrors[keyof FirewallRevertErrors];
+
+export type FirewallRevertResponses = {
+    /**
+     * Created
+     */
+    201: PublishResponseBody;
+};
+
+export type FirewallRevertResponse = FirewallRevertResponses[keyof FirewallRevertResponses];
+
+export type FirewallSnapshotsListData = {
+    body?: never;
+    path: {
+        hive_id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/hives/{hive_id}/snapshots';
+};
+
+export type FirewallSnapshotsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSnapshotsListError = FirewallSnapshotsListErrors[keyof FirewallSnapshotsListErrors];
+
+export type FirewallSnapshotsListResponses = {
+    /**
+     * OK
+     */
+    200: SnapshotsResponseBody;
+};
+
+export type FirewallSnapshotsListResponse = FirewallSnapshotsListResponses[keyof FirewallSnapshotsListResponses];
+
+export type FirewallSnapshotBodyData = {
+    body?: never;
+    path: {
+        hive_id: string;
+        revision: number;
+    };
+    query?: never;
+    url: '/api/v1/firewall/hives/{hive_id}/snapshots/{revision}';
+};
+
+export type FirewallSnapshotBodyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSnapshotBodyError = FirewallSnapshotBodyErrors[keyof FirewallSnapshotBodyErrors];
+
+export type FirewallSnapshotBodyResponses = {
+    /**
+     * OK
+     */
+    200: SnapshotBodyResponseBody;
+};
+
+export type FirewallSnapshotBodyResponse = FirewallSnapshotBodyResponses[keyof FirewallSnapshotBodyResponses];
 
 export type FirewallPreviewData = {
     body?: never;

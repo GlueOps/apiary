@@ -22,6 +22,10 @@ type HeartbeatRequestBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 	AgentVersion *string `json:"agent_version,omitempty"`
+	// Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged.
+	AppliedFirewallDigest *string `json:"applied_firewall_digest,omitempty"`
+	// The firewall revision this host has actually loaded. Omit or zero if it has applied none.
+	AppliedFirewallRevision *int64 `json:"applied_firewall_revision,omitempty"`
 	// Withdraws a standing declaration: the host has returned.
 	Back *bool `json:"back,omitempty"`
 	// Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
@@ -110,6 +114,70 @@ func (o *HeartbeatRequestBody) HasAgentVersion() bool {
 // SetAgentVersion gets a reference to the given string and assigns it to the AgentVersion field.
 func (o *HeartbeatRequestBody) SetAgentVersion(v string) {
 	o.AgentVersion = &v
+}
+
+// GetAppliedFirewallDigest returns the AppliedFirewallDigest field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetAppliedFirewallDigest() string {
+	if o == nil || IsNil(o.AppliedFirewallDigest) {
+		var ret string
+		return ret
+	}
+	return *o.AppliedFirewallDigest
+}
+
+// GetAppliedFirewallDigestOk returns a tuple with the AppliedFirewallDigest field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetAppliedFirewallDigestOk() (*string, bool) {
+	if o == nil || IsNil(o.AppliedFirewallDigest) {
+		return nil, false
+	}
+	return o.AppliedFirewallDigest, true
+}
+
+// HasAppliedFirewallDigest returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasAppliedFirewallDigest() bool {
+	if o != nil && !IsNil(o.AppliedFirewallDigest) {
+		return true
+	}
+
+	return false
+}
+
+// SetAppliedFirewallDigest gets a reference to the given string and assigns it to the AppliedFirewallDigest field.
+func (o *HeartbeatRequestBody) SetAppliedFirewallDigest(v string) {
+	o.AppliedFirewallDigest = &v
+}
+
+// GetAppliedFirewallRevision returns the AppliedFirewallRevision field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetAppliedFirewallRevision() int64 {
+	if o == nil || IsNil(o.AppliedFirewallRevision) {
+		var ret int64
+		return ret
+	}
+	return *o.AppliedFirewallRevision
+}
+
+// GetAppliedFirewallRevisionOk returns a tuple with the AppliedFirewallRevision field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetAppliedFirewallRevisionOk() (*int64, bool) {
+	if o == nil || IsNil(o.AppliedFirewallRevision) {
+		return nil, false
+	}
+	return o.AppliedFirewallRevision, true
+}
+
+// HasAppliedFirewallRevision returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasAppliedFirewallRevision() bool {
+	if o != nil && !IsNil(o.AppliedFirewallRevision) {
+		return true
+	}
+
+	return false
+}
+
+// SetAppliedFirewallRevision gets a reference to the given int64 and assigns it to the AppliedFirewallRevision field.
+func (o *HeartbeatRequestBody) SetAppliedFirewallRevision(v int64) {
+	o.AppliedFirewallRevision = &v
 }
 
 // GetBack returns the Back field value if set, zero value otherwise.
@@ -255,6 +323,12 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.AgentVersion) {
 		toSerialize["agent_version"] = o.AgentVersion
+	}
+	if !IsNil(o.AppliedFirewallDigest) {
+		toSerialize["applied_firewall_digest"] = o.AppliedFirewallDigest
+	}
+	if !IsNil(o.AppliedFirewallRevision) {
+		toSerialize["applied_firewall_revision"] = o.AppliedFirewallRevision
 	}
 	if !IsNil(o.Back) {
 		toSerialize["back"] = o.Back

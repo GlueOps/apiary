@@ -14,6 +14,11 @@
 
 import * as runtime from '../runtime';
 import {
+    type AgentFirewallResponseBody,
+    AgentFirewallResponseBodyFromJSON,
+    AgentFirewallResponseBodyToJSON,
+} from '../models/AgentFirewallResponseBody';
+import {
     type ArriveRequestBody,
     ArriveRequestBodyFromJSON,
     ArriveRequestBodyToJSON,
@@ -385,6 +390,53 @@ export class FleetApi extends runtime.BaseAPI {
      */
     async fleetBeeEnrol(requestParameters: FleetBeeEnrolRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EnrolResponseBody> {
         const response = await this.fleetBeeEnrolRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for fleetBeeFirewall without sending the request
+     */
+    async fleetBeeFirewallRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Secret"] = await this.configuration.apiKey("X-AGENT-Secret"); // AgentKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-AGENT-Key"] = await this.configuration.apiKey("X-AGENT-Key"); // AgentKeyAuth authentication
+        }
+
+
+        let urlPath = `/api/v1/agent/firewall`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The complete nft ruleset, not a patch — it begins with a flush, so a host that missed several revisions converges on this one rather than replaying a history it never saw.  An EMPTY response means hold what you have. It is returned for a machine in no fleet and for a fleet that has published nothing, and neither is an empty ruleset: flushing there would strip a host of its management access at the moment it is least reachable. Separate from the heartbeat because the body can be tens of kilobytes and would otherwise ride on every poll from every host to say \'unchanged\'.
+     * Fetch the ruleset this host should enforce
+     */
+    async fleetBeeFirewallRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AgentFirewallResponseBody>> {
+        const requestOptions = await this.fleetBeeFirewallRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AgentFirewallResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * The complete nft ruleset, not a patch — it begins with a flush, so a host that missed several revisions converges on this one rather than replaying a history it never saw.  An EMPTY response means hold what you have. It is returned for a machine in no fleet and for a fleet that has published nothing, and neither is an empty ruleset: flushing there would strip a host of its management access at the moment it is least reachable. Separate from the heartbeat because the body can be tens of kilobytes and would otherwise ride on every poll from every host to say \'unchanged\'.
+     * Fetch the ruleset this host should enforce
+     */
+    async fleetBeeFirewall(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AgentFirewallResponseBody> {
+        const response = await this.fleetBeeFirewallRaw(initOverrides);
         return await response.value();
     }
 

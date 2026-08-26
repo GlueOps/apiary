@@ -7,8 +7,10 @@ Method | HTTP request | Description
 [**FirewallBindingsCreate**](FirewallAPI.md#FirewallBindingsCreate) | **Post** /api/v1/firewall/bindings | Bind a ruleset to a fleet, or to the whole organization
 [**FirewallBindingsDelete**](FirewallAPI.md#FirewallBindingsDelete) | **Delete** /api/v1/firewall/bindings/{id} | Remove a binding
 [**FirewallBindingsList**](FirewallAPI.md#FirewallBindingsList) | **Get** /api/v1/firewall/bindings | List ruleset bindings
-[**FirewallBindingsUpdate**](FirewallAPI.md#FirewallBindingsUpdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise or disable a binding
+[**FirewallBindingsUpdate**](FirewallAPI.md#FirewallBindingsUpdate) | **Put** /api/v1/firewall/bindings/{id} | Reprioritise, disable, or re-scope a binding
 [**FirewallPreview**](FirewallAPI.md#FirewallPreview) | **Get** /api/v1/firewall/preview | Preview the rules a fleet would receive
+[**FirewallPublish**](FirewallAPI.md#FirewallPublish) | **Post** /api/v1/firewall/hives/{hive_id}/publish | Publish this fleet&#39;s rules as the next revision
+[**FirewallRevert**](FirewallAPI.md#FirewallRevert) | **Post** /api/v1/firewall/hives/{hive_id}/revert | Republish an earlier revision&#39;s ruleset
 [**FirewallRulesCreate**](FirewallAPI.md#FirewallRulesCreate) | **Post** /api/v1/firewall/rulesets/{id}/rules | Add a rule to a ruleset
 [**FirewallRulesDelete**](FirewallAPI.md#FirewallRulesDelete) | **Delete** /api/v1/firewall/rules/{id} | Delete a rule
 [**FirewallRulesList**](FirewallAPI.md#FirewallRulesList) | **Get** /api/v1/firewall/rulesets/{id}/rules | List a ruleset&#39;s rules
@@ -17,6 +19,8 @@ Method | HTTP request | Description
 [**FirewallRulesetsDelete**](FirewallAPI.md#FirewallRulesetsDelete) | **Delete** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset
 [**FirewallRulesetsList**](FirewallAPI.md#FirewallRulesetsList) | **Get** /api/v1/firewall/rulesets | List firewall rulesets
 [**FirewallRulesetsUpdate**](FirewallAPI.md#FirewallRulesetsUpdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
+[**FirewallSnapshotBody**](FirewallAPI.md#FirewallSnapshotBody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
+[**FirewallSnapshotsList**](FirewallAPI.md#FirewallSnapshotsList) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
 
 
 
@@ -217,7 +221,9 @@ Other parameters are passed through a pointer to a apiFirewallBindingsListReques
 
 > DeletedResponseBody FirewallBindingsUpdate(ctx, id).UpdateBindingRequestBody(updateBindingRequestBody).Execute()
 
-Reprioritise or disable a binding
+Reprioritise, disable, or re-scope a binding
+
+
 
 ### Example
 
@@ -344,6 +350,150 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallPublish
+
+> PublishResponseBody FirewallPublish(ctx, hiveId).PublishRequestBody(publishRequestBody).Execute()
+
+Publish this fleet's rules as the next revision
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	hiveId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	publishRequestBody := *openapiclient.NewPublishRequestBody() // PublishRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallPublish(context.Background(), hiveId).PublishRequestBody(publishRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallPublish``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallPublish`: PublishResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallPublish`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**hiveId** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallPublishRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **publishRequestBody** | [**PublishRequestBody**](PublishRequestBody.md) |  | 
+
+### Return type
+
+[**PublishResponseBody**](PublishResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallRevert
+
+> PublishResponseBody FirewallRevert(ctx, hiveId).RevertRequestBody(revertRequestBody).Execute()
+
+Republish an earlier revision's ruleset
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	hiveId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	revertRequestBody := *openapiclient.NewRevertRequestBody(int64(123)) // RevertRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallRevert(context.Background(), hiveId).RevertRequestBody(revertRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallRevert``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallRevert`: PublishResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallRevert`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**hiveId** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallRevertRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **revertRequestBody** | [**RevertRequestBody**](RevertRequestBody.md) |  | 
+
+### Return type
+
+[**PublishResponseBody**](PublishResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json, application/problem+json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
@@ -891,6 +1041,149 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
 - **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSnapshotBody
+
+> SnapshotBodyResponseBody FirewallSnapshotBody(ctx, hiveId, revision).Execute()
+
+Read one published revision's ruleset
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	hiveId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	revision := int64(789) // int64 | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSnapshotBody(context.Background(), hiveId, revision).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSnapshotBody``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSnapshotBody`: SnapshotBodyResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSnapshotBody`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**hiveId** | **string** |  | 
+**revision** | **int64** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSnapshotBodyRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+
+### Return type
+
+[**SnapshotBodyResponseBody**](SnapshotBodyResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSnapshotsList
+
+> SnapshotsResponseBody FirewallSnapshotsList(ctx, hiveId).Execute()
+
+List this fleet's published revisions
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	hiveId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSnapshotsList(context.Background(), hiveId).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSnapshotsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSnapshotsList`: SnapshotsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSnapshotsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**hiveId** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSnapshotsListRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+### Return type
+
+[**SnapshotsResponseBody**](SnapshotsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: application/json, application/problem+json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)

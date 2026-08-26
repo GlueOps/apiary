@@ -59,6 +59,21 @@ import {
     PreviewResponseBody1ToJSON,
 } from '../models/PreviewResponseBody1';
 import {
+    type PublishRequestBody,
+    PublishRequestBodyFromJSON,
+    PublishRequestBodyToJSON,
+} from '../models/PublishRequestBody';
+import {
+    type PublishResponseBody,
+    PublishResponseBodyFromJSON,
+    PublishResponseBodyToJSON,
+} from '../models/PublishResponseBody';
+import {
+    type RevertRequestBody,
+    RevertRequestBodyFromJSON,
+    RevertRequestBodyToJSON,
+} from '../models/RevertRequestBody';
+import {
     type RuleBody,
     RuleBodyFromJSON,
     RuleBodyToJSON,
@@ -73,6 +88,16 @@ import {
     RulesetViewFromJSON,
     RulesetViewToJSON,
 } from '../models/RulesetView';
+import {
+    type SnapshotBodyResponseBody,
+    SnapshotBodyResponseBodyFromJSON,
+    SnapshotBodyResponseBodyToJSON,
+} from '../models/SnapshotBodyResponseBody';
+import {
+    type SnapshotsResponseBody,
+    SnapshotsResponseBodyFromJSON,
+    SnapshotsResponseBodyToJSON,
+} from '../models/SnapshotsResponseBody';
 import {
     type UpdateBindingRequestBody,
     UpdateBindingRequestBodyFromJSON,
@@ -100,6 +125,16 @@ export interface FirewallBindingsUpdateRequest {
 export interface FirewallPreviewRequest {
     hiveId?: string;
     swarmId?: string;
+}
+
+export interface FirewallPublishRequest {
+    hiveId: string;
+    publishRequestBody: Omit<PublishRequestBody, '$schema'>;
+}
+
+export interface FirewallRevertRequest {
+    hiveId: string;
+    revertRequestBody: Omit<RevertRequestBody, '$schema'>;
 }
 
 export interface FirewallRulesCreateRequest {
@@ -131,6 +166,15 @@ export interface FirewallRulesetsDeleteRequest {
 export interface FirewallRulesetsUpdateRequest {
     id: string;
     updateRulesetRequestBody: Omit<UpdateRulesetRequestBody, '$schema'>;
+}
+
+export interface FirewallSnapshotBodyRequest {
+    hiveId: string;
+    revision: number;
+}
+
+export interface FirewallSnapshotsListRequest {
+    hiveId: string;
 }
 
 /**
@@ -387,7 +431,8 @@ export class FirewallApi extends runtime.BaseAPI {
     }
 
     /**
-     * Reprioritise or disable a binding
+     * Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.  Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
+     * Reprioritise, disable, or re-scope a binding
      */
     async firewallBindingsUpdateRaw(requestParameters: FirewallBindingsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeletedResponseBody>> {
         const requestOptions = await this.firewallBindingsUpdateRequestOpts(requestParameters);
@@ -397,7 +442,8 @@ export class FirewallApi extends runtime.BaseAPI {
     }
 
     /**
-     * Reprioritise or disable a binding
+     * Priority and enabled are always applied. Scope is applied only when the request carries one — omitting it leaves the binding where it is, so a client that knows nothing about scope cannot widen a fleet binding to the whole organization by accident.  Moving a binding onto a scope where the same ruleset is already bound is refused: the ruleset would render twice, duplicating every rule in it.
+     * Reprioritise, disable, or re-scope a binding
      */
     async firewallBindingsUpdate(requestParameters: FirewallBindingsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeletedResponseBody> {
         const response = await this.firewallBindingsUpdateRaw(requestParameters, initOverrides);
@@ -468,6 +514,160 @@ export class FirewallApi extends runtime.BaseAPI {
      */
     async firewallPreview(requestParameters: FirewallPreviewRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PreviewResponseBody1> {
         const response = await this.firewallPreviewRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for firewallPublish without sending the request
+     */
+    async firewallPublishRequestOpts(requestParameters: FirewallPublishRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['hiveId'] == null) {
+            throw new runtime.RequiredError(
+                'hiveId',
+                'Required parameter "hiveId" was null or undefined when calling firewallPublish().'
+            );
+        }
+
+        if (requestParameters['publishRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'publishRequestBody',
+                'Required parameter "publishRequestBody" was null or undefined when calling firewallPublish().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/firewall/hives/{hive_id}/publish`;
+        urlPath = urlPath.replace('{hive_id}', encodeURIComponent(String(requestParameters['hiveId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PublishRequestBodyToJSON(requestParameters['publishRequestBody']),
+        };
+    }
+
+    /**
+     * Renders every binding that applies to this fleet into one nft ruleset, stores it, and points the fleet at it. Bees converge on their next heartbeat.  Publishing an UNCHANGED policy does nothing and says so. Every revision makes the whole fleet re-apply, and re-applying an identical ruleset flushes and reloads every host\'s firewall to arrive at the state it was already in.
+     * Publish this fleet\'s rules as the next revision
+     */
+    async firewallPublishRaw(requestParameters: FirewallPublishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublishResponseBody>> {
+        const requestOptions = await this.firewallPublishRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PublishResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Renders every binding that applies to this fleet into one nft ruleset, stores it, and points the fleet at it. Bees converge on their next heartbeat.  Publishing an UNCHANGED policy does nothing and says so. Every revision makes the whole fleet re-apply, and re-applying an identical ruleset flushes and reloads every host\'s firewall to arrive at the state it was already in.
+     * Publish this fleet\'s rules as the next revision
+     */
+    async firewallPublish(requestParameters: FirewallPublishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublishResponseBody> {
+        const response = await this.firewallPublishRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for firewallRevert without sending the request
+     */
+    async firewallRevertRequestOpts(requestParameters: FirewallRevertRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['hiveId'] == null) {
+            throw new runtime.RequiredError(
+                'hiveId',
+                'Required parameter "hiveId" was null or undefined when calling firewallRevert().'
+            );
+        }
+
+        if (requestParameters['revertRequestBody'] == null) {
+            throw new runtime.RequiredError(
+                'revertRequestBody',
+                'Required parameter "revertRequestBody" was null or undefined when calling firewallRevert().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/firewall/hives/{hive_id}/revert`;
+        urlPath = urlPath.replace('{hive_id}', encodeURIComponent(String(requestParameters['hiveId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: RevertRequestBodyToJSON(requestParameters['revertRequestBody']),
+        };
+    }
+
+    /**
+     * Publishes an OLD revision\'s body as a NEW revision. The number goes up, never down: a bee decides whether to converge by comparing what it applied against this number, and a number that moved backwards leaves a host pinned to the very ruleset being backed out.  The old body verbatim, not a re-render of the old rules — the rules have moved on, which is why this is a backout.
+     * Republish an earlier revision\'s ruleset
+     */
+    async firewallRevertRaw(requestParameters: FirewallRevertRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublishResponseBody>> {
+        const requestOptions = await this.firewallRevertRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PublishResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Publishes an OLD revision\'s body as a NEW revision. The number goes up, never down: a bee decides whether to converge by comparing what it applied against this number, and a number that moved backwards leaves a host pinned to the very ruleset being backed out.  The old body verbatim, not a re-render of the old rules — the rules have moved on, which is why this is a backout.
+     * Republish an earlier revision\'s ruleset
+     */
+    async firewallRevert(requestParameters: FirewallRevertRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublishResponseBody> {
+        const response = await this.firewallRevertRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1022,6 +1222,148 @@ export class FirewallApi extends runtime.BaseAPI {
      */
     async firewallRulesetsUpdate(requestParameters: FirewallRulesetsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RulesetView> {
         const response = await this.firewallRulesetsUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for firewallSnapshotBody without sending the request
+     */
+    async firewallSnapshotBodyRequestOpts(requestParameters: FirewallSnapshotBodyRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['hiveId'] == null) {
+            throw new runtime.RequiredError(
+                'hiveId',
+                'Required parameter "hiveId" was null or undefined when calling firewallSnapshotBody().'
+            );
+        }
+
+        if (requestParameters['revision'] == null) {
+            throw new runtime.RequiredError(
+                'revision',
+                'Required parameter "revision" was null or undefined when calling firewallSnapshotBody().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/firewall/hives/{hive_id}/snapshots/{revision}`;
+        urlPath = urlPath.replace('{hive_id}', encodeURIComponent(String(requestParameters['hiveId'])));
+        urlPath = urlPath.replace('{revision}', encodeURIComponent(String(requestParameters['revision'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The exact text a host loads, so it can be compared against `nft list ruleset` on the machine. That comparison is the only way to answer \'is this host running what we think\' from the host itself.
+     * Read one published revision\'s ruleset
+     */
+    async firewallSnapshotBodyRaw(requestParameters: FirewallSnapshotBodyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SnapshotBodyResponseBody>> {
+        const requestOptions = await this.firewallSnapshotBodyRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SnapshotBodyResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * The exact text a host loads, so it can be compared against `nft list ruleset` on the machine. That comparison is the only way to answer \'is this host running what we think\' from the host itself.
+     * Read one published revision\'s ruleset
+     */
+    async firewallSnapshotBody(requestParameters: FirewallSnapshotBodyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SnapshotBodyResponseBody> {
+        const response = await this.firewallSnapshotBodyRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for firewallSnapshotsList without sending the request
+     */
+    async firewallSnapshotsListRequestOpts(requestParameters: FirewallSnapshotsListRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['hiveId'] == null) {
+            throw new runtime.RequiredError(
+                'hiveId',
+                'Required parameter "hiveId" was null or undefined when calling firewallSnapshotsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Secret"] = await this.configuration.apiKey("X-ORG-Secret"); // OrgKeySecret authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-ORG-Key"] = await this.configuration.apiKey("X-ORG-Key"); // OrgKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/firewall/hives/{hive_id}/snapshots`;
+        urlPath = urlPath.replace('{hive_id}', encodeURIComponent(String(requestParameters['hiveId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Newest first. This is what a backout is chosen from, so it carries the reason each revision was published and which revision a backout reproduced.
+     * List this fleet\'s published revisions
+     */
+    async firewallSnapshotsListRaw(requestParameters: FirewallSnapshotsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SnapshotsResponseBody>> {
+        const requestOptions = await this.firewallSnapshotsListRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SnapshotsResponseBodyFromJSON(jsonValue));
+    }
+
+    /**
+     * Newest first. This is what a backout is chosen from, so it carries the reason each revision was published and which revision a backout reproduced.
+     * List this fleet\'s published revisions
+     */
+    async firewallSnapshotsList(requestParameters: FirewallSnapshotsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SnapshotsResponseBody> {
+        const response = await this.firewallSnapshotsListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

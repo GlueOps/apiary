@@ -20,6 +20,13 @@ import {
     TaskViewToJSON,
     TaskViewToJSONTyped,
 } from './TaskView';
+import type { FirewallDesiredView } from './FirewallDesiredView';
+import {
+    FirewallDesiredViewFromJSON,
+    FirewallDesiredViewFromJSONTyped,
+    FirewallDesiredViewToJSON,
+    FirewallDesiredViewToJSONTyped,
+} from './FirewallDesiredView';
 
 /**
  * 
@@ -33,6 +40,12 @@ export interface HeartbeatResponseBody {
      * @memberof HeartbeatResponseBody
      */
     readonly $schema?: string;
+    /**
+     * 
+     * @type {FirewallDesiredView}
+     * @memberof HeartbeatResponseBody
+     */
+    firewall?: FirewallDesiredView;
     /**
      * This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
      * @type {TaskView}
@@ -59,6 +72,7 @@ export function HeartbeatResponseBodyFromJSONTyped(json: any, ignoreDiscriminato
     return {
         
         '$schema': json['$schema'] == null ? undefined : json['$schema'],
+        'firewall': json['firewall'] == null ? undefined : FirewallDesiredViewFromJSON(json['firewall']),
         'task': json['task'] == null ? undefined : TaskViewFromJSON(json['task']),
     };
 }
@@ -74,6 +88,7 @@ export function HeartbeatResponseBodyToJSONTyped(value?: Omit<HeartbeatResponseB
 
     return {
         
+        'firewall': FirewallDesiredViewToJSON(value['firewall']),
         'task': TaskViewToJSON(value['task']),
     };
 }

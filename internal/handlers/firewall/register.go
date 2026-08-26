@@ -11,6 +11,7 @@ import (
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type ListRulesetsRequest struct{}
@@ -87,7 +88,24 @@ type UpdateBindingRequest struct {
 	Body struct {
 		Priority int  `json:"priority,omitempty" minimum:"0"`
 		Enabled  bool `json:"enabled"`
+
+		// Scope moves this binding. ABSENT leaves it exactly where it is.
+		//
+		// A nested object rather than two sibling fields, because absence has to be
+		// distinguishable from "both empty". Sibling ids would arrive as empty
+		// strings from any client that predates this — every one of them — and the
+		// binding would be silently re-scoped from its fleet to the whole
+		// organization. Widening a binding to every host is the worst accident this
+		// endpoint could have, so the absence of an instruction means absence.
+		Scope *BindingScopeBody `json:"scope,omitempty"`
 	}
+}
+
+// BindingScopeBody is where a binding should apply. An empty hive_id means the
+// whole organization; a swarm_id requires the hive_id that contains it.
+type BindingScopeBody struct {
+	HiveID  string `json:"hive_id,omitempty" doc:"The fleet this binding applies to. Empty means every host in the organization, including hosts in no fleet."`
+	SwarmID string `json:"swarm_id,omitempty" doc:"A group inside that fleet. Requires hive_id: swarm names are unique only within a fleet, so a bare swarm id names a group without saying whose."`
 }
 
 type PreviewRequest struct {
@@ -124,6 +142,20 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		}
 		return p, nil
 	}
+
+	// Publishing, backing out, and reading what was published. Mounted here so it
+	// shares this file's admin gate: authoring a rule and putting it on metal are
+	// both changes to what the fleet enforces.
+	registerPublish(hapi, admin,
+		func(ctx context.Context, orgID uuid.UUID) (*gorm.DB, error) {
+			tCtx, err := deps.Tenants.GetTenantContext(ctx, orgID.String())
+			if err != nil {
+				return nil, err
+			}
+			return tCtx.DB, nil
+		},
+		repo.ResolveHiveRenderInput,
+	)
 
 	huma.Register(hapi, huma.Operation{
 		OperationID: "firewall-rulesets-list",
@@ -392,9 +424,15 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		OperationID: "firewall-bindings-update",
 		Method:      http.MethodPut,
 		Path:        "/firewall/bindings/{id}",
-		Summary:     "Reprioritise or disable a binding",
-		Tags:        []string{"Firewall"},
-		Security:    apimiddleware.SecurityUserOrKey,
+		Summary:     "Reprioritise, disable, or re-scope a binding",
+		Description: "Priority and enabled are always applied. Scope is applied only when the " +
+			"request carries one — omitting it leaves the binding where it is, so a client that " +
+			"knows nothing about scope cannot widen a fleet binding to the whole organization by " +
+			"accident.\n\n" +
+			"Moving a binding onto a scope where the same ruleset is already bound is refused: " +
+			"the ruleset would render twice, duplicating every rule in it.",
+		Tags:     []string{"Firewall"},
+		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *UpdateBindingRequest) (*DeletedResponse, error) {
 		p, err := admin(ctx)
 		if err != nil {
@@ -404,7 +442,26 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid binding id")
 		}
-		if err := svc.UpdateBinding(ctx, p.OrganizationID, id, in.Body.Priority, in.Body.Enabled); err != nil {
+		var scope *repo.BindingScopeChange
+		if in.Body.Scope != nil {
+			scope = &repo.BindingScopeChange{}
+			if in.Body.Scope.HiveID != "" {
+				hid, err := uuid.Parse(in.Body.Scope.HiveID)
+				if err != nil {
+					return nil, huma.Error422UnprocessableEntity("invalid fleet id")
+				}
+				scope.HiveID = &hid
+			}
+			if in.Body.Scope.SwarmID != "" {
+				sid, err := uuid.Parse(in.Body.Scope.SwarmID)
+				if err != nil {
+					return nil, huma.Error422UnprocessableEntity("invalid group id")
+				}
+				scope.SwarmID = &sid
+			}
+		}
+		if err := svc.UpdateBindingScope(ctx, p.OrganizationID, id,
+			in.Body.Priority, in.Body.Enabled, scope); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		out := &DeletedResponse{}

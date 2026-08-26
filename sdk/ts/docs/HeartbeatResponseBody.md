@@ -7,6 +7,7 @@
 Name | Type
 ------------ | -------------
 `$schema` | string
+`firewall` | [FirewallDesiredView](FirewallDesiredView.md)
 `task` | [TaskView](TaskView.md)
 
 ## Example
@@ -17,6 +18,7 @@ import type { HeartbeatResponseBody } from '@glueops/apiary-sdk'
 // TODO: Update the object below with actual values
 const example = {
   "$schema": null,
+  "firewall": null,
   "task": null,
 } satisfies HeartbeatResponseBody
 
