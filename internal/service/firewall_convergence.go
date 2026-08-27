@@ -68,3 +68,34 @@ func (s *FleetService) RecordAppliedFirewall(
 	}
 	return repo.RecordAppliedFirewall(ctx, db, sess.Bee.ID, revision, digest)
 }
+
+// RecordObservedGuests stores what a host says it is running.
+//
+// Written ONLY for a machine in no cluster, which is the gap: the capacity sync
+// observes per cluster, so a fleetless machine is never observed by it at all,
+// and fleetless is exactly the state a machine is in when it is about to join
+// one. Restricting it to that case keeps a single writer per row rather than
+// letting an agent report and a sync overwrite in turn, which would flap on
+// every tick where the two disagree.
+//
+// The condition lives in the UPDATE rather than in a read-then-write, so a
+// machine that joined a cluster between the two cannot have its swept-up
+// observation land afterwards.
+func (s *FleetService) RecordObservedGuests(
+	ctx context.Context, sess *BeeSession, guests *int,
+) error {
+	if sess == nil || sess.Bee == nil {
+		return repo.ErrBeeNotFound
+	}
+	// nil means the agent did not say. Zero means it said none, and those must
+	// not collapse: an older agent omits the field, and treating silence as
+	// "no guests" would invent the very observation this exists to stop.
+	if guests == nil {
+		return nil
+	}
+	db, err := s.dbFor(ctx, sess.OrganizationID.String())
+	if err != nil {
+		return err
+	}
+	return repo.RecordObservedGuestsIfFleetless(ctx, db, sess.Bee.ID, *guests)
+}

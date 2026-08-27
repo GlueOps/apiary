@@ -807,6 +807,10 @@ export type HeartbeatRequestBody = {
      */
     back?: boolean;
     /**
+     * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
+     */
+    observed_guests?: number;
+    /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
     unavailable_for_seconds?: number;
@@ -2561,6 +2565,10 @@ export type HeartbeatRequestBodyWritable = {
      * Withdraws a standing declaration: the host has returned.
      */
     back?: boolean;
+    /**
+     * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
+     */
+    observed_guests?: number;
     /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */

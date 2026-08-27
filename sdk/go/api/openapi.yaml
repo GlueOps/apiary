@@ -5713,9 +5713,10 @@ components:
         applied_firewall_digest: applied_firewall_digest
         applied_firewall_revision: 0
         back: true
-        unavailable_for_seconds: 52077
+        observed_guests: 60274
+        unavailable_for_seconds: 12664
         unavailable_reason: unavailable_reason
-        wait_seconds: 3
+        wait_seconds: 14
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -5742,6 +5743,14 @@ components:
         back:
           description: "Withdraws a standing declaration: the host has returned."
           type: boolean
+        observed_guests:
+          description: "VMs and containers registered to this host, stopped ones included.\
+            \ Counted from /etc/pve rather than the Proxmox API, so it survives a\
+            \ broken pveproxy."
+          format: int64
+          maximum: 100000
+          minimum: 0
+          type: integer
         unavailable_for_seconds:
           description: "Declared BEFORE acting: how long this host expects to be unreachable,\
             \ e.g. across a reboot. Until it elapses, silence from this bee is expected\

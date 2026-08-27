@@ -217,6 +217,19 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		body.SetAppliedFirewallRevision(int64(rev))
 		body.SetAppliedFirewallDigest(digest)
 	}
+	// What this host is actually running, counted from /etc/pve.
+	//
+	// The control plane records it only while this machine is in no cluster,
+	// which is the gap the per-cluster capacity sync structurally cannot see —
+	// and the state a machine is in when it is about to join one, where a wrong
+	// zero means the arrival gate waves through a join that discards guests.
+	//
+	// A failure to count is silence, not zero. Sending zero because a read
+	// failed would assert an observation nobody made.
+	if n, err := CountLocalGuests(); err == nil {
+		body.SetObservedGuests(int64(n))
+	}
+
 	if o.back {
 		body.SetBack(true)
 	} else if o.unavailableFor > 0 {
