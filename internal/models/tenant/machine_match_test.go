@@ -243,3 +243,45 @@ func TestMatchAdoptsWhenTheRecordedAddressIsTheClusterIP(t *testing.T) {
 		t.Fatal("a peer address disagreeing with the recorded one must not adopt")
 	}
 }
+
+// A host DECLARED by an operator has an address and no name — nothing names it
+// until a capacity sync sees it in a cluster. Requiring a name meant the agent
+// that onboarding had just installed matched nothing and created a second
+// record, every time. Reproduced from a clean tenant: five hosts declared,
+// onboarded and enrolled produced ten rows.
+func TestMatchAdoptsADeclaredHostThatHasNoNameYet(t *testing.T) {
+	declared := Hypervisor{ID: uuid.New(), Address: "10.10.10.2"}
+
+	// The agent calls itself "pve"; its request arrived from the declared address.
+	if m := MatchMachineByAddress([]Hypervisor{declared}, "pve", "10.10.10.2"); m == nil {
+		t.Fatal("a declared host must be adopted by the agent onboarding installed on it")
+	}
+
+	// A different host must not take it.
+	if m := MatchMachineByAddress([]Hypervisor{declared}, "pve9", "10.10.10.99"); m != nil {
+		t.Fatal("an agent from another address must not adopt this record")
+	}
+
+	// Nothing to match on at all is not a licence to match everything.
+	empty := Hypervisor{ID: uuid.New()}
+	if m := MatchMachineByAddress([]Hypervisor{empty}, "pve", "10.10.10.2"); m != nil {
+		t.Fatal("a record with neither name nor address must never be adopted")
+	}
+}
+
+// When a record carries BOTH, both have to agree. Adopting on half the evidence
+// is how an agent's identity lands on the wrong host.
+func TestMatchRefusesWhenOnlyHalfTheEvidenceAgrees(t *testing.T) {
+	name := "pve4"
+	both := Hypervisor{ID: uuid.New(), Name: &name, Address: "10.10.10.5"}
+
+	if m := MatchMachineByAddress([]Hypervisor{both}, "pve4", "10.10.10.5"); m == nil {
+		t.Fatal("both agreeing must adopt")
+	}
+	if m := MatchMachineByAddress([]Hypervisor{both}, "pve4", "10.10.10.99"); m != nil {
+		t.Fatal("name agrees but address does not: must refuse")
+	}
+	if m := MatchMachineByAddress([]Hypervisor{both}, "pve9", "10.10.10.5"); m != nil {
+		t.Fatal("address agrees but name does not: must refuse")
+	}
+}
