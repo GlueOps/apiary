@@ -109,10 +109,19 @@ func BootstrapHive(ctx context.Context, d BootstrapDeps, in BootstrapInput) erro
 	if err != nil {
 		return fmt.Errorf("bootstrap: fleet key: %w", err)
 	}
-	runner, err := d.NewRunner(snap.HostAddress, "root", priv)
+	// Through the SAME connect helper the departure and arrival use, rather than
+	// NewRunner alone.
+	//
+	// The ssh Runner is constructed unconnected and opens its session in an
+	// optional Connect the interface does not declare, so calling NewRunner and
+	// going straight to a command produced "not connected ()" from the first
+	// step — a message that names neither the host nor the operation, arriving
+	// as a retryable job that failed identically twenty-five times.
+	runner, closeRunner, err := connect(ctx, BootstrapRunnerDeps(d), snap.HostAddress, "root", priv)
 	if err != nil {
 		return fmt.Errorf("bootstrap: connect to %s: %w", snap.HostAddress, err)
 	}
+	defer closeRunner()
 
 	// Asked of the HOST, not of the database. The row said fleetless; this is
 	// what corosync says, and only one of them is what pvecm will act on.
@@ -173,4 +182,11 @@ func BootstrapHive(ctx context.Context, d BootstrapDeps, in BootstrapInput) erro
 		}
 	}
 	return nil
+}
+
+// BootstrapRunnerDeps adapts BootstrapDeps to the shape `connect` takes, so this
+// worker shares the optional Connect/Close dance with the other two rather than
+// reimplementing it — which is how it came to be skipped here in the first place.
+func BootstrapRunnerDeps(d BootstrapDeps) DepartDeps {
+	return DepartDeps{NewRunner: d.NewRunner}
 }
