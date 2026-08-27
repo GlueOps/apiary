@@ -21,8 +21,18 @@ var (
 	// forgot a header" and "you are not a member there" need different answers,
 	// or the first reads as the second and sends someone to ask for access they
 	// already have.
-	ErrNoOrganization       = errors.New("no organization selected for this request")
-	ErrInsufficientRole     = errors.New("caller's role is below the required role")
+	ErrNoOrganization   = errors.New("no organization selected for this request")
+	ErrInsufficientRole = errors.New("caller's role is below the required role")
+
+	// ErrNoActingUser is what Principal.ActingUser returns for an org key.
+	//
+	// Not an authorization failure — the key may hold every role the operation
+	// requires. It is a failure to identify a PERSON, which these operations need
+	// because they record who acted, so the message names the credential to use
+	// rather than the permission to acquire.
+	ErrNoActingUser = errors.New(
+		"this action records who performed it, and an organization API key identifies " +
+			"the organization rather than a person; use a user session or a user API key")
 	ErrImpersonationRefused = errors.New("impersonated sessions may not perform this action")
 )
 
@@ -38,7 +48,10 @@ var orgRoleRank = map[control.MemberRole]int{
 // AssertOrgRoleOption adjusts the assertion.
 type AssertOrgRoleOption func(*assertOrgRoleOpts)
 
-type assertOrgRoleOpts struct{ refuseImpersonation bool }
+type assertOrgRoleOpts struct {
+	refuseImpersonation bool
+	requireActingUser   bool
+}
 
 // RefuseImpersonation rejects a session created by a platform admin acting as
 // the user. Apply it to anything that grants standing access rather than
@@ -47,6 +60,19 @@ type assertOrgRoleOpts struct{ refuseImpersonation bool }
 // able to leave themselves a way back in.
 func RefuseImpersonation() AssertOrgRoleOption {
 	return func(o *assertOrgRoleOpts) { o.refuseImpersonation = true }
+}
+
+// RequireActingUser rejects a credential that names no person. Apply it to
+// anything that records WHO acted — an audit row, an inviter, the author of a
+// policy change.
+//
+// An organization key is tenant-bound by design and carries no UserID, and this
+// gate admits one as an admin without a membership row. The handler behind it
+// then has an actor column it cannot fill. Declared here rather than checked
+// mid-handler so that the requirement reads off the route, beside the role and
+// the impersonation rule, instead of being something a reader has to find.
+func RequireActingUser() AssertOrgRoleOption {
+	return func(o *assertOrgRoleOpts) { o.requireActingUser = true }
 }
 
 // AssertOrgRole resolves the caller's membership in the organization their
@@ -80,6 +106,12 @@ func AssertOrgRole(
 	}
 	if o.refuseImpersonation && p.IsImpersonating() {
 		return nil, ErrImpersonationRefused
+	}
+	// Ahead of the role ranking on purpose. An org key ranks admin and would
+	// clear the bar, and answering "insufficient permissions" would send its
+	// holder looking for a role to grant a credential no role can fix.
+	if o.requireActingUser && p.UserID == nil {
+		return nil, ErrNoActingUser
 	}
 
 	// An org key/secret pair has no user behind it, so there is no membership row
@@ -168,6 +200,11 @@ func OrgRoleError(err error) error {
 		// 400, not 403: nothing was denied, the request never named a tenant.
 		// Answering 403 would send someone to request access they already hold.
 		return huma.Error400BadRequest("this endpoint acts on one organization; send it in the X-Org-Id header")
+	case errors.Is(err, ErrNoActingUser):
+		// 403 with the sentinel's own text. "Insufficient permissions" would be
+		// the wrong diagnosis and send the holder of a fully-privileged org key
+		// looking for a role to grant it; the credential is what has to change.
+		return huma.Error403Forbidden(ErrNoActingUser.Error())
 	case errors.Is(err, ErrNoMembership), errors.Is(err, ErrInsufficientRole):
 		return huma.Error403Forbidden("insufficient permissions for this organization")
 	default:

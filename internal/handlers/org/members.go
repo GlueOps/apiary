@@ -77,21 +77,34 @@ func mapErr(ctx context.Context, err error) error {
 	}
 }
 
-// callerRole resolves the acting member's own role.
+// callerRole resolves the acting member: who they are, and what role they hold.
 //
 // AssertOrgRole has already proven the caller clears the minimum bar; this
 // answers the different question of whether they are an OWNER, which the
 // owner-line rules need. Resolved from the database rather than from anything in
 // the request, for the same reason the organization is.
-func callerRole(ctx context.Context, memberships repo.MembershipRepo, p *apimiddleware.Principal) (control.MemberRole, error) {
-	m, err := memberships.GetByUserAndOrg(ctx, *p.UserID, p.OrganizationID)
+//
+// It returns the id as well as the role because both callers write it into an
+// audit row, and reading `*p.UserID` there was a nil dereference for an org API
+// key — which every endpoint here admits, and which identifies a tenant rather
+// than a person. Returning it from the one function both paths already go
+// through means the refusal happens once and cannot be forgotten at a third
+// call site.
+func callerRole(
+	ctx context.Context, memberships repo.MembershipRepo, p *apimiddleware.Principal,
+) (uuid.UUID, control.MemberRole, error) {
+	actor, err := p.ActingUser()
 	if err != nil {
-		return "", err
+		return uuid.Nil, "", err
+	}
+	m, err := memberships.GetByUserAndOrg(ctx, actor, p.OrganizationID)
+	if err != nil {
+		return uuid.Nil, "", err
 	}
 	if m == nil {
-		return "", apimiddleware.ErrNoMembership
+		return uuid.Nil, "", apimiddleware.ErrNoMembership
 	}
-	return m.Role, nil
+	return actor, m.Role, nil
 }
 
 func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
@@ -146,7 +159,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		Tags:     []string{"Organization"},
 		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *UpdateRoleRequest) (*UpdateRoleResponse, error) {
-		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation())
+		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation(), apimiddleware.RequireActingUser())
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -154,7 +167,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid membership id")
 		}
-		actorRole, err := callerRole(ctx, memberships, p)
+		actorID, actorRole, err := callerRole(ctx, memberships, p)
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -163,7 +176,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 			OrgID:        p.OrganizationID,
 			MembershipID: id,
 			NewRole:      control.MemberRole(in.Body.Role),
-			ActorID:      *p.UserID,
+			ActorID:      actorID,
 			ActorRole:    actorRole,
 		}); err != nil {
 			return nil, mapErr(ctx, err)
@@ -182,7 +195,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		Tags:        []string{"Organization"},
 		Security:    apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *RemoveMemberRequest) (*RemoveMemberResponse, error) {
-		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation())
+		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation(), apimiddleware.RequireActingUser())
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -190,7 +203,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid membership id")
 		}
-		actorRole, err := callerRole(ctx, memberships, p)
+		actorID, actorRole, err := callerRole(ctx, memberships, p)
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -198,7 +211,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 		if err := svc.Remove(ctx, service.RemoveMemberInput{
 			OrgID:        p.OrganizationID,
 			MembershipID: id,
-			ActorID:      *p.UserID,
+			ActorID:      actorID,
 			ActorRole:    actorRole,
 		}); err != nil {
 			return nil, mapErr(ctx, err)

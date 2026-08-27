@@ -792,3 +792,52 @@ func TestUnrecognisedRoleIsNamedByItsOwnGuard(t *testing.T) {
 		t.Fatalf("the refusal must come from the unknown-role guard and name the role, got: %v", err)
 	}
 }
+
+// An organization key ranks admin and clears the bar on every route below owner.
+// That is deliberate — it is what lets automation do the work — but it means the
+// role check cannot be what stops it reaching an operation that records who
+// acted. RequireActingUser is, and it must refuse BEFORE the ranking, or the
+// answer is "insufficient permissions" for a credential no role would fix.
+func TestAssertOrgRole_RequireActingUserRefusesAnOrgKey(t *testing.T) {
+	fake := &recordingMemberships{t: t, failIfCalled: true}
+	machine := &Principal{Method: AuthMethodOrgSecret, OrganizationID: uuid.New()}
+	ctx := WithPrincipal(context.Background(), machine)
+
+	// Without the option it passes, at admin.
+	if _, err := AssertOrgRole(ctx, fake, control.MemberRoleAdmin); err != nil {
+		t.Fatalf("an organization key was refused an ordinary admin route: %v", err)
+	}
+
+	_, err := AssertOrgRole(ctx, fake, control.MemberRoleAdmin, RequireActingUser())
+	if !errors.Is(err, ErrNoActingUser) {
+		t.Fatalf("got %v, want ErrNoActingUser", err)
+	}
+
+	// And the answer names the credential rather than a permission.
+	he := OrgRoleError(err)
+	if !strings.Contains(he.Error(), "rather than a person") {
+		t.Fatalf("the refusal does not explain itself: %v", he)
+	}
+}
+
+// The option must not touch a real user. A member holding the required role is
+// exactly who these operations are for.
+func TestAssertOrgRole_RequireActingUserAdmitsAPerson(t *testing.T) {
+	uid := uuid.New()
+	org := uuid.New()
+	fake := &recordingMemberships{t: t, membership: &control.Membership{
+		UserID: uid, OrganizationID: org, Role: control.MemberRoleAdmin,
+	}}
+	ctx := WithPrincipal(context.Background(), &Principal{
+		Method: AuthMethodBearer, UserID: &uid, OrganizationID: org,
+	})
+
+	p, err := AssertOrgRole(ctx, fake, control.MemberRoleAdmin, RequireActingUser())
+	if err != nil {
+		t.Fatalf("an admin was refused: %v", err)
+	}
+	actor, err := p.ActingUser()
+	if err != nil || actor != uid {
+		t.Fatalf("ActingUser gave (%v, %v), want (%v, nil)", actor, err, uid)
+	}
+}

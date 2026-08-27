@@ -76,13 +76,19 @@ func RegisterOrgProtected(hapi huma.API, deps *app.Deps) {
 		Tags:     []string{"Organization"},
 		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *SetRequest) (*SetResponse, error) {
-		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation())
+		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation(), apimiddleware.RequireActingUser())
+		if err != nil {
+			return nil, apimiddleware.OrgRoleError(err)
+		}
+		// The policy row records who set it, and an org API key identifies the
+		// organization rather than a person.
+		actor, err := p.ActingUser()
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
 		kind := control.PolicyKind(in.Kind)
 
-		row, err := deps.Policies.SetOrgPolicy(ctx, *p.UserID, p.OrganizationID, kind,
+		row, err := deps.Policies.SetOrgPolicy(ctx, actor, p.OrganizationID, kind,
 			in.Body.State == "enabled", toConfig(in.Body.Config))
 		if err != nil {
 			return nil, mapErr(ctx, err)

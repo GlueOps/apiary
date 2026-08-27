@@ -151,7 +151,17 @@ func RegisterOrgProtected(hapi huma.API, deps *app.Deps) {
 		Tags:     []string{"Invitations"},
 		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *CreateRequest) (*CreateResponse, error) {
-		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation())
+		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation(), apimiddleware.RequireActingUser())
+		if err != nil {
+			return nil, apimiddleware.OrgRoleError(err)
+		}
+		// An invitation names its inviter, and an org API key is a tenant rather
+		// than a person, so there is nobody to name.
+		//
+		// Ahead of the provisioning check on purpose: the credential is wrong
+		// whatever the tenant's storage is doing, and answering 503 first tells
+		// the caller to wait for something that would not help when it arrived.
+		inviter, err := p.ActingUser()
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -165,7 +175,7 @@ func RegisterOrgProtected(hapi huma.API, deps *app.Deps) {
 		}
 		view, err := svc.Invite(ctx, service.InviteInput{
 			OrgID:     p.OrganizationID,
-			InviterID: *p.UserID,
+			InviterID: inviter,
 			Email:     in.Body.Email,
 			Role:      role,
 		})
@@ -208,7 +218,7 @@ func RegisterOrgProtected(hapi huma.API, deps *app.Deps) {
 		Tags:        []string{"Invitations"},
 		Security:    apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *RevokeRequest) (*RevokeResponse, error) {
-		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation())
+		p, err := apimiddleware.AssertOrgRole(ctx, memberships, control.MemberRoleAdmin, apimiddleware.RefuseImpersonation(), apimiddleware.RequireActingUser())
 		if err != nil {
 			return nil, apimiddleware.OrgRoleError(err)
 		}
@@ -216,7 +226,11 @@ func RegisterOrgProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid invitation id")
 		}
-		if err := svc.Revoke(ctx, p.OrganizationID, id, *p.UserID); err != nil {
+		actor, err := p.ActingUser()
+		if err != nil {
+			return nil, apimiddleware.OrgRoleError(err)
+		}
+		if err := svc.Revoke(ctx, p.OrganizationID, id, actor); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		out := &RevokeResponse{}
