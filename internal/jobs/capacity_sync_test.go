@@ -2,7 +2,9 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1006,5 +1008,134 @@ func TestSyncStillWritesCapacityWhenAddressesCannotBeRead(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("the node must still be written; wrote %d", n)
+	}
+}
+
+// THE CLOSED LOOP THIS OPENS.
+//
+// A standalone Proxmox host answers /cluster/resources with itself, so the sync
+// recorded it as the hive's only member. That one row then closed every route
+// out: bootstrap refused because the host was in a hive AND the hive was not
+// empty, while arrival was permitted because the target had a node — right up to
+// the point where `pvecm add` was pointed at a machine that is not a cluster.
+//
+// Observed on a five-node lab where nothing was clustered: two hosts recorded as
+// members of two clusters that did not exist, and no way to create either.
+func TestSyncRefusesAHiveWhoseEndpointIsAStandaloneHost(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The false membership a previous sync left behind.
+	hv := machine(hive.ID, "pve")
+	hv.Address = "192.0.2.11"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		// What a standalone host reports: a successful read, and no cluster.
+		return "", false, nil
+	}
+
+	_, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if !errors.Is(err, ErrHiveIsNotACluster) {
+		t.Fatalf("err = %v, want ErrHiveIsNotACluster", err)
+	}
+	// And it must say what to do, or an operator is told no and nothing else.
+	if !strings.Contains(err.Error(), "Create the cluster") {
+		t.Fatalf("the refusal names no way forward: %v", err)
+	}
+
+	// The false membership is gone, so the host can now be used to CREATE the
+	// cluster — which is the whole point of noticing.
+	var after tenant.Hypervisor
+	if err := db.First(&after, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.HiveID != nil {
+		t.Fatalf("the host is still recorded in a cluster that does not exist (hive %v)", *after.HiveID)
+	}
+	if after.Name != nil {
+		t.Fatalf("the node name survived, and it is a name only a cluster could have given: %q", *after.Name)
+	}
+	// The MACHINE survives — this corrects bookkeeping, it does not forget a box.
+	if after.Address != "192.0.2.11" {
+		t.Fatalf("address = %q, want the machine record left intact", after.Address)
+	}
+}
+
+// A real cluster must be entirely unaffected, including one that has lost
+// quorum: a clustered node still reports its cluster entry when it cannot vote,
+// and treating that as standalone would release every member of a cluster during
+// exactly the incident where the records matter most.
+func TestSyncLeavesARealClusterAlone(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]tenant.Hypervisor{machine(hive.ID, "hv1")}[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv1", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		return "dc1", true, nil
+	}
+
+	n, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if err != nil {
+		t.Fatalf("a real cluster was refused: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 node written, got %d", n)
+	}
+
+	var count int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("%d members after a sync of a real cluster, want 1", count)
+	}
+}
+
+// An endpoint that cannot be reached is NOT a standalone host. Mistaking the two
+// would release a whole cluster's membership on a network blip.
+func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]tenant.Hypervisor{machine(hive.ID, "hv1")}[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv1", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		return "", false, errors.New("dial tcp 192.0.2.1:8006: i/o timeout")
+	}
+
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("an unreachable check must not fail the sync on its own: %v", err)
+	}
+	var count int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("membership was released on a failed check; %d members remain, want 1", count)
 	}
 }

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,7 +31,23 @@ type CapacitySyncDeps struct {
 	// with a name and nothing to reach it by, and onboarding looks a host up by
 	// ADDRESS — so the same machine ends up with two rows, one from each side.
 	NodeAddresses func(ctx context.Context, orgID, hiveID uuid.UUID) (map[string]string, error)
+
+	// ClusterIdentity reports whether the hive's API URL is a CLUSTER at all.
+	//
+	// A standalone Proxmox host answers /cluster/resources with itself, so
+	// without this the sync records it as the hive's only member — and that one
+	// row closes every route out: bootstrap refuses because the host is in a
+	// hive and the hive is not empty, while arrival is permitted because the
+	// target has a node, and then `pvecm add` is pointed at a machine that is
+	// not a cluster. Both directions dead, and nothing saying why.
+	//
+	// Optional: nil skips the check, which is the pre-existing behaviour.
+	ClusterIdentity func(ctx context.Context, orgID, hiveID uuid.UUID) (name string, clustered bool, err error)
 }
+
+// ErrHiveIsNotACluster reports that a hive's API URL answers as a standalone
+// host rather than a cluster.
+var ErrHiveIsNotACluster = errors.New("capacity sync: this hive's endpoint is a standalone host")
 
 // SyncHiveCapacity refreshes the Hypervisor rows for one hive.
 //
@@ -65,6 +82,40 @@ type CapacitySyncDeps struct {
 // the upsert below writes it in the same statement as LastSyncedAt: the two
 // cannot come apart.
 func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uuid.UUID) (int, error) {
+	// ASKED BEFORE THE INVENTORY, because a standalone host answers the inventory
+	// perfectly well and the answer is the problem.
+	//
+	// Any membership already recorded for this hive is cleared: it was never
+	// true, and leaving it is what makes bootstrap refuse the one host that needs
+	// it. Clearing is safe here precisely because the read SUCCEEDED and said
+	// there is no cluster — a node that is clustered but has lost quorum still
+	// reports its cluster entry, and an unreachable endpoint is an error above,
+	// not a standalone.
+	if d.ClusterIdentity != nil {
+		_, clustered, cerr := d.ClusterIdentity(ctx, orgID, hiveID)
+		switch {
+		case cerr != nil:
+			// Not fatal on its own: the inventory read below will fail too if the
+			// endpoint is genuinely unreachable, and with a better message.
+			slog.WarnContext(ctx, "could not establish whether this hive's endpoint is a cluster",
+				"organization_id", orgID, "hive_id", hiveID, "error", cerr)
+		case !clustered:
+			if n, rerr := releaseStandaloneMembers(ctx, d, orgID, hiveID); rerr != nil {
+				slog.ErrorContext(ctx, "could not release members of a hive that is not a cluster",
+					"organization_id", orgID, "hive_id", hiveID, "error", rerr)
+			} else if n > 0 {
+				slog.WarnContext(ctx, "released hypervisors recorded as members of a hive whose "+
+					"endpoint is a standalone host; they are fleetless again and can now be used "+
+					"to create the cluster",
+					"organization_id", orgID, "hive_id", hiveID, "released", n)
+			}
+			return 0, fmt.Errorf("%w: the API URL answers as a single machine with no corosync "+
+				"configuration, so it has no nodes to observe. Create the cluster on that host "+
+				"first — Hypervisors, then Create the cluster — or point this hive at a member "+
+				"of a cluster that already exists", ErrHiveIsNotACluster)
+		}
+	}
+
 	rows, err := d.Inventory(ctx, orgID, hiveID)
 	if err != nil {
 		return 0, fmt.Errorf("capacity sync: read inventory: %w", err)
@@ -437,4 +488,33 @@ func withoutMachine(pool []tenant.Hypervisor, id uuid.UUID) []tenant.Hypervisor 
 		}
 	}
 	return out
+}
+
+// releaseStandaloneMembers un-records membership of a hive whose endpoint turned
+// out to be a standalone host, and returns how many rows it freed.
+//
+// The rows were never true. A machine cannot be a member of a cluster that does
+// not exist, and while the row stands it is the thing that makes bootstrap
+// refuse — "already in a hive", "the hive is not empty" — for the one host that
+// has to create the cluster.
+//
+// Clears only what membership means: hive, swarm and the node name the cluster
+// would have given it. The machine record itself survives, with its identity,
+// address, onboarding history and agent intact — the same shape a departure
+// leaves behind, because it is the same fact: this machine is in no cluster.
+//
+// Deliberately does NOT touch schedulable. A host recorded as unschedulable was
+// cordoned by someone, and a correction to the control plane's own bookkeeping
+// is not a reason to re-admit it to the placement query.
+func releaseStandaloneMembers(
+	ctx context.Context, d CapacitySyncDeps, orgID, hiveID uuid.UUID,
+) (int64, error) {
+	db, err := d.TenantDB(ctx, orgID)
+	if err != nil {
+		return 0, fmt.Errorf("open tenant database: %w", err)
+	}
+	res := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hiveID).
+		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil})
+	return res.RowsAffected, res.Error
 }

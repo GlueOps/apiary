@@ -177,6 +177,61 @@ func clampVMID(v uint64) int {
 // caller is expected to tolerate. An address is an improvement to a record, not
 // a precondition for observing capacity, and failing a whole sync because one
 // optional field could not be filled would trade a cosmetic gap for a real one.
+// ClusterIdentity reports the cluster name behind a hive's API URL, and whether
+// there is a cluster there at all.
+//
+// A STANDALONE Proxmox host answers /cluster/status with a single entry of type
+// "node" and no entry of type "cluster" — so it still lists a node, still
+// answers /cluster/resources, and to everything downstream looks like a
+// one-node cluster. It is not one. It has no corosync configuration, nothing can
+// join it, and `pvecm add` pointed at it fails.
+//
+// That distinction was not being made, and the consequence was a closed loop:
+// the sync recorded the standalone host as the hive's only member, which made
+// bootstrap refuse (the host is in a hive, and the hive is not empty) and made
+// arrival permitted (the target has a node) right up to the point where `pvecm
+// add` was pointed at a machine that is not a cluster. Neither direction could
+// work and nothing said why.
+//
+// Reads the name off the "cluster" entry, which is the only place it appears.
+// Empty name after a SUCCESSFUL read means standalone; an unreachable endpoint
+// is an error and must never be mistaken for one.
+func (s *ProxmoxInventoryService) ClusterIdentity(
+	ctx context.Context, orgID, hiveID uuid.UUID,
+) (name string, clustered bool, err error) {
+	if s == nil {
+		return "", false, ErrTenantUnavailable
+	}
+	tCtx, err := s.tenants.GetTenantContext(ctx, orgID.String())
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %w", ErrTenantUnavailable, err)
+	}
+
+	var hive tenant.Hive
+	if err := tCtx.DB.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
+		return "", false, fmt.Errorf("load hive %s: %w", hiveID, err)
+	}
+	if strings.TrimSpace(hive.APIURL) == "" || hive.CredentialID == nil {
+		return "", false, fmt.Errorf("hive %q has no API URL or credential, so it cannot be "+
+			"asked whether it is a cluster", hive.Name)
+	}
+
+	client, err := s.clientFor(ctx, tCtx, orgID, hive)
+	if err != nil {
+		return "", false, err
+	}
+	cluster, err := client.Cluster(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("reach the Proxmox endpoint for hive %q: %w", hive.Name, err)
+	}
+	if err := cluster.Status(ctx); err != nil {
+		return "", false, fmt.Errorf("read cluster status for hive %q: %w", hive.Name, err)
+	}
+
+	name = strings.TrimSpace(cluster.Name)
+	return name, name != "", nil
+}
+
 func (s *ProxmoxInventoryService) NodeAddresses(
 	ctx context.Context, orgID, hiveID uuid.UUID,
 ) (map[string]string, error) {

@@ -424,7 +424,10 @@ func runWorker() error {
 		syncDeps := jobs.CapacitySyncDeps{
 			Inventory:     inventory.Inventory,
 			NodeAddresses: inventory.NodeAddresses,
-			TenantDB:      fleetRepoFor,
+			// Without this a standalone host is recorded as the hive's only
+			// member, which closes every route out — see the field's own comment.
+			ClusterIdentity: inventory.ClusterIdentity,
+			TenantDB:        fleetRepoFor,
 		}
 		river.AddWorker(workers, jobs.NewSyncHiveCapacityWorker(syncDeps))
 		river.AddWorker(workers, jobs.NewSyncAllHivesWorker(controlDB, fleetRepoFor,
