@@ -116,6 +116,13 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallRulesetsDelete**](docs/FirewallAPI.md#firewallrulesetsdelete) | **Delete** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset
 *FirewallAPI* | [**FirewallRulesetsList**](docs/FirewallAPI.md#firewallrulesetslist) | **Get** /api/v1/firewall/rulesets | List firewall rulesets
 *FirewallAPI* | [**FirewallRulesetsUpdate**](docs/FirewallAPI.md#firewallrulesetsupdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
+*FirewallAPI* | [**FirewallSetElementsAdd**](docs/FirewallAPI.md#firewallsetelementsadd) | **Post** /api/v1/firewall/sets/{id}/elements | Add an address to a set
+*FirewallAPI* | [**FirewallSetElementsDelete**](docs/FirewallAPI.md#firewallsetelementsdelete) | **Delete** /api/v1/firewall/sets/{id}/elements/{element_id} | Remove an address from a set
+*FirewallAPI* | [**FirewallSetElementsList**](docs/FirewallAPI.md#firewallsetelementslist) | **Get** /api/v1/firewall/sets/{id}/elements | List a set&#39;s elements
+*FirewallAPI* | [**FirewallSetsCreate**](docs/FirewallAPI.md#firewallsetscreate) | **Post** /api/v1/firewall/sets | Create a firewall set
+*FirewallAPI* | [**FirewallSetsDelete**](docs/FirewallAPI.md#firewallsetsdelete) | **Delete** /api/v1/firewall/sets/{id} | Delete a firewall set
+*FirewallAPI* | [**FirewallSetsList**](docs/FirewallAPI.md#firewallsetslist) | **Get** /api/v1/firewall/sets | List firewall sets
+*FirewallAPI* | [**FirewallSetsUpdate**](docs/FirewallAPI.md#firewallsetsupdate) | **Put** /api/v1/firewall/sets/{id} | Rename a firewall set
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
 *FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
@@ -182,6 +189,7 @@ Class | Method | HTTP request | Description
  - [AcceptRequestBody](docs/AcceptRequestBody.md)
  - [AcceptResponseBody](docs/AcceptResponseBody.md)
  - [AccessRuleView](docs/AccessRuleView.md)
+ - [AddSetElementRequestBody](docs/AddSetElementRequestBody.md)
  - [AgentBuildView](docs/AgentBuildView.md)
  - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
  - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
@@ -204,6 +212,7 @@ Class | Method | HTTP request | Description
  - [CreateRequestBody1](docs/CreateRequestBody1.md)
  - [CreateRequestBody2](docs/CreateRequestBody2.md)
  - [CreateRulesetRequestBody](docs/CreateRulesetRequestBody.md)
+ - [CreateSetRequestBody](docs/CreateSetRequestBody.md)
  - [CreateTaskRequestBody](docs/CreateTaskRequestBody.md)
  - [CreateTaskResponseBody](docs/CreateTaskResponseBody.md)
  - [CredentialAssertion](docs/CredentialAssertion.md)
@@ -262,6 +271,8 @@ Class | Method | HTTP request | Description
  - [ListResponseBody4](docs/ListResponseBody4.md)
  - [ListRulesResponseBody](docs/ListRulesResponseBody.md)
  - [ListRulesetsResponseBody](docs/ListRulesetsResponseBody.md)
+ - [ListSetElementsResponseBody](docs/ListSetElementsResponseBody.md)
+ - [ListSetsResponseBody](docs/ListSetsResponseBody.md)
  - [LoginRequestBody](docs/LoginRequestBody.md)
  - [LoginResponseBody](docs/LoginResponseBody.md)
  - [LogoutResponseBody](docs/LogoutResponseBody.md)
@@ -316,7 +327,9 @@ Class | Method | HTTP request | Description
  - [RuleBody](docs/RuleBody.md)
  - [RuleView](docs/RuleView.md)
  - [RulesetView](docs/RulesetView.md)
+ - [SetElementView](docs/SetElementView.md)
  - [SetRequestBody](docs/SetRequestBody.md)
+ - [SetView](docs/SetView.md)
  - [SnapshotBodyResponseBody](docs/SnapshotBodyResponseBody.md)
  - [SnapshotView](docs/SnapshotView.md)
  - [SnapshotsResponseBody](docs/SnapshotsResponseBody.md)
@@ -340,6 +353,7 @@ Class | Method | HTTP request | Description
  - [UpdateRoleRequestBody](docs/UpdateRoleRequestBody.md)
  - [UpdateRoleResponseBody](docs/UpdateRoleResponseBody.md)
  - [UpdateRulesetRequestBody](docs/UpdateRulesetRequestBody.md)
+ - [UpdateSetRequestBody](docs/UpdateSetRequestBody.md)
  - [UpgradeCandidateView](docs/UpgradeCandidateView.md)
  - [UserEntity](docs/UserEntity.md)
  - [VerifyEmailRequestBody](docs/VerifyEmailRequestBody.md)

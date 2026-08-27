@@ -11,6 +11,7 @@ Name | Type | Description | Notes
 **DstCidr** | **string** |  | 
 **DstPort** | **int64** |  | 
 **DstPortEnd** | **int64** |  | 
+**DstSetId** | Pointer to **string** |  | [optional] 
 **Enabled** | **bool** |  | 
 **Family** | **string** |  | 
 **Id** | **string** |  | 
@@ -23,6 +24,7 @@ Name | Type | Description | Notes
 **SrcCidr** | **string** |  | 
 **SrcPort** | **int64** |  | 
 **SrcPortEnd** | **int64** |  | 
+**SrcSetId** | Pointer to **string** |  | [optional] 
 **TableName** | **string** |  | 
 
 ## Methods
@@ -188,6 +190,31 @@ and a boolean to check if the value has been set.
 
 SetDstPortEnd sets DstPortEnd field to given value.
 
+
+### GetDstSetId
+
+`func (o *RuleView) GetDstSetId() string`
+
+GetDstSetId returns the DstSetId field if non-nil, zero value otherwise.
+
+### GetDstSetIdOk
+
+`func (o *RuleView) GetDstSetIdOk() (*string, bool)`
+
+GetDstSetIdOk returns a tuple with the DstSetId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetDstSetId
+
+`func (o *RuleView) SetDstSetId(v string)`
+
+SetDstSetId sets DstSetId field to given value.
+
+### HasDstSetId
+
+`func (o *RuleView) HasDstSetId() bool`
+
+HasDstSetId returns a boolean if a field has been set.
 
 ### GetEnabled
 
@@ -428,6 +455,31 @@ and a boolean to check if the value has been set.
 
 SetSrcPortEnd sets SrcPortEnd field to given value.
 
+
+### GetSrcSetId
+
+`func (o *RuleView) GetSrcSetId() string`
+
+GetSrcSetId returns the SrcSetId field if non-nil, zero value otherwise.
+
+### GetSrcSetIdOk
+
+`func (o *RuleView) GetSrcSetIdOk() (*string, bool)`
+
+GetSrcSetIdOk returns a tuple with the SrcSetId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSrcSetId
+
+`func (o *RuleView) SetSrcSetId(v string)`
+
+SetSrcSetId sets SrcSetId field to given value.
+
+### HasSrcSetId
+
+`func (o *RuleView) HasSrcSetId() bool`
+
+HasSrcSetId returns a boolean if a field has been set.
 
 ### GetTableName
 

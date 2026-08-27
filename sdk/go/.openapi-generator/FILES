@@ -22,6 +22,7 @@ docs/APIKeysAPI.md
 docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
+docs/AddSetElementRequestBody.md
 docs/AdminAPI.md
 docs/AgentBuildView.md
 docs/AgentDistResponseBody.md
@@ -46,6 +47,7 @@ docs/CreateRequestBody.md
 docs/CreateRequestBody1.md
 docs/CreateRequestBody2.md
 docs/CreateRulesetRequestBody.md
+docs/CreateSetRequestBody.md
 docs/CreateTaskRequestBody.md
 docs/CreateTaskResponseBody.md
 docs/CredentialAssertion.md
@@ -108,6 +110,8 @@ docs/ListResponseBody3.md
 docs/ListResponseBody4.md
 docs/ListRulesResponseBody.md
 docs/ListRulesetsResponseBody.md
+docs/ListSetElementsResponseBody.md
+docs/ListSetsResponseBody.md
 docs/LoginRequestBody.md
 docs/LoginResponseBody.md
 docs/LogoutResponseBody.md
@@ -167,7 +171,9 @@ docs/RotateRequestBody.md
 docs/RuleBody.md
 docs/RuleView.md
 docs/RulesetView.md
+docs/SetElementView.md
 docs/SetRequestBody.md
+docs/SetView.md
 docs/SnapshotBodyResponseBody.md
 docs/SnapshotView.md
 docs/SnapshotsResponseBody.md
@@ -191,6 +197,7 @@ docs/UpdateRequestBody.md
 docs/UpdateRoleRequestBody.md
 docs/UpdateRoleResponseBody.md
 docs/UpdateRulesetRequestBody.md
+docs/UpdateSetRequestBody.md
 docs/UpgradeCandidateView.md
 docs/UserEntity.md
 docs/VerifyEmailRequestBody.md
@@ -201,6 +208,7 @@ go.sum
 model_accept_request_body.go
 model_accept_response_body.go
 model_access_rule_view.go
+model_add_set_element_request_body.go
 model_agent_build_view.go
 model_agent_dist_response_body.go
 model_agent_firewall_response_body.go
@@ -224,6 +232,7 @@ model_create_request_body.go
 model_create_request_body1.go
 model_create_request_body2.go
 model_create_ruleset_request_body.go
+model_create_set_request_body.go
 model_create_task_request_body.go
 model_create_task_response_body.go
 model_credential_assertion.go
@@ -282,6 +291,8 @@ model_list_response_body3.go
 model_list_response_body4.go
 model_list_rules_response_body.go
 model_list_rulesets_response_body.go
+model_list_set_elements_response_body.go
+model_list_sets_response_body.go
 model_login_request_body.go
 model_login_response_body.go
 model_logout_response_body.go
@@ -336,7 +347,9 @@ model_rotate_request_body.go
 model_rule_body.go
 model_rule_view.go
 model_ruleset_view.go
+model_set_element_view.go
 model_set_request_body.go
+model_set_view.go
 model_snapshot_body_response_body.go
 model_snapshot_view.go
 model_snapshots_response_body.go
@@ -360,6 +373,7 @@ model_update_request_body.go
 model_update_role_request_body.go
 model_update_role_response_body.go
 model_update_ruleset_request_body.go
+model_update_set_request_body.go
 model_upgrade_candidate_view.go
 model_user_entity.go
 model_verify_email_request_body.go

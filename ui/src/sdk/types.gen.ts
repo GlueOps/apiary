@@ -86,6 +86,19 @@ export type AccessRuleView = {
     value: string;
 };
 
+export type AddSetElementRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    comment?: string;
+    label?: string;
+    /**
+     * An address or a prefix. A bare 192.168.10.60 is accepted and treated as /32 — an operator writing a management address should not have to spell that out.
+     */
+    value: string;
+};
+
 export type AgentBuildView = {
     arch: string;
     os: string;
@@ -371,6 +384,23 @@ export type CreateRulesetRequestBody = {
     readonly $schema?: string;
     description?: string;
     name: string;
+};
+
+export type CreateSetRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    description?: string;
+    /**
+     * An nft set holds ONE address family. inet is a table family and is refused here; leave the rule inet and pick the family the addresses are.
+     */
+    family?: 'ip' | 'ip6';
+    name: string;
+    /**
+     * management widens the from= restriction on the fleet SSH key, so it defaults to general — the harmless one.
+     */
+    purpose?: 'general' | 'management' | 'peers';
 };
 
 export type CreateTaskRequestBody = {
@@ -1090,6 +1120,22 @@ export type ListRulesetsResponseBody = {
     rulesets: Array<RulesetView> | null;
 };
 
+export type ListSetElementsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    elements: Array<SetElementView> | null;
+};
+
+export type ListSetsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    sets: Array<SetView> | null;
+};
+
 export type LoginRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1638,6 +1684,7 @@ export type RuleBody = {
     dst_cidr?: string;
     dst_port?: number;
     dst_port_end?: number;
+    dst_set_id?: string;
     enabled: boolean;
     /**
      * inet covers both address families and is almost always what is wanted.
@@ -1663,6 +1710,10 @@ export type RuleBody = {
      * Zero means just the start port.
      */
     src_port_end?: number;
+    /**
+     * Match a named set instead of a literal CIDR. Four addresses across two ports is two rules and one set; as literals it is eight, and every address added makes it two more. Giving both a set and a CIDR is refused: nft renders one and ignores the other, so the stored rule and the enforced rule would differ with nothing reporting it.
+     */
+    src_set_id?: string;
     table_name?: string;
 };
 
@@ -1677,6 +1728,7 @@ export type RuleView = {
     dst_cidr: string;
     dst_port: number;
     dst_port_end: number;
+    dst_set_id?: string;
     enabled: boolean;
     family: string;
     id: string;
@@ -1692,6 +1744,7 @@ export type RuleView = {
     src_cidr: string;
     src_port: number;
     src_port_end: number;
+    src_set_id?: string;
     table_name: string;
 };
 
@@ -1705,6 +1758,17 @@ export type RulesetView = {
     name: string;
 };
 
+export type SetElementView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    comment?: string;
+    id: string;
+    label?: string;
+    value: string;
+};
+
 export type SetRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1715,6 +1779,23 @@ export type SetRequestBody = {
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
+};
+
+export type SetView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    description?: string;
+    elements: Array<SetElementView> | null;
+    family: string;
+    id: string;
+    /**
+     * Contents maintained by the control plane. Edits are refused rather than silently reverted by the next convergence.
+     */
+    managed: boolean;
+    name: string;
+    purpose: string;
 };
 
 export type SnapshotBodyResponseBody = {
@@ -1947,6 +2028,15 @@ export type UpdateRulesetRequestBody = {
     name: string;
 };
 
+export type UpdateSetRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    description?: string;
+    name: string;
+};
+
 export type UpgradeCandidateView = {
     /**
      * What this agent last reported running.
@@ -2038,6 +2128,15 @@ export type AccessRuleViewWritable = {
      */
     seeded: boolean;
     updated_at: string;
+    value: string;
+};
+
+export type AddSetElementRequestBodyWritable = {
+    comment?: string;
+    label?: string;
+    /**
+     * An address or a prefix. A bare 192.168.10.60 is accepted and treated as /32 — an operator writing a management address should not have to spell that out.
+     */
     value: string;
 };
 
@@ -2195,6 +2294,19 @@ export type CreateRequestBody2Writable = {
 export type CreateRulesetRequestBodyWritable = {
     description?: string;
     name: string;
+};
+
+export type CreateSetRequestBodyWritable = {
+    description?: string;
+    /**
+     * An nft set holds ONE address family. inet is a table family and is refused here; leave the rule inet and pick the family the addresses are.
+     */
+    family?: 'ip' | 'ip6';
+    name: string;
+    /**
+     * management widens the from= restriction on the fleet SSH key, so it defaults to general — the harmless one.
+     */
+    purpose?: 'general' | 'management' | 'peers';
 };
 
 export type CreateTaskRequestBodyWritable = {
@@ -2638,6 +2750,14 @@ export type ListRulesetsResponseBodyWritable = {
     rulesets: Array<RulesetViewWritable> | null;
 };
 
+export type ListSetElementsResponseBodyWritable = {
+    elements: Array<SetElementViewWritable> | null;
+};
+
+export type ListSetsResponseBodyWritable = {
+    sets: Array<SetViewWritable> | null;
+};
+
 export type LoginRequestBodyWritable = {
     email: string;
     password: string;
@@ -2930,6 +3050,7 @@ export type RuleBodyWritable = {
     dst_cidr?: string;
     dst_port?: number;
     dst_port_end?: number;
+    dst_set_id?: string;
     enabled: boolean;
     /**
      * inet covers both address families and is almost always what is wanted.
@@ -2955,6 +3076,10 @@ export type RuleBodyWritable = {
      * Zero means just the start port.
      */
     src_port_end?: number;
+    /**
+     * Match a named set instead of a literal CIDR. Four addresses across two ports is two rules and one set; as literals it is eight, and every address added makes it two more. Giving both a set and a CIDR is refused: nft renders one and ignores the other, so the stored rule and the enforced rule would differ with nothing reporting it.
+     */
+    src_set_id?: string;
     table_name?: string;
 };
 
@@ -2965,6 +3090,7 @@ export type RuleViewWritable = {
     dst_cidr: string;
     dst_port: number;
     dst_port_end: number;
+    dst_set_id?: string;
     enabled: boolean;
     family: string;
     id: string;
@@ -2980,6 +3106,7 @@ export type RuleViewWritable = {
     src_cidr: string;
     src_port: number;
     src_port_end: number;
+    src_set_id?: string;
     table_name: string;
 };
 
@@ -2989,12 +3116,32 @@ export type RulesetViewWritable = {
     name: string;
 };
 
+export type SetElementViewWritable = {
+    comment?: string;
+    id: string;
+    label?: string;
+    value: string;
+};
+
 export type SetRequestBodyWritable = {
     config?: PolicyConfigView;
     /**
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
+};
+
+export type SetViewWritable = {
+    description?: string;
+    elements: Array<SetElementViewWritable> | null;
+    family: string;
+    id: string;
+    /**
+     * Contents maintained by the control plane. Edits are refused rather than silently reverted by the next convergence.
+     */
+    managed: boolean;
+    name: string;
+    purpose: string;
 };
 
 export type SnapshotBodyResponseBodyWritable = {
@@ -3106,6 +3253,11 @@ export type UpdateRoleResponseBodyWritable = {
 };
 
 export type UpdateRulesetRequestBodyWritable = {
+    description?: string;
+    name: string;
+};
+
+export type UpdateSetRequestBodyWritable = {
     description?: string;
     name: string;
 };
@@ -4571,6 +4723,192 @@ export type FirewallRulesCreateResponses = {
 };
 
 export type FirewallRulesCreateResponse = FirewallRulesCreateResponses[keyof FirewallRulesCreateResponses];
+
+export type FirewallSetsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/firewall/sets';
+};
+
+export type FirewallSetsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetsListError = FirewallSetsListErrors[keyof FirewallSetsListErrors];
+
+export type FirewallSetsListResponses = {
+    /**
+     * OK
+     */
+    200: ListSetsResponseBody;
+};
+
+export type FirewallSetsListResponse = FirewallSetsListResponses[keyof FirewallSetsListResponses];
+
+export type FirewallSetsCreateData = {
+    body: CreateSetRequestBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/firewall/sets';
+};
+
+export type FirewallSetsCreateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetsCreateError = FirewallSetsCreateErrors[keyof FirewallSetsCreateErrors];
+
+export type FirewallSetsCreateResponses = {
+    /**
+     * Created
+     */
+    201: SetView;
+};
+
+export type FirewallSetsCreateResponse = FirewallSetsCreateResponses[keyof FirewallSetsCreateResponses];
+
+export type FirewallSetsDeleteData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/sets/{id}';
+};
+
+export type FirewallSetsDeleteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetsDeleteError = FirewallSetsDeleteErrors[keyof FirewallSetsDeleteErrors];
+
+export type FirewallSetsDeleteResponses = {
+    /**
+     * OK
+     */
+    200: DeletedResponseBody;
+};
+
+export type FirewallSetsDeleteResponse = FirewallSetsDeleteResponses[keyof FirewallSetsDeleteResponses];
+
+export type FirewallSetsUpdateData = {
+    body: UpdateSetRequestBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/sets/{id}';
+};
+
+export type FirewallSetsUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetsUpdateError = FirewallSetsUpdateErrors[keyof FirewallSetsUpdateErrors];
+
+export type FirewallSetsUpdateResponses = {
+    /**
+     * OK
+     */
+    200: SetView;
+};
+
+export type FirewallSetsUpdateResponse = FirewallSetsUpdateResponses[keyof FirewallSetsUpdateResponses];
+
+export type FirewallSetElementsListData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/sets/{id}/elements';
+};
+
+export type FirewallSetElementsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetElementsListError = FirewallSetElementsListErrors[keyof FirewallSetElementsListErrors];
+
+export type FirewallSetElementsListResponses = {
+    /**
+     * OK
+     */
+    200: ListSetElementsResponseBody;
+};
+
+export type FirewallSetElementsListResponse = FirewallSetElementsListResponses[keyof FirewallSetElementsListResponses];
+
+export type FirewallSetElementsAddData = {
+    body: AddSetElementRequestBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/sets/{id}/elements';
+};
+
+export type FirewallSetElementsAddErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetElementsAddError = FirewallSetElementsAddErrors[keyof FirewallSetElementsAddErrors];
+
+export type FirewallSetElementsAddResponses = {
+    /**
+     * Created
+     */
+    201: SetElementView;
+};
+
+export type FirewallSetElementsAddResponse = FirewallSetElementsAddResponses[keyof FirewallSetElementsAddResponses];
+
+export type FirewallSetElementsDeleteData = {
+    body?: never;
+    path: {
+        id: string;
+        element_id: string;
+    };
+    query?: never;
+    url: '/api/v1/firewall/sets/{id}/elements/{element_id}';
+};
+
+export type FirewallSetElementsDeleteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FirewallSetElementsDeleteError = FirewallSetElementsDeleteErrors[keyof FirewallSetElementsDeleteErrors];
+
+export type FirewallSetElementsDeleteResponses = {
+    /**
+     * OK
+     */
+    200: DeletedResponseBody;
+};
+
+export type FirewallSetElementsDeleteResponse = FirewallSetElementsDeleteResponses[keyof FirewallSetElementsDeleteResponses];
 
 export type FleetAgentUpgradeData = {
     body: AgentUpgradeRequestBodyWritable;

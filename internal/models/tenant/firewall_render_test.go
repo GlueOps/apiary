@@ -359,3 +359,77 @@ func TestAnEmptyPolicyRendersAnEmptyBodyRatherThanFailing(t *testing.T) {
 		t.Fatal("an empty policy has no digest, so convergence cannot be compared")
 	}
 }
+
+// The shape a set exists for: one list, referenced by many rules.
+//
+// Written from an operator's own worked example, because the point of sets is
+// not the syntax — it is the arithmetic. Four management addresses across two
+// ports is TWO rules and ONE set. Expressed with per-rule literals, which is all
+// the API can currently produce, it is EIGHT rules, and every address added to
+// the whitelist adds another two.
+//
+// This renders today. Sets, elements, @name references and the either/or
+// validation are all present in the model; what is missing is any way for an
+// operator to create a set, add an element to it, or point a rule at one. This
+// test is the target the API has to be able to produce.
+func TestRenderingASetReferencedByManyRules(t *testing.T) {
+	setID := uuid.New()
+	allowed := FirewallSet{
+		ID: setID, Name: "allowed_ips", Family: "ip",
+		Purpose: SetPurposeManagement,
+	}
+	elements := []FirewallSetElement{
+		{SetID: setID, Value: "192.0.2.10"},
+		{SetID: setID, Value: "192.0.2.20"},
+		{SetID: setID, Value: "198.51.100.5"},
+		{SetID: setID, Value: "10.10.10.0/24"},
+	}
+
+	rule := func(name string, port int, action Action, useSet bool) FirewallRule {
+		r := FirewallRule{
+			Name: name, Enabled: true,
+			Family: "inet", TableName: "filter", ChainName: "input",
+			Protocol: TCP, Action: action, DstPort: port,
+		}
+		if useSet {
+			r.SrcSetID = &setID
+		}
+		return r
+	}
+
+	out := render(t, RenderInput{
+		Rules: []FirewallRule{
+			rule("ssh from the whitelist", 22, Accept, true),
+			rule("api from the whitelist", 8006, Accept, true),
+			rule("ssh otherwise", 22, Drop, false),
+			rule("api otherwise", 8006, Drop, false),
+		},
+		Sets:     map[string]FirewallSet{setID.String(): allowed},
+		Elements: map[string][]FirewallSetElement{setID.String(): elements},
+	})
+
+	// The set is declared once, inside the table that references it — nft scopes
+	// a set to its table, so a set declared elsewhere is a load error.
+	for _, want := range []string{
+		"set allowed_ips",
+		"192.0.2.10",
+		"192.0.2.20",
+		"198.51.100.5",
+		"10.10.10.0/24",
+	} {
+		if !strings.Contains(out.Body, want) {
+			t.Fatalf("the rendered set must contain %q:\n%s", want, out.Body)
+		}
+	}
+
+	// Both accept rules reference it rather than repeating the addresses.
+	if n := strings.Count(out.Body, "@allowed_ips"); n != 2 {
+		t.Fatalf("both accept rules must reference the set, got %d references:\n%s", n, out.Body)
+	}
+
+	// The arithmetic: the addresses appear in the set declaration and nowhere
+	// else. A literal per rule is what this exists to avoid.
+	if n := strings.Count(out.Body, "198.51.100.5"); n != 1 {
+		t.Fatalf("an address must appear once, in the set — found %d:\n%s", n, out.Body)
+	}
+}

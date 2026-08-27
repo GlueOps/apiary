@@ -117,6 +117,17 @@ type RuleInput struct {
 	SrcCidr string
 	DstCidr string
 
+	// SrcSetID and DstSetID point the rule at a named list instead of a literal.
+	//
+	// The whole reason sets exist: four management addresses across two ports is
+	// two rules and one set, where per-rule literals make it eight — and every
+	// address added to the whitelist adds another two. Validate refuses a rule
+	// that names both a set and a literal, because nft renders one and ignores
+	// the other, so the stored rule and the enforced rule would differ with
+	// nothing reporting it.
+	SrcSetID *uuid.UUID
+	DstSetID *uuid.UUID
+
 	Protocol   string
 	SrcPort    int
 	SrcPortEnd int
@@ -150,10 +161,13 @@ func (in RuleInput) toModel() tenant.FirewallRule {
 	// The any-address default depends on the family: 0.0.0.0/0 in an ip6 rule is
 	// a family mismatch, and defaulting to it would make every v6 rule fail
 	// validation over a value nobody typed.
-	if src == "" {
+	// Only when no set is named. Defaulting the literal to any-address alongside
+	// a set reference would trip the both-specified refusal on every set-based
+	// rule an operator writes, over a value they never typed.
+	if src == "" && in.SrcSetID == nil {
 		src = tenant.AnyAddressFor(family)
 	}
-	if dst == "" {
+	if dst == "" && in.DstSetID == nil {
 		dst = tenant.AnyAddressFor(family)
 	}
 	protocol := tenant.Protocol(strings.TrimSpace(in.Protocol))
@@ -172,6 +186,7 @@ func (in RuleInput) toModel() tenant.FirewallRule {
 		Name: strings.TrimSpace(in.Name), Enabled: in.Enabled,
 		Family: family, TableName: table, ChainName: chain, Position: position,
 		SrcCidr: src, DstCidr: dst,
+		SrcSetID: in.SrcSetID, DstSetID: in.DstSetID,
 		Protocol: protocol,
 		SrcPort:  in.SrcPort, SrcPortEnd: in.SrcPortEnd,
 		DstPort: in.DstPort, DstPortEnd: in.DstPortEnd,
@@ -451,4 +466,143 @@ func IsFirewallValidation(err error) bool {
 		}
 	}
 	return false
+}
+
+// ---- sets --------------------------------------------------------------------
+
+func (s *FirewallService) ListSets(ctx context.Context, orgID uuid.UUID) ([]tenant.FirewallSet, error) {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return r.ListSets(ctx)
+}
+
+func (s *FirewallService) GetSet(ctx context.Context, orgID, id uuid.UUID) (*tenant.FirewallSet, error) {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetSet(ctx, id)
+}
+
+// CreateSet makes a named list rules can point at.
+//
+// Purpose defaults to general — the harmless one — because a set created
+// without thought must never widen the `from=` restriction that onboarding
+// installs on the fleet key. Asking for management is a deliberate act.
+func (s *FirewallService) CreateSet(
+	ctx context.Context, orgID uuid.UUID, name, family, description, purpose string,
+) (*tenant.FirewallSet, error) {
+	set := &tenant.FirewallSet{
+		Name:        strings.TrimSpace(name),
+		Family:      strings.TrimSpace(family),
+		Description: strings.TrimSpace(description),
+		Purpose:     strings.TrimSpace(purpose),
+	}
+	if set.Family == "" {
+		set.Family = tenant.FamilyIPv4
+	}
+	if set.Purpose == "" {
+		set.Purpose = tenant.SetPurposeGeneral
+	}
+	if err := set.Validate(); err != nil {
+		return nil, err
+	}
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.CreateSet(ctx, set); err != nil {
+		return nil, err
+	}
+	return set, nil
+}
+
+func (s *FirewallService) UpdateSet(
+	ctx context.Context, orgID, id uuid.UUID, name, description string,
+) (*tenant.FirewallSet, error) {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := r.GetSet(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	probe := *cur
+	probe.Name = strings.TrimSpace(name)
+	probe.Elements = nil // renaming does not re-validate contents
+	if err := probe.Validate(); err != nil {
+		return nil, err
+	}
+	return r.UpdateSet(ctx, id, probe.Name, strings.TrimSpace(description))
+}
+
+func (s *FirewallService) DeleteSet(ctx context.Context, orgID, id uuid.UUID) error {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	set, err := r.GetSet(ctx, id)
+	if err != nil {
+		return err
+	}
+	if set.Managed {
+		return fmt.Errorf("%w: %q is maintained by the control plane", repo.ErrFirewallSetManaged, set.Name)
+	}
+	return r.DeleteSet(ctx, id)
+}
+
+// AddSetElement puts one address or prefix into a set.
+//
+// Validated through the SET, not on its own, because whether 10.0.0.0/8 is
+// acceptable depends on the family the set was declared with — an ipv6 element
+// in an ipv4 set renders a declaration nft rejects, and nft rejects the whole
+// ruleset over one bad line.
+func (s *FirewallService) AddSetElement(
+	ctx context.Context, orgID, setID uuid.UUID, value, comment, label string,
+) (*tenant.FirewallSetElement, error) {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	set, err := r.GetSet(ctx, setID)
+	if err != nil {
+		return nil, err
+	}
+	if set.Managed {
+		return nil, fmt.Errorf("%w: %q is maintained by the control plane, and an edit here "+
+			"would be reverted by the next convergence", repo.ErrFirewallSetManaged, set.Name)
+	}
+	el := tenant.FirewallSetElement{
+		SetID:   setID,
+		Value:   strings.TrimSpace(value),
+		Comment: strings.TrimSpace(comment),
+		Label:   strings.TrimSpace(label),
+	}
+	probe := *set
+	probe.Elements = append(append([]tenant.FirewallSetElement{}, set.Elements...), el)
+	if err := probe.Validate(); err != nil {
+		return nil, err
+	}
+	if err := r.AddSetElement(ctx, &el); err != nil {
+		return nil, err
+	}
+	return &el, nil
+}
+
+func (s *FirewallService) RemoveSetElement(ctx context.Context, orgID, setID, elementID uuid.UUID) error {
+	r, err := s.repoFor(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	set, err := r.GetSet(ctx, setID)
+	if err != nil {
+		return err
+	}
+	if set.Managed {
+		return fmt.Errorf("%w: %q is maintained by the control plane", repo.ErrFirewallSetManaged, set.Name)
+	}
+	return r.DeleteSetElement(ctx, setID, elementID)
 }

@@ -19,6 +19,13 @@ Method | HTTP request | Description
 [**FirewallRulesetsDelete**](FirewallAPI.md#FirewallRulesetsDelete) | **Delete** /api/v1/firewall/rulesets/{id} | Delete a firewall ruleset
 [**FirewallRulesetsList**](FirewallAPI.md#FirewallRulesetsList) | **Get** /api/v1/firewall/rulesets | List firewall rulesets
 [**FirewallRulesetsUpdate**](FirewallAPI.md#FirewallRulesetsUpdate) | **Put** /api/v1/firewall/rulesets/{id} | Rename a firewall ruleset
+[**FirewallSetElementsAdd**](FirewallAPI.md#FirewallSetElementsAdd) | **Post** /api/v1/firewall/sets/{id}/elements | Add an address to a set
+[**FirewallSetElementsDelete**](FirewallAPI.md#FirewallSetElementsDelete) | **Delete** /api/v1/firewall/sets/{id}/elements/{element_id} | Remove an address from a set
+[**FirewallSetElementsList**](FirewallAPI.md#FirewallSetElementsList) | **Get** /api/v1/firewall/sets/{id}/elements | List a set&#39;s elements
+[**FirewallSetsCreate**](FirewallAPI.md#FirewallSetsCreate) | **Post** /api/v1/firewall/sets | Create a firewall set
+[**FirewallSetsDelete**](FirewallAPI.md#FirewallSetsDelete) | **Delete** /api/v1/firewall/sets/{id} | Delete a firewall set
+[**FirewallSetsList**](FirewallAPI.md#FirewallSetsList) | **Get** /api/v1/firewall/sets | List firewall sets
+[**FirewallSetsUpdate**](FirewallAPI.md#FirewallSetsUpdate) | **Put** /api/v1/firewall/sets/{id} | Rename a firewall set
 [**FirewallSnapshotBody**](FirewallAPI.md#FirewallSnapshotBody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 [**FirewallSnapshotsList**](FirewallAPI.md#FirewallSnapshotsList) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
 
@@ -1033,6 +1040,484 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**RulesetView**](RulesetView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetElementsAdd
+
+> SetElementView FirewallSetElementsAdd(ctx, id).AddSetElementRequestBody(addSetElementRequestBody).Execute()
+
+Add an address to a set
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	addSetElementRequestBody := *openapiclient.NewAddSetElementRequestBody("Value_example") // AddSetElementRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetElementsAdd(context.Background(), id).AddSetElementRequestBody(addSetElementRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetElementsAdd``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetElementsAdd`: SetElementView
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetElementsAdd`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetElementsAddRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **addSetElementRequestBody** | [**AddSetElementRequestBody**](AddSetElementRequestBody.md) |  | 
+
+### Return type
+
+[**SetElementView**](SetElementView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetElementsDelete
+
+> DeletedResponseBody FirewallSetElementsDelete(ctx, id, elementId).Execute()
+
+Remove an address from a set
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	elementId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetElementsDelete(context.Background(), id, elementId).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetElementsDelete``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetElementsDelete`: DeletedResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetElementsDelete`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+**elementId** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetElementsDeleteRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+
+### Return type
+
+[**DeletedResponseBody**](DeletedResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetElementsList
+
+> ListSetElementsResponseBody FirewallSetElementsList(ctx, id).Execute()
+
+List a set's elements
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetElementsList(context.Background(), id).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetElementsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetElementsList`: ListSetElementsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetElementsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetElementsListRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+### Return type
+
+[**ListSetElementsResponseBody**](ListSetElementsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetsCreate
+
+> SetView FirewallSetsCreate(ctx).CreateSetRequestBody(createSetRequestBody).Execute()
+
+Create a firewall set
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	createSetRequestBody := *openapiclient.NewCreateSetRequestBody("Name_example") // CreateSetRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetsCreate(context.Background()).CreateSetRequestBody(createSetRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetsCreate``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetsCreate`: SetView
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetsCreate`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetsCreateRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **createSetRequestBody** | [**CreateSetRequestBody**](CreateSetRequestBody.md) |  | 
+
+### Return type
+
+[**SetView**](SetView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetsDelete
+
+> DeletedResponseBody FirewallSetsDelete(ctx, id).Execute()
+
+Delete a firewall set
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetsDelete(context.Background(), id).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetsDelete``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetsDelete`: DeletedResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetsDelete`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetsDeleteRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+### Return type
+
+[**DeletedResponseBody**](DeletedResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetsList
+
+> ListSetsResponseBody FirewallSetsList(ctx).Execute()
+
+List firewall sets
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetsList(context.Background()).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetsList`: ListSetsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+This endpoint does not need any parameter.
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetsListRequest struct via the builder pattern
+
+
+### Return type
+
+[**ListSetsResponseBody**](ListSetsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FirewallSetsUpdate
+
+> SetView FirewallSetsUpdate(ctx, id).UpdateSetRequestBody(updateSetRequestBody).Execute()
+
+Rename a firewall set
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	updateSetRequestBody := *openapiclient.NewUpdateSetRequestBody("Name_example") // UpdateSetRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FirewallAPI.FirewallSetsUpdate(context.Background(), id).UpdateSetRequestBody(updateSetRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FirewallAPI.FirewallSetsUpdate``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FirewallSetsUpdate`: SetView
+	fmt.Fprintf(os.Stdout, "Response from `FirewallAPI.FirewallSetsUpdate`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFirewallSetsUpdateRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **updateSetRequestBody** | [**UpdateSetRequestBody**](UpdateSetRequestBody.md) |  | 
+
+### Return type
+
+[**SetView**](SetView.md)
 
 ### Authorization
 
