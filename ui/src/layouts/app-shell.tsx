@@ -7,6 +7,7 @@ import {
   IconEye,
   IconKey,
   IconLayoutDashboard,
+  IconList,
   IconLock,
   IconLockAccess,
   IconLogout,
@@ -128,6 +129,7 @@ const navItems: NavEntry[] = [
     icon: IconShield,
     children: [
       { title: 'Rules', href: '/firewall/rulesets', icon: IconShield },
+      { title: 'Address sets', href: '/firewall/sets', icon: IconList },
       { title: 'Bindings', href: '/firewall/bindings', icon: IconRoute },
       { title: 'Publish', href: '/firewall/publish', icon: IconCloudUpload },
     ],

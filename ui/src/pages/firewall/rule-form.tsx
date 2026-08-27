@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { IconAlertTriangle } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { firewallSetsListOptions } from '@/sdk/@tanstack/react-query.gen';
 import type { RuleBodyWritable, RuleView } from '@/sdk/types.gen';
 
 export type Family = 'inet' | 'ip' | 'ip6';
@@ -140,6 +142,12 @@ export function toRuleBody(rule: RuleView): RuleBodyWritable {
 
 interface Draft {
   name: string;
+  /** '' means no set — the range beside it is used instead. Never both: the API
+   *  refuses a rule naming a set AND a literal, because nft renders one and
+   *  ignores the other, so the stored rule and the enforced rule would differ
+   *  with nothing reporting it. */
+  src_set_id: string;
+  dst_set_id: string;
   enabled: boolean;
   family: Family;
   table_name: string;
@@ -176,6 +184,8 @@ function draftFrom(
       position: String(nextPosition),
       protocol: 'tcp',
       src_cidr: '',
+      src_set_id: '',
+      dst_set_id: '',
       src_port: '',
       src_port_end: '',
       dst_cidr: '',
@@ -199,6 +209,8 @@ function draftFrom(
     position: String(rule.position),
     protocol: rule.protocol as Protocol,
     src_cidr: rule.src_cidr,
+    src_set_id: rule.src_set_id ?? '',
+    dst_set_id: rule.dst_set_id ?? '',
     src_port: asText(rule.src_port),
     src_port_end: asText(rule.src_port_end),
     dst_cidr: rule.dst_cidr,
@@ -228,8 +240,12 @@ function toBody(draft: Draft): RuleBodyWritable {
     chain_name: draft.chain_name.trim() || 'input',
     position: Number(draft.position),
     protocol: draft.protocol,
-    src_cidr: draft.src_cidr.trim(),
-    dst_cidr: draft.dst_cidr.trim(),
+    // A side with a set sends no literal. Sending both is refused by the API,
+    // and an empty string is what a set reference leaves behind.
+    src_cidr: draft.src_set_id ? '' : draft.src_cidr.trim(),
+    dst_cidr: draft.dst_set_id ? '' : draft.dst_cidr.trim(),
+    src_set_id: draft.src_set_id || undefined,
+    dst_set_id: draft.dst_set_id || undefined,
     src_port: port(draft.src_port),
     src_port_end: port(draft.src_port_end),
     dst_port: port(draft.dst_port),
@@ -314,10 +330,33 @@ export function RuleFormDialog({
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
 
+  // Sets a rule may reference. Loaded here rather than passed in, because the
+  // list changes on another page and a stale copy would offer a set that no
+  // longer exists — which the API would then refuse with a 404 on save.
+  const setsQuery = useQuery(firewallSetsListOptions());
+  const sets = setsQuery.data?.sets ?? [];
+
   const ports = carriesPorts(draft.protocol);
 
-  const srcCidrError = cidrProblem(draft.src_cidr, draft.family);
-  const dstCidrError = cidrProblem(draft.dst_cidr, draft.family);
+  // A side that names a set carries no literal, so there is nothing to check —
+  // and checking anyway would report an error about a field the operator was
+  // right to leave blank.
+  const srcCidrError = draft.src_set_id ? null : cidrProblem(draft.src_cidr, draft.family);
+  const dstCidrError = draft.dst_set_id ? null : cidrProblem(draft.dst_cidr, draft.family);
+
+  const setById = (id: string) => sets.find((x) => x.id === id) ?? null;
+  const srcSet = setById(draft.src_set_id);
+  const dstSet = setById(draft.dst_set_id);
+
+  // An EMPTY set matches nothing, which turns an accept rule into a silent
+  // no-op and a drop rule into dead weight. The API refuses it; catching it
+  // here means the operator is told before they submit rather than after.
+  const emptySetError = (set: typeof srcSet) =>
+    set && (set.elements ?? []).length === 0
+      ? `${set.name} has no addresses in it, so this rule would match nothing. Add one on the Address sets page.`
+      : null;
+  const srcSetError = emptySetError(srcSet);
+  const dstSetError = emptySetError(dstSet);
   const srcPortError = portProblem(draft.src_port, draft.src_port_end, draft.protocol);
   const dstPortError = portProblem(draft.dst_port, draft.dst_port_end, draft.protocol);
   const positionError = /^\d{1,6}$/.test(draft.position.trim())
@@ -329,8 +368,20 @@ export function RuleFormDialog({
   // Legal under inet, and never what anyone means: one rule cannot match an
   // IPv4 source and an IPv6 destination, so it would sit in the chain matching
   // nothing. Warned rather than blocked — the API accepts it.
-  const srcFamily = srcCidrError ? null : addressFamilyOf(draft.src_cidr);
-  const dstFamily = dstCidrError ? null : addressFamilyOf(draft.dst_cidr);
+  // A set declares its own family, and it is stronger evidence than parsing a
+  // literal — so a rule matching an ip6 set against an ip4 literal is caught by
+  // the same cross-family check that has always covered two literals.
+  const familyOfSet = (set: typeof srcSet) => (set ? (set.family === 'ip6' ? 'ip6' : 'ip') : null);
+  const srcFamily = srcSet
+    ? familyOfSet(srcSet)
+    : srcCidrError
+      ? null
+      : addressFamilyOf(draft.src_cidr);
+  const dstFamily = dstSet
+    ? familyOfSet(dstSet)
+    : dstCidrError
+      ? null
+      : addressFamilyOf(draft.dst_cidr);
   const crossFamily =
     draft.family === 'inet' && srcFamily !== null && dstFamily !== null && srcFamily !== dstFamily;
 
@@ -339,6 +390,8 @@ export function RuleFormDialog({
     positionError !== null ||
     srcCidrError !== null ||
     dstCidrError !== null ||
+    srcSetError !== null ||
+    dstSetError !== null ||
     srcPortError !== null ||
     dstPortError !== null;
 
@@ -472,35 +525,100 @@ export function RuleFormDialog({
             </Select>
           </Field>
 
+          {/* A side matches EITHER a named set or a literal range, never both —
+              nft renders one and ignores the other, so offering both at once
+              would let an operator author a rule whose stored form and enforced
+              form differ. Choosing a set hides the range rather than disabling
+              it, so there is nothing on screen that looks editable and is not. */}
           <Field
-            id="rule-src-cidr"
-            label="Source range"
-            hint="Empty matches any source."
-            error={srcCidrError}
+            id="rule-src-set"
+            label="Source"
+            hint={
+              draft.src_set_id
+                ? 'Matches every address in the set. Edit the list on the Address sets page and every rule referencing it follows.'
+                : 'A named set, or a range below. Empty matches any source.'
+            }
+            error={srcSetError}
           >
-            <Input
-              id="rule-src-cidr"
-              className="w-full font-mono"
-              value={draft.src_cidr}
-              onChange={(e) => set('src_cidr', e.target.value)}
-              placeholder={draft.family === 'ip6' ? '2001:db8::/32' : '10.0.0.0/8'}
-            />
+            <Select
+              value={draft.src_set_id || 'none'}
+              onValueChange={(v) => set('src_set_id', v === 'none' ? '' : (v ?? ''))}
+            >
+              <SelectTrigger id="rule-src-set" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">A range, not a set</SelectItem>
+                {sets.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({(s.elements ?? []).length})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
 
+          {draft.src_set_id ? null : (
+            <Field
+              id="rule-src-cidr"
+              label="Source range"
+              hint="Empty matches any source."
+              error={srcCidrError}
+            >
+              <Input
+                id="rule-src-cidr"
+                className="w-full font-mono"
+                value={draft.src_cidr}
+                onChange={(e) => set('src_cidr', e.target.value)}
+                placeholder={draft.family === 'ip6' ? '2001:db8::/32' : '10.0.0.0/8'}
+              />
+            </Field>
+          )}
+
           <Field
-            id="rule-dst-cidr"
-            label="Destination range"
-            hint="Empty matches any destination."
-            error={dstCidrError}
+            id="rule-dst-set"
+            label="Destination"
+            hint={
+              draft.dst_set_id
+                ? 'Matches every address in the set.'
+                : 'A named set, or a range below. Empty matches any destination.'
+            }
+            error={dstSetError}
           >
-            <Input
-              id="rule-dst-cidr"
-              className="w-full font-mono"
-              value={draft.dst_cidr}
-              onChange={(e) => set('dst_cidr', e.target.value)}
-              placeholder={draft.family === 'ip6' ? '::/0' : '0.0.0.0/0'}
-            />
+            <Select
+              value={draft.dst_set_id || 'none'}
+              onValueChange={(v) => set('dst_set_id', v === 'none' ? '' : (v ?? ''))}
+            >
+              <SelectTrigger id="rule-dst-set" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">A range, not a set</SelectItem>
+                {sets.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({(s.elements ?? []).length})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
+
+          {draft.dst_set_id ? null : (
+            <Field
+              id="rule-dst-cidr"
+              label="Destination range"
+              hint="Empty matches any destination."
+              error={dstCidrError}
+            >
+              <Input
+                id="rule-dst-cidr"
+                className="w-full font-mono"
+                value={draft.dst_cidr}
+                onChange={(e) => set('dst_cidr', e.target.value)}
+                placeholder={draft.family === 'ip6' ? '::/0' : '0.0.0.0/0'}
+              />
+            </Field>
+          )}
 
           {crossFamily ? (
             <p className="flex items-start gap-2 text-xs text-amber-500 sm:col-span-2">
