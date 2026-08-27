@@ -157,3 +157,69 @@ func clampVMID(v uint64) int {
 	}
 	return int(v)
 }
+
+// NodeAddresses returns each cluster member's name mapped to the address the
+// CLUSTER knows it by.
+//
+// A second call, because /cluster/resources — which Inventory reads — describes
+// capacity and does not carry node addresses. /cluster/status does, and it is
+// the only place this system can learn how to reach a node it did not onboard.
+//
+// That gap had a visible cost. The capacity sync creates a Hypervisor row for
+// any member nobody onboarded here, with the cluster's name for it and no
+// address, because it had none to record. Onboarding then looks a host up by
+// address, misses that row entirely, and creates a SECOND one for the same
+// physical machine — observed on a live four-node cluster, where pve4 and pve5
+// each ended up with a name-only row from the sync and an address-only row from
+// a later declaration.
+//
+// Best-effort by contract: a hive whose API is unreachable returns an error the
+// caller is expected to tolerate. An address is an improvement to a record, not
+// a precondition for observing capacity, and failing a whole sync because one
+// optional field could not be filled would trade a cosmetic gap for a real one.
+func (s *ProxmoxInventoryService) NodeAddresses(
+	ctx context.Context, orgID, hiveID uuid.UUID,
+) (map[string]string, error) {
+	if s == nil {
+		return nil, ErrTenantUnavailable
+	}
+	tCtx, err := s.tenants.GetTenantContext(ctx, orgID.String())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTenantUnavailable, err)
+	}
+
+	var hive tenant.Hive
+	if err := tCtx.DB.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
+		return nil, fmt.Errorf("load hive %s: %w", hiveID, err)
+	}
+	if strings.TrimSpace(hive.APIURL) == "" || hive.CredentialID == nil {
+		return nil, fmt.Errorf("hive %q has no API URL or credential, so its node addresses "+
+			"cannot be read", hive.Name)
+	}
+
+	client, err := s.clientFor(ctx, tCtx, orgID, hive)
+	if err != nil {
+		return nil, err
+	}
+	cluster, err := client.Cluster(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reach the Proxmox cluster for hive %q: %w", hive.Name, err)
+	}
+	if err := cluster.Status(ctx); err != nil {
+		return nil, fmt.Errorf("read cluster status for hive %q: %w", hive.Name, err)
+	}
+
+	out := make(map[string]string, len(cluster.Nodes))
+	for _, n := range cluster.Nodes {
+		if n == nil {
+			continue
+		}
+		name := strings.TrimSpace(n.Name)
+		ip := strings.TrimSpace(n.IP)
+		if name == "" || ip == "" {
+			continue
+		}
+		out[name] = ip
+	}
+	return out, nil
+}

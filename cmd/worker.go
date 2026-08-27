@@ -343,8 +343,9 @@ func runWorker() error {
 		// gates read — without it every observation is absent, the drain state is
 		// unknown, and every departure refuses. Safe, but not a working system.
 		syncDeps := jobs.CapacitySyncDeps{
-			Inventory: inventory.Inventory,
-			TenantDB:  fleetRepoFor,
+			Inventory:     inventory.Inventory,
+			NodeAddresses: inventory.NodeAddresses,
+			TenantDB:      fleetRepoFor,
 		}
 		river.AddWorker(workers, jobs.NewSyncHiveCapacityWorker(syncDeps))
 		river.AddWorker(workers, jobs.NewSyncAllHivesWorker(controlDB, fleetRepoFor,
