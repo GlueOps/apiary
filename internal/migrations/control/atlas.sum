@@ -1,4 +1,4 @@
-h1:mGbErL7NzLxbxECsrV6baLmnPTRuYEI4ogrVXz3vUik=
+h1:boSvlsV1UHqq6ZgULyDXwyxqZ3UoAdZFd9QY4XaP3n8=
 20260822091259_control_schema.sql h1:FBGHva3RN5XplrE4uTyQpeJZzQXS2mCVyFQqpLi8o6o=
 20260822222338_add_email_verification.sql h1:WmV6rm/Awdg9GbMoiCGx+n/KADhFJqy6auk848RE1fA=
 20260822223529_add_invitations.sql h1:Yu6RFGHJeWRs9p7TTs0tZh5eS0Gu6xlLmgHjFkhQfbg=
@@ -7,3 +7,4 @@ h1:mGbErL7NzLxbxECsrV6baLmnPTRuYEI4ogrVXz3vUik=
 20260823133642_api_keys.sql h1:RkAhHlfmLIOpMNOB1srW13QfS2Tp8FTBQWhkOXyd3Yo=
 20260823161835_fleet_to_tenant.sql h1:mflM00jn+Zrj5HivkYNUO971lwpCY9DoEqJosyp1qHQ=
 20260823201201_soft_delete.sql h1:U5JnpqhYM/M+PRngNxnGGEqSxFZh9rHek1qtatm9p9w=
+20260827004334_enrolment_token_created_by_nullable.sql h1:5fPgcgyeOhGBrNYbHJUMcT5pg1dpcZVmiO9cOeju8EY=

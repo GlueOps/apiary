@@ -499,6 +499,15 @@ func BeeLiveness(b *tenant.Bee) string {
 // store. The raw value exists only in this return and in whatever the operator
 // pastes onto a host.
 func (s *FleetService) NewEnrolmentToken() (raw, hash string, err error) {
+	return NewEnrolmentToken()
+}
+
+// NewEnrolmentToken mints a token and the hash to store for it.
+//
+// Package-level as well as a method because the onboarding WORKER needs one and
+// has no FleetService — and nothing about minting depends on service state. The
+// method is kept so existing callers are unchanged.
+func NewEnrolmentToken() (raw, hash string, err error) {
 	raw, err = newSecret()
 	if err != nil {
 		return "", "", err

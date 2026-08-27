@@ -377,7 +377,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		// a new host starts where a migrating host passes through.
 		row := control.BeeEnrolmentToken{
 			OrganizationID: p.OrganizationID, TokenHash: hash, MaxUses: in.Body.MaxUses,
-			ExpiresAt: expires, CreatedByID: *p.UserID,
+			ExpiresAt: expires, CreatedByID: p.UserID,
 		}
 		if err := controlDB.WithContext(ctx).Create(&row).Error; err != nil {
 			return nil, mapErr(ctx, err)

@@ -14,6 +14,7 @@ import (
 	"github.com/glueops/apiary/internal/config"
 	"github.com/glueops/apiary/internal/database"
 	"github.com/glueops/apiary/internal/jobs"
+	"github.com/glueops/apiary/internal/models/control"
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
@@ -198,6 +199,33 @@ func runWorker() error {
 				return k.PublicKey, priv, nil
 			},
 			ManagementSets: firewalls.ManagementSets,
+			// The token the host redeems for its own credential.
+			//
+			// Unwired until now, which is what made every automated onboarding
+			// fail at the enrol step with "no enrolment token source configured" —
+			// the field was declared and nil-checked and never assigned.
+			//
+			// Single-use and ten minutes, because this one is not an operator's
+			// batch token for bringing up a rack: it is minted for ONE host and
+			// redeemed within seconds of arriving. CreatedByID is nil — a worker is
+			// not a person, and attributing the mint to one would put a name
+			// against an action nobody took.
+			EnrolmentToken: func(ctx context.Context, orgID uuid.UUID) (string, error) {
+				raw, hash, err := service.NewEnrolmentToken()
+				if err != nil {
+					return "", fmt.Errorf("mint an enrolment token: %w", err)
+				}
+				row := control.BeeEnrolmentToken{
+					OrganizationID: orgID,
+					TokenHash:      hash,
+					MaxUses:        1,
+					ExpiresAt:      time.Now().UTC().Add(10 * time.Minute),
+				}
+				if err := controlDB.WithContext(ctx).Create(&row).Error; err != nil {
+					return "", fmt.Errorf("record the enrolment token: %w", err)
+				}
+				return raw, nil
+			},
 			NewRunner: func(addr, user string, priv []byte) (jobs.Runner, error) {
 				return jobs.NewSSHRunner(addr, user, priv)
 			},
