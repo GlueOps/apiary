@@ -201,8 +201,24 @@ func (r *FirewallRepoGorm) CreateRule(ctx context.Context, rule *tenant.Firewall
 func (r *FirewallRepoGorm) UpdateRule(ctx context.Context, rule *tenant.FirewallRule) error {
 	res := r.db.WithContext(ctx).Model(&tenant.FirewallRule{}).
 		Where("id = ?", rule.ID).
+		// EVERY writable column, and the list is the whole contract.
+		//
+		// A field missing here is silently never written: the rule updates, the
+		// API returns 200, and that one column keeps its old value. src_set_id and
+		// dst_set_id were absent, so a rule could be CREATED naming a set and then
+		// never edited to name one — and an edit that switched from a literal to a
+		// set cleared the literal (which is in this list) while dropping the set
+		// reference (which was not), leaving a rule that matched everything.
+		//
+		// Published to a live host as `tcp dport 22 accept` under a rule named
+		// "access from management".
+		//
+		// Select is used rather than Updates(map) because a firewall rule is one
+		// statement — see the doc comment — but that makes this list load-bearing.
+		// Anything added to FirewallRule that an operator can set belongs here.
 		Select("name", "enabled", "family", "table_name", "chain_name", "position",
-			"src_cidr", "dst_cidr", "protocol", "src_port", "src_port_end",
+			"src_cidr", "dst_cidr", "src_set_id", "dst_set_id",
+			"protocol", "src_port", "src_port_end",
 			"dst_port", "dst_port_end", "in_iface", "out_iface", "action", "comment").
 		Updates(rule)
 	if res.Error != nil {

@@ -129,6 +129,10 @@ export function toRuleBody(rule: RuleView): RuleBodyWritable {
     position: rule.position,
     src_cidr: rule.src_cidr,
     dst_cidr: rule.dst_cidr,
+    // Carried, or a reorder silently drops the set a rule matches on: this
+    // whole body is PUT back, so anything missing here is cleared.
+    src_set_id: rule.src_set_id,
+    dst_set_id: rule.dst_set_id,
     protocol: rule.protocol as Protocol,
     src_port: rule.src_port,
     src_port_end: rule.src_port_end,
