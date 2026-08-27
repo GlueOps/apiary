@@ -540,6 +540,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 
 		results, err := repo.DeclareHosts(ctx, db, hosts)
 		if err != nil {
+			// 422, not 500: the request is well formed and the caller is not
+			// wrong. Something has to be configured first, and the message says
+			// what — accepting the hosts and failing per-machine in a worker is
+			// what this replaces.
+			if errors.Is(err, repo.ErrNoManagementSet) {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
 			return nil, mapErr(ctx, err)
 		}
 

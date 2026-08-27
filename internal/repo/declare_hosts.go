@@ -42,9 +42,46 @@ type DeclaredResult struct {
 // because somebody re-pasted a list would put a second worker onto a host
 // another is already inside. Redriving one is a deliberate act with its own
 // endpoint.
+// ErrNoManagementSet is returned when nothing would authorise the fleet key.
+//
+// A precondition rather than a failure: the hosts are fine, the request is well
+// formed, and there is simply nowhere for the control plane to be allowed to
+// connect from.
+// Worded for the operator, not the log. The handler returns this text verbatim
+// as the 422 detail and the declare dialog puts it straight in a toast, so it
+// carries no "declare:" prefix and names the next action rather than the
+// internal condition.
+var ErrNoManagementSet = errors.New(
+	"No management address set has any addresses in it, so the fleet key would be " +
+		"installed permitting connections from nowhere. Add at least one address to a " +
+		"management set, then declare these hosts.")
+
 func DeclareHosts(
 	ctx context.Context, db *gorm.DB, hosts []tenant.DeclaredHost,
 ) ([]DeclaredResult, error) {
+	// REFUSED HERE, not discovered by a worker minutes later.
+	//
+	// Onboarding installs the fleet key with a `from=` restriction derived from
+	// the management sets, and refuses when that list is empty because the key
+	// would be installed with a restriction permitting nothing. Without this
+	// check the API answers 201 with queued=true for every host and the work
+	// fails afterwards, one job per machine, in a place the operator is not
+	// looking. Observed on a clean tenant: five hosts accepted, five onboarding
+	// jobs retried to exhaustion, five rows marked failed.
+	//
+	// Derived and judged through the same DeriveFromRestriction and Safe the
+	// onboarding step uses, rather than restating the predicate here — a second
+	// copy of "is this list usable" drifts into refusing what onboarding would
+	// have accepted, or accepting what it will not.
+	var sets []tenant.FirewallSet
+	if err := db.WithContext(ctx).Preload("Elements").
+		Where("purpose = ?", tenant.SetPurposeManagement).Find(&sets).Error; err != nil {
+		return nil, fmt.Errorf("declare: read the management sets: %w", err)
+	}
+	if !tenant.DeriveFromRestriction(sets).Safe() {
+		return nil, ErrNoManagementSet
+	}
+
 	out := make([]DeclaredResult, 0, len(hosts))
 
 	for _, h := range hosts {

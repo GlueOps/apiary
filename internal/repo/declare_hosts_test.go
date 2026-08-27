@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"testing"
@@ -14,10 +15,47 @@ import (
 
 var declareTestSchema = testsupport.SchemaName("apiary_repo_declare_test")
 
+// declareNoMgmtTestSchema is deliberately separate: the shared schema is seeded
+// with a management set so the other tests can declare at all, and emptying it
+// mid-run would race them.
+var declareNoMgmtTestSchema = testsupport.SchemaName("apiary_repo_declare_nomgmt_test")
+
 func declareDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	return testsupport.OpenSchema(t, declareTestSchema, &tenant.Hive{}, &tenant.Bee{},
-		&tenant.Hypervisor{})
+	db := testsupport.OpenSchema(t, declareTestSchema, &tenant.Hive{}, &tenant.Bee{},
+		&tenant.Hypervisor{}, &tenant.FirewallSet{}, &tenant.FirewallSetElement{})
+	seedManagementSet(t, db)
+	return db
+}
+
+// seedManagementSet gives the fixture something for the fleet key's from=
+// restriction to be derived from.
+//
+// Declaring refuses without one, because onboarding refuses without one — see
+// ErrNoManagementSet. Every test here is about the declaration itself, so the
+// precondition is satisfied once in the harness rather than repeated; the
+// refusal has its own test on a schema that deliberately has none.
+func seedManagementSet(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	var n int64
+	if err := db.Model(&tenant.FirewallSet{}).
+		Where("purpose = ?", tenant.SetPurposeManagement).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n > 0 {
+		return
+	}
+	set := tenant.FirewallSet{
+		Name: "management", Family: tenant.FamilyIPv4, Purpose: tenant.SetPurposeManagement,
+	}
+	if err := db.Create(&set).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&tenant.FirewallSetElement{
+		SetID: set.ID, Value: "192.0.2.1/32",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 }
 
 // uniq makes an address that no other test in this package has used.
@@ -164,5 +202,47 @@ func TestOneBadAddressDoesNotLoseTheRest(t *testing.T) {
 	_ = db.Model(&tenant.Hypervisor{}).Where("address IN ?", batch).Count(&n).Error
 	if n != 3 {
 		t.Fatalf("%d machines, want 3", n)
+	}
+}
+
+// Declaring refuses when nothing would authorise the fleet key.
+//
+// Onboarding installs that key with a from= restriction derived from the
+// management sets and refuses when the derived list is empty, because the key
+// would be installed permitting nothing. Without this check the API answered 201
+// with queued=true for every host and the work failed afterwards, one job per
+// machine, somewhere the operator was not looking: five hosts accepted, five
+// jobs retried to exhaustion, five rows marked failed.
+func TestDeclaringRefusesWithoutAManagementSet(t *testing.T) {
+	db := testsupport.OpenSchema(t, declareNoMgmtTestSchema,
+		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{},
+		&tenant.FirewallSet{}, &tenant.FirewallSetElement{})
+
+	_, err := DeclareHosts(context.Background(), db,
+		[]tenant.DeclaredHost{{Address: uniq("nomgmt"), User: "root"}})
+	if !errors.Is(err, ErrNoManagementSet) {
+		t.Fatalf("declaring without a management set must be refused; got %v", err)
+	}
+
+	// And nothing was recorded — a refusal that half-created rows would leave
+	// hosts queued for work that cannot run.
+	var n int64
+	if err := db.Model(&tenant.Hypervisor{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("a refused declaration must create nothing; found %d rows", n)
+	}
+
+	// A set with no elements is the same refusal: it derives to an empty list.
+	set := tenant.FirewallSet{
+		Name: "empty", Family: tenant.FamilyIPv4, Purpose: tenant.SetPurposeManagement,
+	}
+	if err := db.Create(&set).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DeclareHosts(context.Background(), db,
+		[]tenant.DeclaredHost{{Address: uniq("nomgmt"), User: "root"}}); !errors.Is(err, ErrNoManagementSet) {
+		t.Fatalf("an empty management set must still refuse; got %v", err)
 	}
 }
