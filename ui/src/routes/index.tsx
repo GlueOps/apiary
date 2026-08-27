@@ -14,6 +14,7 @@ import { EstatesPage } from '@/pages/estates/EstatesPage.tsx';
 import { FirewallBindings } from '@/pages/firewall/bindings.tsx';
 import { FirewallPublish } from '@/pages/firewall/publish.tsx';
 import { FirewallRulesets } from '@/pages/firewall/rulesets.tsx';
+import { FirewallSets } from '@/pages/firewall/sets.tsx';
 import { Fleet } from '@/pages/fleet/fleet.tsx';
 import { Clusters } from '@/pages/fleet/hives.tsx';
 import { Hypervisors } from '@/pages/fleet/hypervisors.tsx';
@@ -97,6 +98,11 @@ export const router = createBrowserRouter([
                 path: 'firewall/rulesets',
                 element: <FirewallRulesets />,
                 handle: { title: 'Firewall rules' },
+              },
+              {
+                path: 'firewall/sets',
+                element: <FirewallSets />,
+                handle: { title: 'Address sets' },
               },
               {
                 path: 'firewall/bindings',

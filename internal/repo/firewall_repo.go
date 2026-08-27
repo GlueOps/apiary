@@ -18,6 +18,12 @@ var (
 	ErrFirewallBindingExists   = errors.New("firewall: that ruleset is already bound there")
 	ErrFirewallHiveNotFound    = errors.New("firewall: no such fleet")
 	ErrFirewallSwarmNotFound   = errors.New("firewall: no such swarm in that fleet")
+	ErrFirewallSetNotFound     = errors.New("firewall: no such set")
+	ErrFirewallSetElemNotFound = errors.New("firewall: no such element in that set")
+	// ErrFirewallSetManaged refuses a hand-edit the next convergence would
+	// silently revert. An edit that disappears without explanation is worse
+	// than one that is refused.
+	ErrFirewallSetManaged = errors.New("firewall: that set is maintained by the control plane")
 
 	// ErrFirewallSwarmNeedsHive is the CHECK constraint, not a foreign key. A
 	// swarm-scoped binding carries hive_id as well as swarm_id, and a row with
@@ -144,20 +150,45 @@ func (r *FirewallRepoGorm) CreateRule(ctx context.Context, rule *tenant.Firewall
 	// never correct anything. The struct cannot be asked what the caller wanted.
 	wanted := rule.Enabled
 
+	// The address columns carry `default:'0.0.0.0/0'` and are the same trap.
+	//
+	// A rule that names a SET carries no literal on that side — the service layer
+	// leaves it empty deliberately, because a literal alongside a set is refused.
+	// Create then omits the empty string and Postgres writes 0.0.0.0/0, so the
+	// stored row asserts a source constraint the renderer does not enforce: it
+	// prefers the set and ignores the literal. Harmless to the host and wrong
+	// everywhere it is read, which includes the API response a client edits from.
+	wantedSrc, wantedDst := rule.SrcCidr, rule.DstCidr
+
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(rule).Error; err != nil {
 			return translateFirewallConflict(err)
 		}
-		if wanted {
+
+		// Only the fields whose wanted value is the zero one, because those are
+		// exactly the fields Create dropped.
+		fix := map[string]any{}
+		if !wanted {
+			fix["enabled"] = false
+		}
+		if wantedSrc == "" {
+			fix["src_cidr"] = ""
+		}
+		if wantedDst == "" {
+			fix["dst_cidr"] = ""
+		}
+		if len(fix) == 0 {
 			return nil
 		}
 		if err := tx.Model(&tenant.FirewallRule{}).Where("id = ?", rule.ID).
-			Update("enabled", false).Error; err != nil {
+			Updates(fix).Error; err != nil {
 			return err
 		}
-		// Keep the returned struct honest: it would otherwise say enabled while
-		// the row says disabled, and the caller renders the struct.
-		rule.Enabled = false
+		// Keep the returned struct honest: it would otherwise say enabled, or
+		// carry an address the row does not, and the caller renders the struct.
+		rule.Enabled = wanted
+		rule.SrcCidr = wantedSrc
+		rule.DstCidr = wantedDst
 		return nil
 	})
 }
@@ -468,4 +499,94 @@ func (r *FirewallRepoGorm) SetsByPurpose(ctx context.Context, purpose string) ([
 		Order("name ASC").
 		Find(&out).Error
 	return out, err
+}
+
+// ---- sets --------------------------------------------------------------------
+
+// ListSets returns every set with its elements loaded, for the same reason
+// SetsByPurpose preloads them: a set without its contents cannot answer any
+// question worth asking, and an empty one would be indistinguishable from an
+// unloaded one.
+func (r *FirewallRepoGorm) ListSets(ctx context.Context) ([]tenant.FirewallSet, error) {
+	var out []tenant.FirewallSet
+	err := r.db.WithContext(ctx).
+		Preload("Elements").
+		Order("name ASC").
+		Find(&out).Error
+	return out, err
+}
+
+func (r *FirewallRepoGorm) GetSet(ctx context.Context, id uuid.UUID) (*tenant.FirewallSet, error) {
+	var s tenant.FirewallSet
+	if err := r.db.WithContext(ctx).Preload("Elements").First(&s, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFirewallSetNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *FirewallRepoGorm) CreateSet(ctx context.Context, s *tenant.FirewallSet) error {
+	return r.db.WithContext(ctx).Create(s).Error
+}
+
+func (r *FirewallRepoGorm) UpdateSet(
+	ctx context.Context, id uuid.UUID, name, description string,
+) (*tenant.FirewallSet, error) {
+	// Name and description only. Family is not editable: a set's family decides
+	// the nft type its elements are declared as, so changing it would reinterpret
+	// every element already in it — and the rules referencing it are validated
+	// against the family they were written for.
+	res := r.db.WithContext(ctx).Model(&tenant.FirewallSet{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"name": name, "description": description})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrFirewallSetNotFound
+	}
+	return r.GetSet(ctx, id)
+}
+
+// DeleteSet removes a set and its elements.
+//
+// A set still referenced by a rule is refused by the database, not by a check
+// here: FirewallRule.SrcSet carries constraint:OnDelete:RESTRICT precisely so
+// this cannot become a ruleset that references a set nft has never heard of —
+// which nft rejects wholesale, taking the host's entire firewall with it.
+func (r *FirewallRepoGorm) DeleteSet(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("set_id = ?", id).Delete(&tenant.FirewallSetElement{}).Error; err != nil {
+			return err
+		}
+		res := tx.Delete(&tenant.FirewallSet{}, "id = ?", id)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrFirewallSetNotFound
+		}
+		return nil
+	})
+}
+
+func (r *FirewallRepoGorm) AddSetElement(ctx context.Context, e *tenant.FirewallSetElement) error {
+	return r.db.WithContext(ctx).Create(e).Error
+}
+
+// DeleteSetElement is scoped by set as well as by element id, so an element id
+// from one set cannot remove a row from another.
+func (r *FirewallRepoGorm) DeleteSetElement(ctx context.Context, setID, elementID uuid.UUID) error {
+	res := r.db.WithContext(ctx).
+		Where("id = ? AND set_id = ?", elementID, setID).
+		Delete(&tenant.FirewallSetElement{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrFirewallSetElemNotFound
+	}
+	return nil
 }

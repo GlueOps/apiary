@@ -29,6 +29,7 @@ type RuleBody struct {
 	DstCidr *string `json:"dst_cidr,omitempty"`
 	DstPort *int64 `json:"dst_port,omitempty"`
 	DstPortEnd *int64 `json:"dst_port_end,omitempty"`
+	DstSetId *string `json:"dst_set_id,omitempty"`
 	Enabled bool `json:"enabled"`
 	// inet covers both address families and is almost always what is wanted.
 	Family *string `json:"family,omitempty"`
@@ -44,6 +45,8 @@ type RuleBody struct {
 	SrcPort *int64 `json:"src_port,omitempty"`
 	// Zero means just the start port.
 	SrcPortEnd *int64 `json:"src_port_end,omitempty"`
+	// Match a named set instead of a literal CIDR. Four addresses across two ports is two rules and one set; as literals it is eight, and every address added makes it two more. Giving both a set and a CIDR is refused: nft renders one and ignores the other, so the stored rule and the enforced rule would differ with nothing reporting it.
+	SrcSetId *string `json:"src_set_id,omitempty"`
 	TableName *string `json:"table_name,omitempty"`
 }
 
@@ -316,6 +319,38 @@ func (o *RuleBody) HasDstPortEnd() bool {
 // SetDstPortEnd gets a reference to the given int64 and assigns it to the DstPortEnd field.
 func (o *RuleBody) SetDstPortEnd(v int64) {
 	o.DstPortEnd = &v
+}
+
+// GetDstSetId returns the DstSetId field value if set, zero value otherwise.
+func (o *RuleBody) GetDstSetId() string {
+	if o == nil || IsNil(o.DstSetId) {
+		var ret string
+		return ret
+	}
+	return *o.DstSetId
+}
+
+// GetDstSetIdOk returns a tuple with the DstSetId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RuleBody) GetDstSetIdOk() (*string, bool) {
+	if o == nil || IsNil(o.DstSetId) {
+		return nil, false
+	}
+	return o.DstSetId, true
+}
+
+// HasDstSetId returns a boolean if a field has been set.
+func (o *RuleBody) HasDstSetId() bool {
+	if o != nil && !IsNil(o.DstSetId) {
+		return true
+	}
+
+	return false
+}
+
+// SetDstSetId gets a reference to the given string and assigns it to the DstSetId field.
+func (o *RuleBody) SetDstSetId(v string) {
+	o.DstSetId = &v
 }
 
 // GetEnabled returns the Enabled field value
@@ -622,6 +657,38 @@ func (o *RuleBody) SetSrcPortEnd(v int64) {
 	o.SrcPortEnd = &v
 }
 
+// GetSrcSetId returns the SrcSetId field value if set, zero value otherwise.
+func (o *RuleBody) GetSrcSetId() string {
+	if o == nil || IsNil(o.SrcSetId) {
+		var ret string
+		return ret
+	}
+	return *o.SrcSetId
+}
+
+// GetSrcSetIdOk returns a tuple with the SrcSetId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RuleBody) GetSrcSetIdOk() (*string, bool) {
+	if o == nil || IsNil(o.SrcSetId) {
+		return nil, false
+	}
+	return o.SrcSetId, true
+}
+
+// HasSrcSetId returns a boolean if a field has been set.
+func (o *RuleBody) HasSrcSetId() bool {
+	if o != nil && !IsNil(o.SrcSetId) {
+		return true
+	}
+
+	return false
+}
+
+// SetSrcSetId gets a reference to the given string and assigns it to the SrcSetId field.
+func (o *RuleBody) SetSrcSetId(v string) {
+	o.SrcSetId = &v
+}
+
 // GetTableName returns the TableName field value if set, zero value otherwise.
 func (o *RuleBody) GetTableName() string {
 	if o == nil || IsNil(o.TableName) {
@@ -685,6 +752,9 @@ func (o RuleBody) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.DstPortEnd) {
 		toSerialize["dst_port_end"] = o.DstPortEnd
 	}
+	if !IsNil(o.DstSetId) {
+		toSerialize["dst_set_id"] = o.DstSetId
+	}
 	toSerialize["enabled"] = o.Enabled
 	if !IsNil(o.Family) {
 		toSerialize["family"] = o.Family
@@ -710,6 +780,9 @@ func (o RuleBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.SrcPortEnd) {
 		toSerialize["src_port_end"] = o.SrcPortEnd
+	}
+	if !IsNil(o.SrcSetId) {
+		toSerialize["src_set_id"] = o.SrcSetId
 	}
 	if !IsNil(o.TableName) {
 		toSerialize["table_name"] = o.TableName

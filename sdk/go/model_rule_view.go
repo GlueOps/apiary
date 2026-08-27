@@ -29,6 +29,7 @@ type RuleView struct {
 	DstCidr string `json:"dst_cidr"`
 	DstPort int64 `json:"dst_port"`
 	DstPortEnd int64 `json:"dst_port_end"`
+	DstSetId *string `json:"dst_set_id,omitempty"`
 	Enabled bool `json:"enabled"`
 	Family string `json:"family"`
 	Id string `json:"id"`
@@ -42,6 +43,7 @@ type RuleView struct {
 	SrcCidr string `json:"src_cidr"`
 	SrcPort int64 `json:"src_port"`
 	SrcPortEnd int64 `json:"src_port_end"`
+	SrcSetId *string `json:"src_set_id,omitempty"`
 	TableName string `json:"table_name"`
 }
 
@@ -257,6 +259,38 @@ func (o *RuleView) GetDstPortEndOk() (*int64, bool) {
 // SetDstPortEnd sets field value
 func (o *RuleView) SetDstPortEnd(v int64) {
 	o.DstPortEnd = v
+}
+
+// GetDstSetId returns the DstSetId field value if set, zero value otherwise.
+func (o *RuleView) GetDstSetId() string {
+	if o == nil || IsNil(o.DstSetId) {
+		var ret string
+		return ret
+	}
+	return *o.DstSetId
+}
+
+// GetDstSetIdOk returns a tuple with the DstSetId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RuleView) GetDstSetIdOk() (*string, bool) {
+	if o == nil || IsNil(o.DstSetId) {
+		return nil, false
+	}
+	return o.DstSetId, true
+}
+
+// HasDstSetId returns a boolean if a field has been set.
+func (o *RuleView) HasDstSetId() bool {
+	if o != nil && !IsNil(o.DstSetId) {
+		return true
+	}
+
+	return false
+}
+
+// SetDstSetId gets a reference to the given string and assigns it to the DstSetId field.
+func (o *RuleView) SetDstSetId(v string) {
+	o.DstSetId = &v
 }
 
 // GetEnabled returns the Enabled field value
@@ -547,6 +581,38 @@ func (o *RuleView) SetSrcPortEnd(v int64) {
 	o.SrcPortEnd = v
 }
 
+// GetSrcSetId returns the SrcSetId field value if set, zero value otherwise.
+func (o *RuleView) GetSrcSetId() string {
+	if o == nil || IsNil(o.SrcSetId) {
+		var ret string
+		return ret
+	}
+	return *o.SrcSetId
+}
+
+// GetSrcSetIdOk returns a tuple with the SrcSetId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RuleView) GetSrcSetIdOk() (*string, bool) {
+	if o == nil || IsNil(o.SrcSetId) {
+		return nil, false
+	}
+	return o.SrcSetId, true
+}
+
+// HasSrcSetId returns a boolean if a field has been set.
+func (o *RuleView) HasSrcSetId() bool {
+	if o != nil && !IsNil(o.SrcSetId) {
+		return true
+	}
+
+	return false
+}
+
+// SetSrcSetId gets a reference to the given string and assigns it to the SrcSetId field.
+func (o *RuleView) SetSrcSetId(v string) {
+	o.SrcSetId = &v
+}
+
 // GetTableName returns the TableName field value
 func (o *RuleView) GetTableName() string {
 	if o == nil {
@@ -590,6 +656,9 @@ func (o RuleView) ToMap() (map[string]interface{}, error) {
 	toSerialize["dst_cidr"] = o.DstCidr
 	toSerialize["dst_port"] = o.DstPort
 	toSerialize["dst_port_end"] = o.DstPortEnd
+	if !IsNil(o.DstSetId) {
+		toSerialize["dst_set_id"] = o.DstSetId
+	}
 	toSerialize["enabled"] = o.Enabled
 	toSerialize["family"] = o.Family
 	toSerialize["id"] = o.Id
@@ -602,6 +671,9 @@ func (o RuleView) ToMap() (map[string]interface{}, error) {
 	toSerialize["src_cidr"] = o.SrcCidr
 	toSerialize["src_port"] = o.SrcPort
 	toSerialize["src_port_end"] = o.SrcPortEnd
+	if !IsNil(o.SrcSetId) {
+		toSerialize["src_set_id"] = o.SrcSetId
+	}
 	toSerialize["table_name"] = o.TableName
 	return toSerialize, nil
 }

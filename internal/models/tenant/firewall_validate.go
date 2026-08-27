@@ -75,8 +75,26 @@ func (r *FirewallRule) Validate() error {
 		return fmt.Errorf("%w: %d", ErrFirewallPosition, r.Position)
 	}
 
-	for label, cidr := range map[string]string{"source": r.SrcCidr, "destination": r.DstCidr} {
-		if err := validateCIDR(label, cidr, r.Family); err != nil {
+	// A side that names a SET carries no literal, and must not be asked for one.
+	//
+	// The empty string is what a set reference leaves behind: the any-address
+	// default is deliberately not applied there, because a literal alongside a
+	// set is refused further down — nft renders one and ignores the other, so the
+	// stored rule and the enforced rule would differ with nothing reporting it.
+	// Validating it here anyway rejected every set-based rule with `malformed
+	// address range: source ""`, which is a true statement about a field the
+	// operator was right to leave empty.
+	for label, side := range map[string]struct {
+		cidr  string
+		setID *uuid.UUID
+	}{
+		"source":      {r.SrcCidr, r.SrcSetID},
+		"destination": {r.DstCidr, r.DstSetID},
+	} {
+		if side.setID != nil && strings.TrimSpace(side.cidr) == "" {
+			continue
+		}
+		if err := validateCIDR(label, side.cidr, r.Family); err != nil {
 			return err
 		}
 	}

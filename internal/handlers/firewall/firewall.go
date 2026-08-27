@@ -14,11 +14,13 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
+	"github.com/google/uuid"
 )
 
 type RulesetView struct {
@@ -40,6 +42,10 @@ type RuleView struct {
 
 	SrcCidr string `json:"src_cidr"`
 	DstCidr string `json:"dst_cidr"`
+
+	// Set references. A rule names EITHER a literal or a set, never both.
+	SrcSetID string `json:"src_set_id,omitempty" format:"uuid"`
+	DstSetID string `json:"dst_set_id,omitempty" format:"uuid"`
 
 	Protocol   string `json:"protocol" example:"tcp"`
 	SrcPort    int    `json:"src_port"`
@@ -81,6 +87,7 @@ func toRuleView(r tenant.FirewallRule) RuleView {
 		ID: r.ID.String(), RulesetID: r.RulesetID.String(), Name: r.Name, Enabled: r.Enabled,
 		Family: r.Family, Table: r.TableName, Chain: r.ChainName, Position: r.Position,
 		SrcCidr: r.SrcCidr, DstCidr: r.DstCidr,
+		SrcSetID: uuidString(r.SrcSetID), DstSetID: uuidString(r.DstSetID),
 		Protocol: string(r.Protocol),
 		SrcPort:  r.SrcPort, SrcPortEnd: r.SrcPortEnd,
 		DstPort: r.DstPort, DstPortEnd: r.DstPortEnd,
@@ -119,6 +126,9 @@ type RuleBody struct {
 	SrcCidr string `json:"src_cidr,omitempty" maxLength:"64" doc:"CIDR. Must match the rule's family — nft rejects the WHOLE ruleset over one mismatch, taking the host's entire firewall with it."`
 	DstCidr string `json:"dst_cidr,omitempty" maxLength:"64"`
 
+	SrcSetID string `json:"src_set_id,omitempty" format:"uuid" doc:"Match a named set instead of a literal CIDR. Four addresses across two ports is two rules and one set; as literals it is eight, and every address added makes it two more. Giving both a set and a CIDR is refused: nft renders one and ignores the other, so the stored rule and the enforced rule would differ with nothing reporting it."`
+	DstSetID string `json:"dst_set_id,omitempty" format:"uuid"`
+
 	Protocol   string `json:"protocol,omitempty" enum:"tcp,udp,icmp,any" default:"tcp"`
 	SrcPort    int    `json:"src_port,omitempty" minimum:"0" maximum:"65535"`
 	SrcPortEnd int    `json:"src_port_end,omitempty" minimum:"0" maximum:"65535" doc:"Zero means just the start port."`
@@ -137,6 +147,7 @@ func (b RuleBody) toInput() service.RuleInput {
 		Name: b.Name, Enabled: b.Enabled,
 		Family: b.Family, Table: b.Table, Chain: b.Chain, Position: b.Position,
 		SrcCidr: b.SrcCidr, DstCidr: b.DstCidr,
+		SrcSetID: parseOptionalUUID(b.SrcSetID), DstSetID: parseOptionalUUID(b.DstSetID),
 		Protocol: b.Protocol,
 		SrcPort:  b.SrcPort, SrcPortEnd: b.SrcPortEnd,
 		DstPort: b.DstPort, DstPortEnd: b.DstPortEnd,
@@ -166,6 +177,15 @@ func mapErr(ctx context.Context, err error) error {
 		return huma.Error404NotFound("no such fleet")
 	case errors.Is(err, repo.ErrFirewallSwarmNotFound):
 		return huma.Error404NotFound("no such swarm in that fleet")
+	case errors.Is(err, repo.ErrFirewallSetNotFound):
+		return huma.Error404NotFound("no such set")
+	case errors.Is(err, repo.ErrFirewallSetElemNotFound):
+		return huma.Error404NotFound("no such element in that set")
+
+	// 409, not 422: the request is well formed and the caller is not wrong — the
+	// set simply is not theirs to edit, and the next convergence would revert it.
+	case errors.Is(err, repo.ErrFirewallSetManaged):
+		return huma.Error409Conflict(err.Error())
 
 	// 422, not 404: the swarm may well exist. What the caller sent is a scope the
 	// schema cannot represent — a swarm without its fleet — which is a malformed
@@ -191,4 +211,29 @@ func mapErr(ctx context.Context, err error) error {
 		slog.ErrorContext(ctx, "firewall operation failed", "error", err)
 		return huma.Error500InternalServerError("firewall operation failed")
 	}
+}
+
+// parseOptionalUUID turns an empty string into nil rather than an error.
+//
+// The field is optional and huma has already enforced format:"uuid" on anything
+// non-empty, so a parse failure here cannot come from a caller — treating it as
+// "not set" keeps a malformed value from silently becoming a reference to
+// something else.
+func parseOptionalUUID(s string) *uuid.UUID {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+func uuidString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }

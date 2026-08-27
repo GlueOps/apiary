@@ -20,6 +20,10 @@ func firewallDB(t *testing.T) *gorm.DB {
 		&tenant.Hive{}, &tenant.Swarm{}, &tenant.Bee{}, &tenant.Hypervisor{},
 		&tenant.FirewallRuleset{},
 		&tenant.FirewallRule{}, &tenant.FirewallBinding{},
+		// Sets are migrated here too, and the RESTRICT constraint from a rule to
+		// its set only exists if both tables do — a fixture missing the set table
+		// would let TestASetInUseCannotBeDeleted pass for the wrong reason.
+		&tenant.FirewallSet{}, &tenant.FirewallSetElement{},
 	)
 }
 
@@ -906,5 +910,151 @@ func TestMovingOntoAnOccupiedScopeIsRefusedAsAConflict(t *testing.T) {
 	err := r.UpdateBindingWithScope(ctx, moving.ID, 100, true, &BindingScopeChange{})
 	if !errors.Is(err, ErrFirewallBindingExists) {
 		t.Fatalf("moving onto an occupied scope returned %v, want ErrFirewallBindingExists", err)
+	}
+}
+
+// Sets had no CRUD at all until this change: the model, the validation and the
+// renderer all supported them, and the only way to create one was to write SQL.
+// Onboarding REFUSES without a management set, so automated onboarding could not
+// be completed by an operator through the API.
+func TestSetsAndTheirElementsRoundTrip(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	set := &tenant.FirewallSet{
+		Name: "allowed-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4,
+		Purpose: tenant.SetPurposeManagement,
+	}
+	if err := r.CreateSet(ctx, set); err != nil {
+		t.Fatalf("create set: %v", err)
+	}
+
+	for _, v := range []string{"192.0.2.10", "10.10.10.0/24"} {
+		if err := r.AddSetElement(ctx, &tenant.FirewallSetElement{SetID: set.ID, Value: v}); err != nil {
+			t.Fatalf("add element %s: %v", v, err)
+		}
+	}
+
+	// Elements come back with the set. A set without its contents cannot answer
+	// any question worth asking, and an empty one would be indistinguishable
+	// from an unloaded one.
+	got, err := r.GetSet(ctx, set.ID)
+	if err != nil {
+		t.Fatalf("get set: %v", err)
+	}
+	if len(got.Elements) != 2 {
+		t.Fatalf("want 2 elements loaded with the set, got %d", len(got.Elements))
+	}
+
+	// Scoped by set as well as by element id, so an id from one set cannot
+	// remove a row from another.
+	other := &tenant.FirewallSet{Name: "other-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4}
+	if err := r.CreateSet(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DeleteSetElement(ctx, other.ID, got.Elements[0].ID); !errors.Is(err, ErrFirewallSetElemNotFound) {
+		t.Fatalf("an element id from another set must not delete: %v", err)
+	}
+	if err := r.DeleteSetElement(ctx, set.ID, got.Elements[0].ID); err != nil {
+		t.Fatalf("delete element: %v", err)
+	}
+
+	if err := r.DeleteSet(ctx, set.ID); err != nil {
+		t.Fatalf("delete set: %v", err)
+	}
+	if _, err := r.GetSet(ctx, set.ID); !errors.Is(err, ErrFirewallSetNotFound) {
+		t.Fatalf("want not-found after delete, got %v", err)
+	}
+}
+
+// A set a rule still points at must not be deletable.
+//
+// nft rejects a ruleset naming a set it has never heard of, and it rejects the
+// WHOLE file — so a dangling reference leaves the host with no firewall at all
+// rather than one missing a line. The database enforces it via
+// constraint:OnDelete:RESTRICT rather than a check that could be forgotten.
+func TestASetInUseCannotBeDeleted(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	set := &tenant.FirewallSet{Name: "inuse-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4}
+	if err := r.CreateSet(ctx, set); err != nil {
+		t.Fatal(err)
+	}
+	rs := &tenant.FirewallRuleset{Name: "rs-" + uuid.NewString()[:8]}
+	if err := r.CreateRuleset(ctx, rs); err != nil {
+		t.Fatal(err)
+	}
+	rule := &tenant.FirewallRule{
+		RulesetID: rs.ID, Name: "ssh from the whitelist", Enabled: true,
+		Family: "inet", TableName: "filter", ChainName: "input",
+		Protocol: tenant.TCP, Action: tenant.Accept, DstPort: 22,
+		SrcSetID: &set.ID,
+	}
+	if err := r.CreateRule(ctx, rule); err != nil {
+		t.Fatalf("create rule referencing the set: %v", err)
+	}
+
+	if err := r.DeleteSet(ctx, set.ID); err == nil {
+		t.Fatal("deleting a set a rule still references must be refused")
+	}
+}
+
+// A rule naming a set must store NO literal on that side.
+//
+// src_cidr carries `default:'0.0.0.0/0'` and GORM omits zero values for such
+// fields on Create, so the empty string the service layer deliberately preserves
+// was replaced by the column default. The row then asserted a source constraint
+// the renderer does not enforce — it prefers the set and ignores the literal —
+// which is harmless to the host and wrong everywhere it is read, including the
+// API response a client edits from.
+//
+// Third instance of this trap in this codebase after schedulable and
+// provisioning_state, and the first where the field is an address.
+func TestARuleNamingASetStoresNoLiteral(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	set := &tenant.FirewallSet{Name: "wl-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4}
+	if err := r.CreateSet(ctx, set); err != nil {
+		t.Fatal(err)
+	}
+	rs := &tenant.FirewallRuleset{Name: "rs-" + uuid.NewString()[:8]}
+	if err := r.CreateRuleset(ctx, rs); err != nil {
+		t.Fatal(err)
+	}
+
+	rule := &tenant.FirewallRule{
+		RulesetID: rs.ID, Name: "ssh from the whitelist", Enabled: true,
+		Family: "inet", TableName: "filter", ChainName: "input",
+		Protocol: tenant.TCP, Action: tenant.Accept, DstPort: 22,
+		SrcSetID: &set.ID,
+		SrcCidr:  "", // a set was named, so there is no literal
+		DstCidr:  "0.0.0.0/0",
+	}
+	if err := r.CreateRule(ctx, rule); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// The struct the caller renders must agree with the row.
+	if rule.SrcCidr != "" {
+		t.Fatalf("the returned struct must not gain a literal; got %q", rule.SrcCidr)
+	}
+
+	stored, err := r.GetRule(ctx, rule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.SrcCidr != "" {
+		t.Fatalf("the stored row must carry no source literal beside its set; got %q", stored.SrcCidr)
+	}
+	if stored.DstCidr != "0.0.0.0/0" {
+		t.Fatalf("a side WITHOUT a set keeps the literal it was given; got %q", stored.DstCidr)
+	}
+	if stored.SrcSetID == nil || *stored.SrcSetID != set.ID {
+		t.Fatal("the set reference must survive the correction")
 	}
 }

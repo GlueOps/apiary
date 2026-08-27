@@ -11,6 +11,7 @@ Name | Type | Description | Notes
 **DstCidr** | Pointer to **string** |  | [optional] 
 **DstPort** | Pointer to **int64** |  | [optional] 
 **DstPortEnd** | Pointer to **int64** |  | [optional] 
+**DstSetId** | Pointer to **string** |  | [optional] 
 **Enabled** | **bool** |  | [default to true]
 **Family** | Pointer to **string** | inet covers both address families and is almost always what is wanted. | [optional] [default to "inet"]
 **InIface** | Pointer to **string** | Empty matches any interface. | [optional] 
@@ -21,6 +22,7 @@ Name | Type | Description | Notes
 **SrcCidr** | Pointer to **string** | CIDR. Must match the rule&#39;s family — nft rejects the WHOLE ruleset over one mismatch, taking the host&#39;s entire firewall with it. | [optional] 
 **SrcPort** | Pointer to **int64** |  | [optional] 
 **SrcPortEnd** | Pointer to **int64** | Zero means just the start port. | [optional] 
+**SrcSetId** | Pointer to **string** | Match a named set instead of a literal CIDR. Four addresses across two ports is two rules and one set; as literals it is eight, and every address added makes it two more. Giving both a set and a CIDR is refused: nft renders one and ignores the other, so the stored rule and the enforced rule would differ with nothing reporting it. | [optional] 
 **TableName** | Pointer to **string** |  | [optional] [default to "filter"]
 
 ## Methods
@@ -216,6 +218,31 @@ SetDstPortEnd sets DstPortEnd field to given value.
 `func (o *RuleBody) HasDstPortEnd() bool`
 
 HasDstPortEnd returns a boolean if a field has been set.
+
+### GetDstSetId
+
+`func (o *RuleBody) GetDstSetId() string`
+
+GetDstSetId returns the DstSetId field if non-nil, zero value otherwise.
+
+### GetDstSetIdOk
+
+`func (o *RuleBody) GetDstSetIdOk() (*string, bool)`
+
+GetDstSetIdOk returns a tuple with the DstSetId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetDstSetId
+
+`func (o *RuleBody) SetDstSetId(v string)`
+
+SetDstSetId sets DstSetId field to given value.
+
+### HasDstSetId
+
+`func (o *RuleBody) HasDstSetId() bool`
+
+HasDstSetId returns a boolean if a field has been set.
 
 ### GetEnabled
 
@@ -456,6 +483,31 @@ SetSrcPortEnd sets SrcPortEnd field to given value.
 `func (o *RuleBody) HasSrcPortEnd() bool`
 
 HasSrcPortEnd returns a boolean if a field has been set.
+
+### GetSrcSetId
+
+`func (o *RuleBody) GetSrcSetId() string`
+
+GetSrcSetId returns the SrcSetId field if non-nil, zero value otherwise.
+
+### GetSrcSetIdOk
+
+`func (o *RuleBody) GetSrcSetIdOk() (*string, bool)`
+
+GetSrcSetIdOk returns a tuple with the SrcSetId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSrcSetId
+
+`func (o *RuleBody) SetSrcSetId(v string)`
+
+SetSrcSetId sets SrcSetId field to given value.
+
+### HasSrcSetId
+
+`func (o *RuleBody) HasSrcSetId() bool`
+
+HasSrcSetId returns a boolean if a field has been set.
 
 ### GetTableName
 

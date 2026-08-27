@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { adminImpersonateEnd, adminImpersonateStart, apiKeysCreate, apiKeysList, apiKeysRevoke, authForgotPassword, authLogin, authLogout, authMfaVerify, authPasskeyLoginBegin, authPasskeyLoginFinish, authPasskeyRegisterBegin, authPasskeyRegisterFinish, authPasskeysDelete, authPasskeysList, authRefresh, authRegister, authResendVerification, authResetPassword, authSocialCallback, authSocialStart, authTotpConfirm, authTotpDisable, authTotpSetup, authVerifyEmail, estatesCreate, estatesDelete, estatesGet, estatesList, estatesRotateCredential, firewallBindingsCreate, firewallBindingsDelete, firewallBindingsList, firewallBindingsUpdate, firewallPreview, firewallPublish, firewallRevert, firewallRulesCreate, firewallRulesDelete, firewallRulesetsCreate, firewallRulesetsDelete, firewallRulesetsList, firewallRulesetsUpdate, firewallRulesList, firewallRulesUpdate, firewallSnapshotBody, firewallSnapshotsList, fleetAgentUpgrade, fleetBeeAgentBinary, fleetBeeAgentDist, fleetBeeAppendLogs, fleetBeeEnrol, fleetBeeFirewall, fleetBeeHeartbeat, fleetBeeReportTask, fleetBeesDelete, fleetBeesList, fleetEnrolmentTokensMint, fleetHivesCreate, fleetHivesDelete, fleetHivesList, fleetHivesSync, fleetHivesUpdate, fleetHostsArrive, fleetHostsFleetless, fleetHypervisorsCordon, fleetHypervisorsDeclare, fleetHypervisorsDepart, fleetHypervisorsGet, fleetHypervisorsList, fleetHypervisorsReprovision, fleetTasksCreate, fleetTasksLogs, invitationsAccept, invitationsPreview, meChangePassword, meDeleteAccount, meGet, meOrgsList, meSoleOwnerships, meUpdate, type Options, orgDelete, orgInvitationsCreate, orgInvitationsList, orgInvitationsRevoke, orgMembersList, orgMembersRemove, orgMembersUpdateRole, orgPoliciesClear, orgPoliciesImpact, orgPoliciesList, orgPoliciesSet, platformAccessRulesCreate, platformAccessRulesDelete, platformAccessRulesList, platformAccessRulesUpdate, platformPoliciesClear, platformPoliciesImpact, platformPoliciesList, platformPoliciesSet, sshKeysList, sshKeysMint, sshKeysRevoke } from '../sdk.gen';
-import type { AdminImpersonateEndData, AdminImpersonateEndError, AdminImpersonateEndResponse, AdminImpersonateStartData, AdminImpersonateStartError, AdminImpersonateStartResponse, ApiKeysCreateData, ApiKeysCreateError, ApiKeysCreateResponse, ApiKeysListData, ApiKeysListError, ApiKeysListResponse, ApiKeysRevokeData, ApiKeysRevokeError, ApiKeysRevokeResponse, AuthForgotPasswordData, AuthForgotPasswordError, AuthForgotPasswordResponse, AuthLoginData, AuthLoginError, AuthLoginResponse, AuthLogoutData, AuthLogoutError, AuthLogoutResponse, AuthMfaVerifyData, AuthMfaVerifyError, AuthMfaVerifyResponse, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginError, AuthPasskeyLoginBeginResponse, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishError, AuthPasskeyLoginFinishResponse, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginError, AuthPasskeyRegisterBeginResponse, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishError, AuthPasskeyRegisterFinishResponse, AuthPasskeysDeleteData, AuthPasskeysDeleteError, AuthPasskeysDeleteResponse, AuthPasskeysListData, AuthPasskeysListError, AuthPasskeysListResponse, AuthRefreshData, AuthRefreshError, AuthRefreshResponse, AuthRegisterData, AuthRegisterError, AuthRegisterResponse, AuthResendVerificationData, AuthResendVerificationError, AuthResendVerificationResponse, AuthResetPasswordData, AuthResetPasswordError, AuthResetPasswordResponse, AuthSocialCallbackData, AuthSocialCallbackError, AuthSocialCallbackResponse, AuthSocialStartData, AuthSocialStartError, AuthSocialStartResponse, AuthTotpConfirmData, AuthTotpConfirmError, AuthTotpConfirmResponse, AuthTotpDisableData, AuthTotpDisableError, AuthTotpDisableResponse, AuthTotpSetupData, AuthTotpSetupError, AuthTotpSetupResponse, AuthVerifyEmailData, AuthVerifyEmailError, AuthVerifyEmailResponse, EstatesCreateData, EstatesCreateError, EstatesCreateResponse, EstatesDeleteData, EstatesDeleteError, EstatesDeleteResponse, EstatesGetData, EstatesGetError, EstatesGetResponse, EstatesListData, EstatesListError, EstatesListResponse, EstatesRotateCredentialData, EstatesRotateCredentialError, EstatesRotateCredentialResponse, FirewallBindingsCreateData, FirewallBindingsCreateError, FirewallBindingsCreateResponse, FirewallBindingsDeleteData, FirewallBindingsDeleteError, FirewallBindingsDeleteResponse, FirewallBindingsListData, FirewallBindingsListError, FirewallBindingsListResponse, FirewallBindingsUpdateData, FirewallBindingsUpdateError, FirewallBindingsUpdateResponse, FirewallPreviewData, FirewallPreviewError, FirewallPreviewResponse, FirewallPublishData, FirewallPublishError, FirewallPublishResponse, FirewallRevertData, FirewallRevertError, FirewallRevertResponse, FirewallRulesCreateData, FirewallRulesCreateError, FirewallRulesCreateResponse, FirewallRulesDeleteData, FirewallRulesDeleteError, FirewallRulesDeleteResponse, FirewallRulesetsCreateData, FirewallRulesetsCreateError, FirewallRulesetsCreateResponse, FirewallRulesetsDeleteData, FirewallRulesetsDeleteError, FirewallRulesetsDeleteResponse, FirewallRulesetsListData, FirewallRulesetsListError, FirewallRulesetsListResponse, FirewallRulesetsUpdateData, FirewallRulesetsUpdateError, FirewallRulesetsUpdateResponse, FirewallRulesListData, FirewallRulesListError, FirewallRulesListResponse, FirewallRulesUpdateData, FirewallRulesUpdateError, FirewallRulesUpdateResponse, FirewallSnapshotBodyData, FirewallSnapshotBodyError, FirewallSnapshotBodyResponse, FirewallSnapshotsListData, FirewallSnapshotsListError, FirewallSnapshotsListResponse, FleetAgentUpgradeData, FleetAgentUpgradeError, FleetAgentUpgradeResponse, FleetBeeAgentBinaryData, FleetBeeAgentBinaryError, FleetBeeAgentBinaryResponse, FleetBeeAgentDistData, FleetBeeAgentDistError, FleetBeeAgentDistResponse, FleetBeeAppendLogsData, FleetBeeAppendLogsError, FleetBeeAppendLogsResponse, FleetBeeEnrolData, FleetBeeEnrolError, FleetBeeEnrolResponse, FleetBeeFirewallData, FleetBeeFirewallError, FleetBeeFirewallResponse, FleetBeeHeartbeatData, FleetBeeHeartbeatError, FleetBeeHeartbeatResponse, FleetBeeReportTaskData, FleetBeeReportTaskError, FleetBeeReportTaskResponse, FleetBeesDeleteData, FleetBeesDeleteError, FleetBeesDeleteResponse, FleetBeesListData, FleetBeesListError, FleetBeesListResponse, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintError, FleetEnrolmentTokensMintResponse, FleetHivesCreateData, FleetHivesCreateError, FleetHivesCreateResponse, FleetHivesDeleteData, FleetHivesDeleteError, FleetHivesDeleteResponse, FleetHivesListData, FleetHivesListError, FleetHivesListResponse, FleetHivesSyncData, FleetHivesSyncError, FleetHivesSyncResponse, FleetHivesUpdateData, FleetHivesUpdateError, FleetHivesUpdateResponse, FleetHostsArriveData, FleetHostsArriveError, FleetHostsArriveResponse, FleetHostsFleetlessData, FleetHostsFleetlessError, FleetHostsFleetlessResponse, FleetHypervisorsCordonData, FleetHypervisorsCordonError, FleetHypervisorsCordonResponse, FleetHypervisorsDeclareData, FleetHypervisorsDeclareError, FleetHypervisorsDeclareResponse, FleetHypervisorsDepartData, FleetHypervisorsDepartError, FleetHypervisorsDepartResponse, FleetHypervisorsGetData, FleetHypervisorsGetError, FleetHypervisorsGetResponse, FleetHypervisorsListData, FleetHypervisorsListError, FleetHypervisorsListResponse, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionError, FleetHypervisorsReprovisionResponse, FleetTasksCreateData, FleetTasksCreateError, FleetTasksCreateResponse, FleetTasksLogsData, FleetTasksLogsError, FleetTasksLogsResponse, InvitationsAcceptData, InvitationsAcceptError, InvitationsAcceptResponse, InvitationsPreviewData, InvitationsPreviewError, InvitationsPreviewResponse, MeChangePasswordData, MeChangePasswordError, MeChangePasswordResponse, MeDeleteAccountData, MeDeleteAccountError, MeDeleteAccountResponse, MeGetData, MeGetError, MeGetResponse, MeOrgsListData, MeOrgsListError, MeOrgsListResponse, MeSoleOwnershipsData, MeSoleOwnershipsError, MeSoleOwnershipsResponse, MeUpdateData, MeUpdateError, MeUpdateResponse, OrgDeleteData, OrgDeleteError, OrgDeleteResponse, OrgInvitationsCreateData, OrgInvitationsCreateError, OrgInvitationsCreateResponse, OrgInvitationsListData, OrgInvitationsListError, OrgInvitationsListResponse, OrgInvitationsRevokeData, OrgInvitationsRevokeError, OrgInvitationsRevokeResponse, OrgMembersListData, OrgMembersListError, OrgMembersListResponse, OrgMembersRemoveData, OrgMembersRemoveError, OrgMembersRemoveResponse, OrgMembersUpdateRoleData, OrgMembersUpdateRoleError, OrgMembersUpdateRoleResponse, OrgPoliciesClearData, OrgPoliciesClearError, OrgPoliciesClearResponse, OrgPoliciesImpactData, OrgPoliciesImpactError, OrgPoliciesImpactResponse, OrgPoliciesListData, OrgPoliciesListError, OrgPoliciesListResponse, OrgPoliciesSetData, OrgPoliciesSetError, OrgPoliciesSetResponse, PlatformAccessRulesCreateData, PlatformAccessRulesCreateError, PlatformAccessRulesCreateResponse, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteError, PlatformAccessRulesDeleteResponse, PlatformAccessRulesListData, PlatformAccessRulesListError, PlatformAccessRulesListResponse, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateError, PlatformAccessRulesUpdateResponse, PlatformPoliciesClearData, PlatformPoliciesClearError, PlatformPoliciesClearResponse, PlatformPoliciesImpactData, PlatformPoliciesImpactError, PlatformPoliciesImpactResponse, PlatformPoliciesListData, PlatformPoliciesListError, PlatformPoliciesListResponse, PlatformPoliciesSetData, PlatformPoliciesSetError, PlatformPoliciesSetResponse, SshKeysListData, SshKeysListError, SshKeysListResponse, SshKeysMintData, SshKeysMintError, SshKeysMintResponse, SshKeysRevokeData, SshKeysRevokeError, SshKeysRevokeResponse } from '../types.gen';
+import { adminImpersonateEnd, adminImpersonateStart, apiKeysCreate, apiKeysList, apiKeysRevoke, authForgotPassword, authLogin, authLogout, authMfaVerify, authPasskeyLoginBegin, authPasskeyLoginFinish, authPasskeyRegisterBegin, authPasskeyRegisterFinish, authPasskeysDelete, authPasskeysList, authRefresh, authRegister, authResendVerification, authResetPassword, authSocialCallback, authSocialStart, authTotpConfirm, authTotpDisable, authTotpSetup, authVerifyEmail, estatesCreate, estatesDelete, estatesGet, estatesList, estatesRotateCredential, firewallBindingsCreate, firewallBindingsDelete, firewallBindingsList, firewallBindingsUpdate, firewallPreview, firewallPublish, firewallRevert, firewallRulesCreate, firewallRulesDelete, firewallRulesetsCreate, firewallRulesetsDelete, firewallRulesetsList, firewallRulesetsUpdate, firewallRulesList, firewallRulesUpdate, firewallSetElementsAdd, firewallSetElementsDelete, firewallSetElementsList, firewallSetsCreate, firewallSetsDelete, firewallSetsList, firewallSetsUpdate, firewallSnapshotBody, firewallSnapshotsList, fleetAgentUpgrade, fleetBeeAgentBinary, fleetBeeAgentDist, fleetBeeAppendLogs, fleetBeeEnrol, fleetBeeFirewall, fleetBeeHeartbeat, fleetBeeReportTask, fleetBeesDelete, fleetBeesList, fleetEnrolmentTokensMint, fleetHivesCreate, fleetHivesDelete, fleetHivesList, fleetHivesSync, fleetHivesUpdate, fleetHostsArrive, fleetHostsFleetless, fleetHypervisorsCordon, fleetHypervisorsDeclare, fleetHypervisorsDepart, fleetHypervisorsGet, fleetHypervisorsList, fleetHypervisorsReprovision, fleetTasksCreate, fleetTasksLogs, invitationsAccept, invitationsPreview, meChangePassword, meDeleteAccount, meGet, meOrgsList, meSoleOwnerships, meUpdate, type Options, orgDelete, orgInvitationsCreate, orgInvitationsList, orgInvitationsRevoke, orgMembersList, orgMembersRemove, orgMembersUpdateRole, orgPoliciesClear, orgPoliciesImpact, orgPoliciesList, orgPoliciesSet, platformAccessRulesCreate, platformAccessRulesDelete, platformAccessRulesList, platformAccessRulesUpdate, platformPoliciesClear, platformPoliciesImpact, platformPoliciesList, platformPoliciesSet, sshKeysList, sshKeysMint, sshKeysRevoke } from '../sdk.gen';
+import type { AdminImpersonateEndData, AdminImpersonateEndError, AdminImpersonateEndResponse, AdminImpersonateStartData, AdminImpersonateStartError, AdminImpersonateStartResponse, ApiKeysCreateData, ApiKeysCreateError, ApiKeysCreateResponse, ApiKeysListData, ApiKeysListError, ApiKeysListResponse, ApiKeysRevokeData, ApiKeysRevokeError, ApiKeysRevokeResponse, AuthForgotPasswordData, AuthForgotPasswordError, AuthForgotPasswordResponse, AuthLoginData, AuthLoginError, AuthLoginResponse, AuthLogoutData, AuthLogoutError, AuthLogoutResponse, AuthMfaVerifyData, AuthMfaVerifyError, AuthMfaVerifyResponse, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginError, AuthPasskeyLoginBeginResponse, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishError, AuthPasskeyLoginFinishResponse, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginError, AuthPasskeyRegisterBeginResponse, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishError, AuthPasskeyRegisterFinishResponse, AuthPasskeysDeleteData, AuthPasskeysDeleteError, AuthPasskeysDeleteResponse, AuthPasskeysListData, AuthPasskeysListError, AuthPasskeysListResponse, AuthRefreshData, AuthRefreshError, AuthRefreshResponse, AuthRegisterData, AuthRegisterError, AuthRegisterResponse, AuthResendVerificationData, AuthResendVerificationError, AuthResendVerificationResponse, AuthResetPasswordData, AuthResetPasswordError, AuthResetPasswordResponse, AuthSocialCallbackData, AuthSocialCallbackError, AuthSocialCallbackResponse, AuthSocialStartData, AuthSocialStartError, AuthSocialStartResponse, AuthTotpConfirmData, AuthTotpConfirmError, AuthTotpConfirmResponse, AuthTotpDisableData, AuthTotpDisableError, AuthTotpDisableResponse, AuthTotpSetupData, AuthTotpSetupError, AuthTotpSetupResponse, AuthVerifyEmailData, AuthVerifyEmailError, AuthVerifyEmailResponse, EstatesCreateData, EstatesCreateError, EstatesCreateResponse, EstatesDeleteData, EstatesDeleteError, EstatesDeleteResponse, EstatesGetData, EstatesGetError, EstatesGetResponse, EstatesListData, EstatesListError, EstatesListResponse, EstatesRotateCredentialData, EstatesRotateCredentialError, EstatesRotateCredentialResponse, FirewallBindingsCreateData, FirewallBindingsCreateError, FirewallBindingsCreateResponse, FirewallBindingsDeleteData, FirewallBindingsDeleteError, FirewallBindingsDeleteResponse, FirewallBindingsListData, FirewallBindingsListError, FirewallBindingsListResponse, FirewallBindingsUpdateData, FirewallBindingsUpdateError, FirewallBindingsUpdateResponse, FirewallPreviewData, FirewallPreviewError, FirewallPreviewResponse, FirewallPublishData, FirewallPublishError, FirewallPublishResponse, FirewallRevertData, FirewallRevertError, FirewallRevertResponse, FirewallRulesCreateData, FirewallRulesCreateError, FirewallRulesCreateResponse, FirewallRulesDeleteData, FirewallRulesDeleteError, FirewallRulesDeleteResponse, FirewallRulesetsCreateData, FirewallRulesetsCreateError, FirewallRulesetsCreateResponse, FirewallRulesetsDeleteData, FirewallRulesetsDeleteError, FirewallRulesetsDeleteResponse, FirewallRulesetsListData, FirewallRulesetsListError, FirewallRulesetsListResponse, FirewallRulesetsUpdateData, FirewallRulesetsUpdateError, FirewallRulesetsUpdateResponse, FirewallRulesListData, FirewallRulesListError, FirewallRulesListResponse, FirewallRulesUpdateData, FirewallRulesUpdateError, FirewallRulesUpdateResponse, FirewallSetElementsAddData, FirewallSetElementsAddError, FirewallSetElementsAddResponse, FirewallSetElementsDeleteData, FirewallSetElementsDeleteError, FirewallSetElementsDeleteResponse, FirewallSetElementsListData, FirewallSetElementsListError, FirewallSetElementsListResponse, FirewallSetsCreateData, FirewallSetsCreateError, FirewallSetsCreateResponse, FirewallSetsDeleteData, FirewallSetsDeleteError, FirewallSetsDeleteResponse, FirewallSetsListData, FirewallSetsListError, FirewallSetsListResponse, FirewallSetsUpdateData, FirewallSetsUpdateError, FirewallSetsUpdateResponse, FirewallSnapshotBodyData, FirewallSnapshotBodyError, FirewallSnapshotBodyResponse, FirewallSnapshotsListData, FirewallSnapshotsListError, FirewallSnapshotsListResponse, FleetAgentUpgradeData, FleetAgentUpgradeError, FleetAgentUpgradeResponse, FleetBeeAgentBinaryData, FleetBeeAgentBinaryError, FleetBeeAgentBinaryResponse, FleetBeeAgentDistData, FleetBeeAgentDistError, FleetBeeAgentDistResponse, FleetBeeAppendLogsData, FleetBeeAppendLogsError, FleetBeeAppendLogsResponse, FleetBeeEnrolData, FleetBeeEnrolError, FleetBeeEnrolResponse, FleetBeeFirewallData, FleetBeeFirewallError, FleetBeeFirewallResponse, FleetBeeHeartbeatData, FleetBeeHeartbeatError, FleetBeeHeartbeatResponse, FleetBeeReportTaskData, FleetBeeReportTaskError, FleetBeeReportTaskResponse, FleetBeesDeleteData, FleetBeesDeleteError, FleetBeesDeleteResponse, FleetBeesListData, FleetBeesListError, FleetBeesListResponse, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintError, FleetEnrolmentTokensMintResponse, FleetHivesCreateData, FleetHivesCreateError, FleetHivesCreateResponse, FleetHivesDeleteData, FleetHivesDeleteError, FleetHivesDeleteResponse, FleetHivesListData, FleetHivesListError, FleetHivesListResponse, FleetHivesSyncData, FleetHivesSyncError, FleetHivesSyncResponse, FleetHivesUpdateData, FleetHivesUpdateError, FleetHivesUpdateResponse, FleetHostsArriveData, FleetHostsArriveError, FleetHostsArriveResponse, FleetHostsFleetlessData, FleetHostsFleetlessError, FleetHostsFleetlessResponse, FleetHypervisorsCordonData, FleetHypervisorsCordonError, FleetHypervisorsCordonResponse, FleetHypervisorsDeclareData, FleetHypervisorsDeclareError, FleetHypervisorsDeclareResponse, FleetHypervisorsDepartData, FleetHypervisorsDepartError, FleetHypervisorsDepartResponse, FleetHypervisorsGetData, FleetHypervisorsGetError, FleetHypervisorsGetResponse, FleetHypervisorsListData, FleetHypervisorsListError, FleetHypervisorsListResponse, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionError, FleetHypervisorsReprovisionResponse, FleetTasksCreateData, FleetTasksCreateError, FleetTasksCreateResponse, FleetTasksLogsData, FleetTasksLogsError, FleetTasksLogsResponse, InvitationsAcceptData, InvitationsAcceptError, InvitationsAcceptResponse, InvitationsPreviewData, InvitationsPreviewError, InvitationsPreviewResponse, MeChangePasswordData, MeChangePasswordError, MeChangePasswordResponse, MeDeleteAccountData, MeDeleteAccountError, MeDeleteAccountResponse, MeGetData, MeGetError, MeGetResponse, MeOrgsListData, MeOrgsListError, MeOrgsListResponse, MeSoleOwnershipsData, MeSoleOwnershipsError, MeSoleOwnershipsResponse, MeUpdateData, MeUpdateError, MeUpdateResponse, OrgDeleteData, OrgDeleteError, OrgDeleteResponse, OrgInvitationsCreateData, OrgInvitationsCreateError, OrgInvitationsCreateResponse, OrgInvitationsListData, OrgInvitationsListError, OrgInvitationsListResponse, OrgInvitationsRevokeData, OrgInvitationsRevokeError, OrgInvitationsRevokeResponse, OrgMembersListData, OrgMembersListError, OrgMembersListResponse, OrgMembersRemoveData, OrgMembersRemoveError, OrgMembersRemoveResponse, OrgMembersUpdateRoleData, OrgMembersUpdateRoleError, OrgMembersUpdateRoleResponse, OrgPoliciesClearData, OrgPoliciesClearError, OrgPoliciesClearResponse, OrgPoliciesImpactData, OrgPoliciesImpactError, OrgPoliciesImpactResponse, OrgPoliciesListData, OrgPoliciesListError, OrgPoliciesListResponse, OrgPoliciesSetData, OrgPoliciesSetError, OrgPoliciesSetResponse, PlatformAccessRulesCreateData, PlatformAccessRulesCreateError, PlatformAccessRulesCreateResponse, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteError, PlatformAccessRulesDeleteResponse, PlatformAccessRulesListData, PlatformAccessRulesListError, PlatformAccessRulesListResponse, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateError, PlatformAccessRulesUpdateResponse, PlatformPoliciesClearData, PlatformPoliciesClearError, PlatformPoliciesClearResponse, PlatformPoliciesImpactData, PlatformPoliciesImpactError, PlatformPoliciesImpactResponse, PlatformPoliciesListData, PlatformPoliciesListError, PlatformPoliciesListResponse, PlatformPoliciesSetData, PlatformPoliciesSetError, PlatformPoliciesSetResponse, SshKeysListData, SshKeysListError, SshKeysListResponse, SshKeysMintData, SshKeysMintError, SshKeysMintResponse, SshKeysRevokeData, SshKeysRevokeError, SshKeysRevokeResponse } from '../types.gen';
 
 /**
  * Begin impersonating a user
@@ -1071,6 +1071,135 @@ export const firewallRulesCreateMutation = (options?: Partial<Options<FirewallRu
     const mutationOptions: UseMutationOptions<FirewallRulesCreateResponse, FirewallRulesCreateError, Options<FirewallRulesCreateData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await firewallRulesCreate({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const firewallSetsListQueryKey = (options?: Options<FirewallSetsListData>) => createQueryKey('firewallSetsList', options);
+
+/**
+ * List firewall sets
+ *
+ * Named address lists. A rule referencing a set matches every element in it, so four management addresses across two ports is two rules and one set rather than eight rules — and adding an address is one element, not two more rules.
+ */
+export const firewallSetsListOptions = (options?: Options<FirewallSetsListData>) => queryOptions<FirewallSetsListResponse, FirewallSetsListError, FirewallSetsListResponse, ReturnType<typeof firewallSetsListQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await firewallSetsList({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: firewallSetsListQueryKey(options)
+});
+
+/**
+ * Create a firewall set
+ */
+export const firewallSetsCreateMutation = (options?: Partial<Options<FirewallSetsCreateData>>): UseMutationOptions<FirewallSetsCreateResponse, FirewallSetsCreateError, Options<FirewallSetsCreateData>> => {
+    const mutationOptions: UseMutationOptions<FirewallSetsCreateResponse, FirewallSetsCreateError, Options<FirewallSetsCreateData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await firewallSetsCreate({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Delete a firewall set
+ *
+ * Refused while a rule still references it. nft rejects a ruleset naming a set it has never heard of, and it rejects the WHOLE file — so a dangling reference would leave the host with no firewall at all rather than one missing a line.
+ */
+export const firewallSetsDeleteMutation = (options?: Partial<Options<FirewallSetsDeleteData>>): UseMutationOptions<FirewallSetsDeleteResponse, FirewallSetsDeleteError, Options<FirewallSetsDeleteData>> => {
+    const mutationOptions: UseMutationOptions<FirewallSetsDeleteResponse, FirewallSetsDeleteError, Options<FirewallSetsDeleteData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await firewallSetsDelete({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Rename a firewall set
+ *
+ * Name and description only. A set's family decides the nft type its elements are declared as, so changing it would reinterpret every element already in it and every rule written against it.
+ */
+export const firewallSetsUpdateMutation = (options?: Partial<Options<FirewallSetsUpdateData>>): UseMutationOptions<FirewallSetsUpdateResponse, FirewallSetsUpdateError, Options<FirewallSetsUpdateData>> => {
+    const mutationOptions: UseMutationOptions<FirewallSetsUpdateResponse, FirewallSetsUpdateError, Options<FirewallSetsUpdateData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await firewallSetsUpdate({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const firewallSetElementsListQueryKey = (options: Options<FirewallSetElementsListData>) => createQueryKey('firewallSetElementsList', options);
+
+/**
+ * List a set's elements
+ */
+export const firewallSetElementsListOptions = (options: Options<FirewallSetElementsListData>) => queryOptions<FirewallSetElementsListResponse, FirewallSetElementsListError, FirewallSetElementsListResponse, ReturnType<typeof firewallSetElementsListQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await firewallSetElementsList({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: firewallSetElementsListQueryKey(options)
+});
+
+/**
+ * Add an address to a set
+ *
+ * Validated against the SET's family, not on its own: an ipv6 element in an ipv4 set renders a declaration nft rejects, and nft rejects the whole ruleset over one bad line.
+ */
+export const firewallSetElementsAddMutation = (options?: Partial<Options<FirewallSetElementsAddData>>): UseMutationOptions<FirewallSetElementsAddResponse, FirewallSetElementsAddError, Options<FirewallSetElementsAddData>> => {
+    const mutationOptions: UseMutationOptions<FirewallSetElementsAddResponse, FirewallSetElementsAddError, Options<FirewallSetElementsAddData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await firewallSetElementsAdd({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Remove an address from a set
+ */
+export const firewallSetElementsDeleteMutation = (options?: Partial<Options<FirewallSetElementsDeleteData>>): UseMutationOptions<FirewallSetElementsDeleteResponse, FirewallSetElementsDeleteError, Options<FirewallSetElementsDeleteData>> => {
+    const mutationOptions: UseMutationOptions<FirewallSetElementsDeleteResponse, FirewallSetElementsDeleteError, Options<FirewallSetElementsDeleteData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await firewallSetElementsDelete({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

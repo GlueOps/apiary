@@ -1921,6 +1921,256 @@ paths:
       summary: Add a rule to a ruleset
       tags:
       - Firewall
+  /api/v1/firewall/sets:
+    get:
+      description: "Named address lists. A rule referencing a set matches every element\
+        \ in it, so four management addresses across two ports is two rules and one\
+        \ set rather than eight rules — and adding an address is one element, not\
+        \ two more rules."
+      operationId: firewall-sets-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSetsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List firewall sets
+      tags:
+      - Firewall
+    post:
+      operationId: firewall-sets-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSetRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetView"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Create a firewall set
+      tags:
+      - Firewall
+  /api/v1/firewall/sets/{id}:
+    delete:
+      description: "Refused while a rule still references it. nft rejects a ruleset\
+        \ naming a set it has never heard of, and it rejects the WHOLE file — so a\
+        \ dangling reference would leave the host with no firewall at all rather than\
+        \ one missing a line."
+      operationId: firewall-sets-delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Delete a firewall set
+      tags:
+      - Firewall
+    put:
+      description: "Name and description only. A set's family decides the nft type\
+        \ its elements are declared as, so changing it would reinterpret every element\
+        \ already in it and every rule written against it."
+      operationId: firewall-sets-update
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSetRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Rename a firewall set
+      tags:
+      - Firewall
+  /api/v1/firewall/sets/{id}/elements:
+    get:
+      operationId: firewall-set-elements-list
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSetElementsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List a set's elements
+      tags:
+      - Firewall
+    post:
+      description: "Validated against the SET's family, not on its own: an ipv6 element\
+        \ in an ipv4 set renders a declaration nft rejects, and nft rejects the whole\
+        \ ruleset over one bad line."
+      operationId: firewall-set-elements-add
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddSetElementRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetElementView"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Add an address to a set
+      tags:
+      - Firewall
+  /api/v1/firewall/sets/{id}/elements/{element_id}:
+    delete:
+      operationId: firewall-set-elements-delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: element_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Remove an address from a set
+      tags:
+      - Firewall
   /api/v1/fleet/agent-upgrades:
     post:
       description: |-
@@ -3791,6 +4041,34 @@ components:
       - seeded
       - updated_at
       - value
+    AddSetElementRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        comment: comment
+        label: label
+        value: value
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        comment:
+          maxLength: 200
+          type: string
+        label:
+          maxLength: 64
+          type: string
+        value:
+          description: An address or a prefix. A bare 192.168.10.60 is accepted and
+            treated as /32 — an operator writing a management address should not have
+            to spell that out.
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - value
     AgentBuildView:
       additionalProperties: false
       example:
@@ -4432,6 +4710,47 @@ components:
         name:
           maxLength: 100
           minLength: 1
+          type: string
+      required:
+      - name
+    CreateSetRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        description: description
+        family: ip
+        name: name
+        purpose: general
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          maxLength: 500
+          type: string
+        family:
+          default: ip
+          description: An nft set holds ONE address family. inet is a table family
+            and is refused here; leave the rule inet and pick the family the addresses
+            are.
+          enum:
+          - ip
+          - ip6
+          type: string
+        name:
+          maxLength: 100
+          minLength: 1
+          type: string
+        purpose:
+          default: general
+          description: "management widens the from= restriction on the fleet SSH key,\
+            \ so it defaults to general — the harmless one."
+          enum:
+          - general
+          - management
+          - peers
           type: string
       required:
       - name
@@ -6366,6 +6685,7 @@ components:
           dst_cidr: dst_cidr
           dst_port: 6
           dst_port_end: 1
+          dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           enabled: true
           family: family
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -6378,6 +6698,7 @@ components:
           src_cidr: src_cidr
           src_port: 5
           src_port_end: 2
+          src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           table_name: table_name
         - $schema: https://openapi-generator.tech
           action: action
@@ -6386,6 +6707,7 @@ components:
           dst_cidr: dst_cidr
           dst_port: 6
           dst_port_end: 1
+          dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           enabled: true
           family: family
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -6398,6 +6720,7 @@ components:
           src_cidr: src_cidr
           src_port: 5
           src_port_end: 2
+          src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           table_name: table_name
       properties:
         $schema:
@@ -6440,6 +6763,90 @@ components:
           default: null
       required:
       - rulesets
+    ListSetElementsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        elements:
+        - $schema: https://openapi-generator.tech
+          comment: comment
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+          value: value
+        - $schema: https://openapi-generator.tech
+          comment: comment
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+          value: value
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        elements:
+          items:
+            $ref: "#/components/schemas/SetElementView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - elements
+    ListSetsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        sets:
+        - $schema: https://openapi-generator.tech
+          description: description
+          elements:
+          - $schema: https://openapi-generator.tech
+            comment: comment
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            label: label
+            value: value
+          - $schema: https://openapi-generator.tech
+            comment: comment
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            label: label
+            value: value
+          family: family
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          managed: true
+          name: name
+          purpose: purpose
+        - $schema: https://openapi-generator.tech
+          description: description
+          elements:
+          - $schema: https://openapi-generator.tech
+            comment: comment
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            label: label
+            value: value
+          - $schema: https://openapi-generator.tech
+            comment: comment
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            label: label
+            value: value
+          family: family
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          managed: true
+          name: name
+          purpose: purpose
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        sets:
+          items:
+            $ref: "#/components/schemas/SetView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - sets
     LoginRequestBody:
       additionalProperties: false
       example:
@@ -7267,6 +7674,7 @@ components:
           dst_cidr: dst_cidr
           dst_port: 6
           dst_port_end: 1
+          dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           enabled: true
           family: family
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -7279,6 +7687,7 @@ components:
           src_cidr: src_cidr
           src_port: 5
           src_port_end: 2
+          src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           table_name: table_name
         - $schema: https://openapi-generator.tech
           action: action
@@ -7287,6 +7696,7 @@ components:
           dst_cidr: dst_cidr
           dst_port: 6
           dst_port_end: 1
+          dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           enabled: true
           family: family
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -7299,6 +7709,7 @@ components:
           src_cidr: src_cidr
           src_port: 5
           src_port_end: 2
+          src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           table_name: table_name
       properties:
         $schema:
@@ -7887,6 +8298,7 @@ components:
         dst_cidr: dst_cidr
         dst_port: 5248
         dst_port_end: 39500
+        dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         enabled: true
         family: inet
         in_iface: in_iface
@@ -7897,6 +8309,7 @@ components:
         src_cidr: src_cidr
         src_port: 39072
         src_port_end: 36944
+        src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         table_name: filter
       properties:
         $schema:
@@ -7931,6 +8344,9 @@ components:
           maximum: 65535
           minimum: 0
           type: integer
+        dst_set_id:
+          format: uuid
+          type: string
         enabled:
           default: true
           type: boolean
@@ -7985,6 +8401,14 @@ components:
           maximum: 65535
           minimum: 0
           type: integer
+        src_set_id:
+          description: "Match a named set instead of a literal CIDR. Four addresses\
+            \ across two ports is two rules and one set; as literals it is eight,\
+            \ and every address added makes it two more. Giving both a set and a CIDR\
+            \ is refused: nft renders one and ignores the other, so the stored rule\
+            \ and the enforced rule would differ with nothing reporting it."
+          format: uuid
+          type: string
         table_name:
           default: filter
           maxLength: 64
@@ -8002,6 +8426,7 @@ components:
         dst_cidr: dst_cidr
         dst_port: 6
         dst_port_end: 1
+        dst_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         enabled: true
         family: family
         id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
@@ -8014,6 +8439,7 @@ components:
         src_cidr: src_cidr
         src_port: 5
         src_port_end: 2
+        src_set_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         table_name: table_name
       properties:
         $schema:
@@ -8035,6 +8461,9 @@ components:
         dst_port_end:
           format: int64
           type: integer
+        dst_set_id:
+          format: uuid
+          type: string
         enabled:
           type: boolean
         family:
@@ -8066,6 +8495,9 @@ components:
         src_port_end:
           format: int64
           type: integer
+        src_set_id:
+          format: uuid
+          type: string
         table_name:
           type: string
       required:
@@ -8112,6 +8544,32 @@ components:
       - description
       - id
       - name
+    SetElementView:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        comment: comment
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        label: label
+        value: value
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        comment:
+          type: string
+        id:
+          format: uuid
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+      required:
+      - id
+      - value
     SetRequestBody:
       additionalProperties: false
       example:
@@ -8140,6 +8598,61 @@ components:
           type: string
       required:
       - state
+    SetView:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        description: description
+        elements:
+        - $schema: https://openapi-generator.tech
+          comment: comment
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+          value: value
+        - $schema: https://openapi-generator.tech
+          comment: comment
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+          value: value
+        family: family
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        managed: true
+        name: name
+        purpose: purpose
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          type: string
+        elements:
+          items:
+            $ref: "#/components/schemas/SetElementView"
+          nullable: true
+          type: array
+          default: null
+        family:
+          type: string
+        id:
+          format: uuid
+          type: string
+        managed:
+          description: Contents maintained by the control plane. Edits are refused
+            rather than silently reverted by the next convergence.
+          type: boolean
+        name:
+          type: string
+        purpose:
+          type: string
+      required:
+      - elements
+      - family
+      - id
+      - managed
+      - name
+      - purpose
     SnapshotBodyResponseBody:
       additionalProperties: false
       example:
@@ -8659,6 +9172,27 @@ components:
       required:
       - updated
     UpdateRulesetRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        description: description
+        name: name
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          maxLength: 500
+          type: string
+        name:
+          maxLength: 100
+          minLength: 1
+          type: string
+      required:
+      - name
+    UpdateSetRequestBody:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech

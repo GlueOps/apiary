@@ -8,6 +8,7 @@ import (
 	"github.com/glueops/apiary/internal/apimiddleware"
 	"github.com/glueops/apiary/internal/app"
 	"github.com/glueops/apiary/internal/models/control"
+	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/glueops/apiary/internal/repo"
 	"github.com/glueops/apiary/internal/service"
 	"github.com/google/uuid"
@@ -43,6 +44,96 @@ type IDRequest struct {
 type DeletedResponse struct {
 	Body struct {
 		Deleted bool `json:"deleted"`
+	}
+}
+
+// ---- sets --------------------------------------------------------------------
+
+type SetView struct {
+	ID          string           `json:"id" format:"uuid"`
+	Name        string           `json:"name"`
+	Family      string           `json:"family" example:"ip"`
+	Purpose     string           `json:"purpose" example:"general"`
+	Description string           `json:"description,omitempty"`
+	Managed     bool             `json:"managed" doc:"Contents maintained by the control plane. Edits are refused rather than silently reverted by the next convergence."`
+	Elements    []SetElementView `json:"elements"`
+}
+
+type SetElementView struct {
+	ID      string `json:"id" format:"uuid"`
+	Value   string `json:"value" example:"10.10.10.0/24"`
+	Comment string `json:"comment,omitempty"`
+	Label   string `json:"label,omitempty"`
+}
+
+type ListSetsRequest struct{}
+type ListSetsResponse struct {
+	Body struct {
+		Sets []SetView `json:"sets"`
+	}
+}
+
+type CreateSetRequest struct {
+	Body struct {
+		Name string `json:"name" required:"true" minLength:"1" maxLength:"100"`
+		// ip or ip6, never inet. An nft set is declared ipv4_addr or ipv6_addr
+		// and holds one address family; inet is a TABLE family, and a set
+		// declared with it renders a line nft rejects — taking the whole ruleset,
+		// and the host's entire firewall, with it. The RULE stays inet.
+		Family      string `json:"family,omitempty" enum:"ip,ip6" default:"ip" doc:"An nft set holds ONE address family. inet is a table family and is refused here; leave the rule inet and pick the family the addresses are."`
+		Description string `json:"description,omitempty" maxLength:"500"`
+		Purpose     string `json:"purpose,omitempty" enum:"general,management,peers" default:"general" doc:"management widens the from= restriction on the fleet SSH key, so it defaults to general — the harmless one."`
+	}
+}
+type SetResponse struct{ Body SetView }
+
+type UpdateSetRequest struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		Name        string `json:"name" required:"true" minLength:"1" maxLength:"100"`
+		Description string `json:"description,omitempty" maxLength:"500"`
+	}
+}
+
+type ListSetElementsRequest struct {
+	ID string `path:"id" format:"uuid"`
+}
+type ListSetElementsResponse struct {
+	Body struct {
+		Elements []SetElementView `json:"elements"`
+	}
+}
+
+type AddSetElementRequest struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		Value   string `json:"value" required:"true" minLength:"1" maxLength:"64" doc:"An address or a prefix. A bare 192.168.10.60 is accepted and treated as /32 — an operator writing a management address should not have to spell that out."`
+		Comment string `json:"comment,omitempty" maxLength:"200"`
+		Label   string `json:"label,omitempty" maxLength:"64"`
+	}
+}
+type SetElementResponse struct{ Body SetElementView }
+
+type DeleteSetElementRequest struct {
+	ID        string `path:"id" format:"uuid"`
+	ElementID string `path:"element_id" format:"uuid"`
+}
+
+func toSetView(s tenant.FirewallSet) SetView {
+	out := SetView{
+		ID: s.ID.String(), Name: s.Name, Family: s.Family,
+		Purpose: s.Purpose, Description: s.Description, Managed: s.Managed,
+	}
+	out.Elements = make([]SetElementView, 0, len(s.Elements))
+	for _, e := range s.Elements {
+		out.Elements = append(out.Elements, toSetElementView(e))
+	}
+	return out
+}
+
+func toSetElementView(e tenant.FirewallSetElement) SetElementView {
+	return SetElementView{
+		ID: e.ID.String(), Value: e.Value, Comment: e.Comment, Label: e.Label,
 	}
 }
 
@@ -243,6 +334,191 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) {
 			return nil, huma.Error422UnprocessableEntity("invalid ruleset id")
 		}
 		if err := svc.DeleteRuleset(ctx, p.OrganizationID, id); err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &DeletedResponse{}
+		out.Body.Deleted = true
+		return out, nil
+	})
+
+	// ---- sets ----------------------------------------------------------------
+	//
+	// A named list a rule points at instead of repeating a literal. Missing until
+	// now, which meant the model, the validation and the renderer all supported
+	// sets while the only way to create one was to write SQL — and onboarding
+	// REFUSES without a management set, so automated onboarding could not be
+	// completed by an operator at all.
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "firewall-sets-list",
+		Method:      http.MethodGet,
+		Path:        "/firewall/sets",
+		Summary:     "List firewall sets",
+		Description: "Named address lists. A rule referencing a set matches every element in it, so four management addresses across two ports is two rules and one set rather than eight rules — and adding an address is one element, not two more rules.",
+		Tags:        []string{"Firewall"},
+		Security:    apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, _ *ListSetsRequest) (*ListSetsResponse, error) {
+		p, err := member(ctx)
+		if err != nil {
+			return nil, err
+		}
+		list, err := svc.ListSets(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &ListSetsResponse{}
+		out.Body.Sets = make([]SetView, 0, len(list))
+		for _, set := range list {
+			out.Body.Sets = append(out.Body.Sets, toSetView(set))
+		}
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID:   "firewall-sets-create",
+		Method:        http.MethodPost,
+		Path:          "/firewall/sets",
+		Summary:       "Create a firewall set",
+		DefaultStatus: http.StatusCreated,
+		Tags:          []string{"Firewall"},
+		Security:      apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *CreateSetRequest) (*SetResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		set, err := svc.CreateSet(ctx, p.OrganizationID,
+			in.Body.Name, in.Body.Family, in.Body.Description, in.Body.Purpose)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		return &SetResponse{Body: toSetView(*set)}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "firewall-sets-update",
+		Method:      http.MethodPut,
+		Path:        "/firewall/sets/{id}",
+		Summary:     "Rename a firewall set",
+		Description: "Name and description only. A set's family decides the nft type its elements are declared as, so changing it would reinterpret every element already in it and every rule written against it.",
+		Tags:        []string{"Firewall"},
+		Security:    apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *UpdateSetRequest) (*SetResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid set id")
+		}
+		set, err := svc.UpdateSet(ctx, p.OrganizationID, id, in.Body.Name, in.Body.Description)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		return &SetResponse{Body: toSetView(*set)}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "firewall-sets-delete",
+		Method:      http.MethodDelete,
+		Path:        "/firewall/sets/{id}",
+		Summary:     "Delete a firewall set",
+		Description: "Refused while a rule still references it. nft rejects a ruleset naming a set it has never heard of, and it rejects the WHOLE file — so a dangling reference would leave the host with no firewall at all rather than one missing a line.",
+		Tags:        []string{"Firewall"},
+		Security:    apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *IDRequest) (*DeletedResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid set id")
+		}
+		if err := svc.DeleteSet(ctx, p.OrganizationID, id); err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &DeletedResponse{}
+		out.Body.Deleted = true
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "firewall-set-elements-list",
+		Method:      http.MethodGet,
+		Path:        "/firewall/sets/{id}/elements",
+		Summary:     "List a set's elements",
+		Tags:        []string{"Firewall"},
+		Security:    apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *ListSetElementsRequest) (*ListSetElementsResponse, error) {
+		p, err := member(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid set id")
+		}
+		set, err := svc.GetSet(ctx, p.OrganizationID, id)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &ListSetElementsResponse{}
+		out.Body.Elements = make([]SetElementView, 0, len(set.Elements))
+		for _, e := range set.Elements {
+			out.Body.Elements = append(out.Body.Elements, toSetElementView(e))
+		}
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID:   "firewall-set-elements-add",
+		Method:        http.MethodPost,
+		Path:          "/firewall/sets/{id}/elements",
+		Summary:       "Add an address to a set",
+		DefaultStatus: http.StatusCreated,
+		Description:   "Validated against the SET's family, not on its own: an ipv6 element in an ipv4 set renders a declaration nft rejects, and nft rejects the whole ruleset over one bad line.",
+		Tags:          []string{"Firewall"},
+		Security:      apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *AddSetElementRequest) (*SetElementResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid set id")
+		}
+		el, err := svc.AddSetElement(ctx, p.OrganizationID, id,
+			in.Body.Value, in.Body.Comment, in.Body.Label)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		return &SetElementResponse{Body: toSetElementView(*el)}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "firewall-set-elements-delete",
+		Method:      http.MethodDelete,
+		Path:        "/firewall/sets/{id}/elements/{element_id}",
+		Summary:     "Remove an address from a set",
+		Tags:        []string{"Firewall"},
+		Security:    apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *DeleteSetElementRequest) (*DeletedResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		setID, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid set id")
+		}
+		elemID, err := uuid.Parse(in.ElementID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid element id")
+		}
+		if err := svc.RemoveSetElement(ctx, p.OrganizationID, setID, elemID); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		out := &DeletedResponse{}
