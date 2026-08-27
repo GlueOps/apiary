@@ -27,9 +27,20 @@ type JoinBlockers struct {
 	// GuestConfigs counts guest configuration files under /etc/pve/nodes, across
 	// ALL node directories — which is what pvecm counts.
 	GuestConfigs int
-	// ForeignNodeDirs are node directories that are not this node's own. These
-	// are where inherited guest configs live, and clearing them is what resolves
-	// a guest count on a host that has no guests.
+	// OwnGuestConfigs is how many of those are in THIS node's own directory.
+	//
+	// Split out because the two have opposite remedies and the message used to
+	// give the wrong one. A host with its own guests must have them moved or
+	// deleted; a host carrying a former peer's needs those directories cleared.
+	// Reporting one as the other sends an operator to do something that cannot
+	// help, which is worse than saying only that the join was refused.
+	OwnGuestConfigs int
+	// ForeignNodeDirs are node directories that are not this node's own.
+	//
+	// Their PRESENCE is not a blocker. An empty one is a leftover — a rename
+	// leaves the old name behind — and only the guests inside one are a reason
+	// pvecm refuses. Conflating the two produced a refusal that named an empty
+	// directory as the cause of a guest count that came entirely from elsewhere.
 	ForeignNodeDirs []string
 }
 
@@ -50,13 +61,15 @@ func (b JoinBlockers) Describe() string {
 	if b.CorosyncRunning {
 		parts = append(parts, "corosync is still running")
 	}
-	if b.GuestConfigs > 0 {
-		d := fmt.Sprintf("%d guest configuration(s) are visible under /etc/pve/nodes", b.GuestConfigs)
-		if len(b.ForeignNodeDirs) > 0 {
-			d += fmt.Sprintf(" — including in %v, which belong to a former cluster peer rather "+
-				"than to this host; a departure clears those", b.ForeignNodeDirs)
-		}
-		parts = append(parts, d)
+	if b.OwnGuestConfigs > 0 {
+		parts = append(parts, fmt.Sprintf("this host has %d guest(s) of its own; a join "+
+			"discards local guest configuration, so move or delete them first (stopped "+
+			"guests count)", b.OwnGuestConfigs))
+	}
+	if foreign := b.GuestConfigs - b.OwnGuestConfigs; foreign > 0 {
+		parts = append(parts, fmt.Sprintf("%d guest configuration(s) under %v belong to a "+
+			"former cluster peer rather than to this host; a departure clears those",
+			foreign, b.ForeignNodeDirs))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -71,11 +84,13 @@ conf=no; [ -f %s ] && conf=yes
 akey=no; [ -f /etc/corosync/authkey ] && akey=yes
 coro=$(systemctl is-active corosync 2>/dev/null || true)
 guests=$(find /etc/pve/nodes -mindepth 3 -maxdepth 3 \( -name '*.conf' \) 2>/dev/null | wc -l)
+own=$(find /etc/pve/local/ -mindepth 2 -maxdepth 2 \( -name '*.conf' \) 2>/dev/null | wc -l)
 dirs=$(/bin/ls /etc/pve/nodes 2>/dev/null | tr '\n' ' ')
 echo "APIARY_CONF=$conf"
 echo "APIARY_AKEY=$akey"
 echo "APIARY_CORO=$coro"
 echo "APIARY_GUESTS=$guests"
+echo "APIARY_OWN=$own"
 echo "APIARY_DIRS=$dirs"
 `, corosyncConf)
 
@@ -88,7 +103,7 @@ echo "APIARY_DIRS=$dirs"
 	fields := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
-		for _, k := range []string{"CONF", "AKEY", "CORO", "GUESTS", "DIRS"} {
+		for _, k := range []string{"CONF", "AKEY", "CORO", "GUESTS", "OWN", "DIRS"} {
 			if v, ok := strings.CutPrefix(line, "APIARY_"+k+"="); ok {
 				fields[k] = v
 			}
@@ -97,7 +112,7 @@ echo "APIARY_DIRS=$dirs"
 	// Every marker must be present. A missing one means the command did not run
 	// to completion, and treating an absent answer as "no blocker" would let a
 	// join proceed on a node nobody actually inspected.
-	for _, k := range []string{"CONF", "AKEY", "CORO", "GUESTS", "DIRS"} {
+	for _, k := range []string{"CONF", "AKEY", "CORO", "GUESTS", "OWN", "DIRS"} {
 		if _, ok := fields[k]; !ok {
 			return JoinBlockers{}, fmt.Errorf(
 				"arrive: the join precondition check did not answer for %s, so the node's state "+
@@ -115,6 +130,15 @@ echo "APIARY_DIRS=$dirs"
 		return JoinBlockers{}, fmt.Errorf("arrive: could not read a guest count from %q", fields["GUESTS"])
 	}
 	b.GuestConfigs = n
+	own, ownErr := strconv.Atoi(strings.TrimSpace(fields["OWN"]))
+	if ownErr != nil {
+		return JoinBlockers{}, fmt.Errorf("arrive: could not read this node's own guest count from %q",
+			fields["OWN"])
+	}
+	// /etc/pve/local is a symlink to this node's own directory, so it is right
+	// even when the node has been renamed and the old name is still present —
+	// which is the case that produced the misattribution.
+	b.OwnGuestConfigs = own
 	for _, d := range strings.Fields(fields["DIRS"]) {
 		if d != ownNodeName {
 			b.ForeignNodeDirs = append(b.ForeignNodeDirs, d)
