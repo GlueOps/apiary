@@ -2,6 +2,7 @@ package tenant
 
 import (
 	"errors"
+	"github.com/google/uuid"
 	"testing"
 )
 
@@ -136,5 +137,54 @@ func TestRulesetNeedsAName(t *testing.T) {
 	}
 	if err := (&FirewallRuleset{Name: "management"}).Validate(); err != nil {
 		t.Fatalf("a named ruleset was refused: %v", err)
+	}
+}
+
+// A rule that names a set carries no literal on that side, and must not be
+// asked for one.
+//
+// The any-address default is deliberately not applied to a side with a set,
+// because a literal alongside a set is refused — nft renders one and ignores
+// the other. Validating the resulting empty string anyway rejected every
+// set-based rule an operator could write, with `malformed address range:
+// source ""` — a true statement about a field they were right to leave blank.
+// Caught against a live control plane, not in review.
+func TestARuleNamingASetNeedsNoLiteralOnThatSide(t *testing.T) {
+	setID := uuid.New()
+	// With elements: an empty set is separately refused, because a set that
+	// matches nothing silently turns an accept rule into a no-op.
+	set := FirewallSet{
+		ID: setID, Name: "allowed_ips", Family: FamilyIPv4,
+		Elements: []FirewallSetElement{{SetID: setID, Value: "192.0.2.10"}},
+	}
+
+	r := FirewallRule{
+		Name: "ssh from the whitelist", Enabled: true,
+		Family: FamilyInet, TableName: "filter", ChainName: "input",
+		Protocol: TCP, Action: Accept, DstPort: 22,
+		SrcSetID: &setID,
+		DstCidr:  AnyAddressFor(FamilyInet),
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("a source set with no source literal must validate: %v", err)
+	}
+	if err := r.validateAgainstSets(&set, nil); err != nil {
+		t.Fatalf("resolved against its set it must still validate: %v", err)
+	}
+
+	// The other half of the contract: a literal AND a set is still refused,
+	// because nft renders one and ignores the other.
+	both := r
+	both.SrcCidr = "10.0.0.0/8"
+	if err := both.validateAgainstSets(&set, nil); err == nil {
+		t.Fatal("naming both a set and a literal must be refused")
+	}
+
+	// And a malformed literal on a side WITHOUT a set is still caught.
+	bad := r
+	bad.SrcSetID = nil
+	bad.SrcCidr = "not-an-address"
+	if err := bad.Validate(); err == nil {
+		t.Fatal("a malformed literal must still be refused when no set is named")
 	}
 }
