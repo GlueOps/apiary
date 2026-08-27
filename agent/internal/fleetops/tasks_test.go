@@ -21,12 +21,25 @@ type fakeCluster struct {
 	deleteErr error
 	joined    *proxmox.ClusterJoinOptions
 	joinErr   error
+
+	// statusHook runs at the top of each Status call, with the number of calls
+	// made so far including this one. It lets a test model a host whose API goes
+	// away while pve-cluster restarts and comes back a member — which is the
+	// whole of what a join looks like from here.
+	statusHook  func(call int, f *fakeCluster)
+	statusCalls int
 }
 
-func (f *fakeCluster) Status(context.Context) error { return f.statusErr }
-func (f *fakeCluster) Quorate() bool                { return f.quorate }
-func (f *fakeCluster) MemberCount() int             { return f.members }
-func (f *fakeCluster) NodeNames() []string          { return f.names }
+func (f *fakeCluster) Status(context.Context) error {
+	f.statusCalls++
+	if f.statusHook != nil {
+		f.statusHook(f.statusCalls, f)
+	}
+	return f.statusErr
+}
+func (f *fakeCluster) Quorate() bool       { return f.quorate }
+func (f *fakeCluster) MemberCount() int    { return f.members }
+func (f *fakeCluster) NodeNames() []string { return f.names }
 func (f *fakeCluster) GuestsOn(_ context.Context, node string) ([]Guest, error) {
 	return f.guests[node], f.guestsErr
 }
@@ -352,5 +365,100 @@ func TestJoinRefusesWhenTheHostAlreadyHasGuests(t *testing.T) {
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
 	if err == nil || !strings.Contains(err.Error(), "guest") {
 		t.Fatalf("err = %v, want a refusal: joining discards local guest configuration", err)
+	}
+}
+
+// shortJoinWait makes the settle loop finish inside a test.
+func shortJoinWait(t *testing.T, timeout, interval time.Duration) {
+	t.Helper()
+	oldT, oldI := joinSettleTimeout, joinPollInterval
+	joinSettleTimeout, joinPollInterval = timeout, interval
+	t.Cleanup(func() { joinSettleTimeout, joinPollInterval = oldT, oldI })
+}
+
+// THE GAP THIS CLOSES. POST /cluster/config/join returns once the request is
+// ACCEPTED; the work runs as a task on the node afterwards and can fail there —
+// a wrong password, a peer that is itself not quorate, corosync unable to reach
+// the ring address. Join returned nil on acceptance, so every one of those was
+// reported to the control plane as a completed join: the task went green and the
+// node never joined.
+func TestJoinFailsWhenTheHostNeverBecomesAMember(t *testing.T) {
+	shortJoinWait(t, 120*time.Millisecond, 10*time.Millisecond)
+
+	// Accepted, and the host stays exactly as it was: not clustered.
+	cl := &fakeCluster{guests: map[string][]Guest{}, statusErr: errors.New("no cluster")}
+	var phases []string
+	var declared time.Duration
+
+	err := Join(context.Background(),
+		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
+
+	if err == nil {
+		t.Fatal("a join that never took effect was reported as success")
+	}
+	if !strings.Contains(err.Error(), "still not a cluster member") {
+		t.Fatalf("err = %v, want it to say the host never became a member", err)
+	}
+	// The last thing the API said has to survive into the message, or the
+	// operator is told it failed and not what failed.
+	if !strings.Contains(err.Error(), "no cluster") {
+		t.Fatalf("err = %v, want the API's own last words carried through", err)
+	}
+	if cl.statusCalls < 2 {
+		t.Fatalf("status was read %d time(s); the join must be given time to take effect, "+
+			"not judged on one look", cl.statusCalls)
+	}
+}
+
+// The host's own API goes away while pve-cluster and corosync restart, which is
+// the middle of every real join. Treating that as failure would fail every one.
+func TestJoinWaitsThroughTheServiceRestart(t *testing.T) {
+	shortJoinWait(t, 2*time.Second, 5*time.Millisecond)
+
+	cl := &fakeCluster{guests: map[string][]Guest{}, statusErr: errors.New("connection refused")}
+	cl.statusHook = func(call int, f *fakeCluster) {
+		if call >= 4 {
+			f.statusErr = nil
+			f.quorate = true
+			f.members = 3
+			f.names = []string{"hv-01", "hv-02", "hv-06"}
+		}
+	}
+	var phases []string
+	var declared time.Duration
+
+	if err := Join(context.Background(),
+		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`); err != nil {
+		t.Fatalf("a join that succeeded after the services restarted was reported as failure: %v", err)
+	}
+	if len(phases) == 0 || phases[len(phases)-1] != phaseVerifying {
+		t.Fatalf("phases = %v, want the last one to be %q — a resumed task has to be able to "+
+			"tell that the join was issued and only the confirmation is outstanding",
+			phases, phaseVerifying)
+	}
+}
+
+// Joined, but the cluster has no quorum. That is a real problem and a DIFFERENT
+// one: the join worked, and retrying it is the wrong response.
+func TestJoinSaysSoWhenTheClusterItJoinedIsNotQuorate(t *testing.T) {
+	shortJoinWait(t, time.Second, 5*time.Millisecond)
+
+	cl := &fakeCluster{
+		guests: map[string][]Guest{}, quorate: false, members: 3,
+		names: []string{"hv-01", "hv-02", "hv-06"},
+	}
+	var phases []string
+	var declared time.Duration
+
+	err := Join(context.Background(),
+		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
+	if err == nil {
+		t.Fatal("joining a cluster with no quorum was reported as a clean success")
+	}
+	if !strings.Contains(err.Error(), "do not retry") {
+		t.Fatalf("err = %v, want it to say the join itself succeeded so retrying is wrong", err)
 	}
 }

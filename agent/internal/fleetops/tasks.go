@@ -301,7 +301,83 @@ func Join(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		return fmt.Errorf("join: %w", err)
 	}
 	e.Logf("agent", "join accepted: %s", strings.TrimSpace(status))
-	return nil
+
+	e.Phase(phaseVerifying)
+	return verifyJoined(ctx, d, e)
+}
+
+// joinSettleTimeout bounds the wait for a join to take effect.
+//
+// The join restarts pve-cluster and corosync on this host, so its own API stops
+// answering for a stretch in the middle. Minutes, not seconds — and a deadline
+// rather than a fixed number of attempts, because what matters is how long an
+// operator waits before being told something definite.
+// Vars rather than consts so a test can shorten them; nothing in the agent
+// writes to them at runtime.
+var (
+	joinSettleTimeout = 4 * time.Minute
+	joinPollInterval  = 5 * time.Second
+)
+
+// verifyJoined waits until this host is actually a cluster member.
+//
+// POST /cluster/config/join returns once the request is ACCEPTED. The work runs
+// as a task on the node afterwards, and it can fail there — a wrong password, a
+// peer that is itself not quorate, corosync unable to reach the ring address.
+// Returning nil on acceptance reported every one of those to the control plane
+// as a completed join, so the task went green and the node never joined. The
+// same mistake as trusting `pvecm add`'s exit code, one layer up.
+//
+// Membership is read from THIS host's own cluster status, which is the only
+// thing that answers "am I in" rather than "was I told to try".
+func verifyJoined(ctx context.Context, d Deps, e *Env) error {
+	deadline := time.Now().Add(joinSettleTimeout)
+	var last error
+
+	for {
+		err := d.Cluster.Status(ctx)
+		switch {
+		case err == nil && d.Cluster.MemberCount() > 0:
+			// Quorum is NOT required here. A node joining a cluster whose other
+			// members are down has joined correctly and has a real problem, and
+			// those are different facts that deserve different messages.
+			names := d.Cluster.NodeNames()
+			if !d.Cluster.Quorate() {
+				e.Logf("agent", "joined (members: %s) but the cluster is NOT quorate",
+					strings.Join(names, ", "))
+				return fmt.Errorf("this host joined the cluster, but the cluster is not quorate "+
+					"(members: %s); the join itself succeeded, so do not retry it — find out why "+
+					"the other members are not voting", strings.Join(names, ", "))
+			}
+			e.Logf("agent", "joined and quorate; members: %s", strings.Join(names, ", "))
+			return nil
+
+		case err == nil:
+			// Reachable, reports a cluster, and claims no members. Not a state to
+			// accept as success.
+			last = fmt.Errorf("cluster status reports no members")
+
+		case isNotClustered(err):
+			// The expected state for most of this loop: the join has not taken
+			// effect yet, or pve-cluster is mid-restart.
+			last = err
+
+		default:
+			// The API is down while the services restart. Also expected.
+			last = err
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the join was accepted but this host is still not a cluster member "+
+				"after %s; the last thing its API said was: %w", joinSettleTimeout, last)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(joinPollInterval):
+		}
+	}
 }
 
 // ----------------------------------------------------------------------- evict
