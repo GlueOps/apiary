@@ -70,17 +70,35 @@ func NodeNameFromAddress(addr string) string {
 // give no evidence which one joined, and attaching an agent's credential and
 // machine id to the wrong physical host is a far worse outcome than a duplicate
 // row an operator can merge deliberately. Nil means "create a fresh record".
-func MatchMachineByNodeName(candidates []Hypervisor, nodeName string) *Hypervisor {
+// nodeAddress is the address the CLUSTER reports for this node, from
+// /cluster/status. It is what makes this work for a host onboarded by IP.
+//
+// Deriving a name from the candidate's address was the only test here, and
+// NodeNameFromAddress returns "" for anything net.ParseIP accepts — so a machine
+// onboarded as 10.10.10.2 produced "" , never equalled "pve", and the sync
+// created a SECOND record for it on first contact with its cluster. Reproduced
+// end to end: five hosts onboarded by IP, then two clusters created, gave ten
+// rows — each machine once as an onboarded fleetless record and once as a
+// discovered cluster member.
+//
+// Comparing the addresses directly needs no derivation and no guess. The name
+// path stays for hosts onboarded by hostname, where the candidate's address
+// carries a name and the cluster's address may not be recorded at all.
+func MatchMachineByNodeName(candidates []Hypervisor, nodeName, nodeAddress string) *Hypervisor {
 	if nodeName == "" {
 		return nil
 	}
+	addr := strings.TrimSpace(nodeAddress)
 	var found *Hypervisor
 	for i := range candidates {
 		c := &candidates[i]
 		if c.HiveID != nil {
 			continue
 		}
-		if NodeNameFromAddress(c.Address) != nodeName {
+		rec := strings.TrimSpace(c.Address)
+		byAddress := addr != "" && rec != "" && strings.EqualFold(rec, addr)
+		byName := NodeNameFromAddress(rec) == nodeName
+		if !byAddress && !byName {
 			continue
 		}
 		if found != nil {

@@ -153,7 +153,7 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 			// onboarding left them, which is the entire point of adopting rather
 			// than creating.
 			if !known {
-				if m := tenant.MatchMachineByNodeName(unclustered, name); m != nil {
+				if m := tenant.MatchMachineByNodeName(unclustered, name, addrs[name]); m != nil {
 					if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", m.ID).
 						Updates(map[string]any{
 							"hive_id": hiveID,
