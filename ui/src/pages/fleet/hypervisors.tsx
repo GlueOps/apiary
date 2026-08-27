@@ -123,9 +123,7 @@ export const Hypervisors = () => {
   const [departFor, setDepartFor] = useState<{ id: string; address?: string } | null>(null);
   // Typed to the API's own enum rather than string, so a third option cannot be
   // added here without the generated SDK agreeing it exists.
-  const [departDisposition, setDepartDisposition] = useState<
-    '' | 'rotate' | 'accept-exposure'
-  >('');
+  const [departDisposition, setDepartDisposition] = useState<'' | 'rotate' | 'accept-exposure'>('');
 
   const [arriveFor, setArriveFor] = useState<FleetlessHostView | null>(null);
   const [arriveHive, setArriveHive] = useState('');
