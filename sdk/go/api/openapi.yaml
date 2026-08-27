@@ -9138,6 +9138,7 @@ components:
         description: description
         insecure_skip_verify: true
         minimum_nodes: 1
+        name: name
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -9168,6 +9169,11 @@ components:
           format: int64
           minimum: 1
           type: integer
+        name:
+          description: "Also the Proxmox cluster name when this cluster is created\
+            \ on its first node, so it must be a legal one: letters, digits and hyphens,\
+            \ starting and ending alphanumeric."
+          type: string
     UpdateMeRequestBody:
       additionalProperties: false
       example:

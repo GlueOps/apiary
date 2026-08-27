@@ -56,6 +56,16 @@ func upgradeTask(cfg Config) bee.Executor {
 			return fmt.Errorf("this host has no credential, so it cannot fetch a binary")
 		}
 
+		// THE UNIT IS THE AUTHORITY on what this host runs, not this process's own
+		// path. They agree on a healthy host; where they disagree, the disagreement
+		// is the fault — a host left running a .previous backup by the bug this
+		// resolver repairs would otherwise have the new binary installed at the
+		// backup's path and go on running the wrong one forever.
+		target, err := hostinstall.InstallTarget()
+		if err != nil {
+			return fmt.Errorf("work out which binary this host runs: %w", err)
+		}
+
 		client, err := bee.NewClient(cfg.BaseURL, id.KeyPublic, id.KeySecret)
 		if err != nil {
 			return err
@@ -88,7 +98,7 @@ func upgradeTask(cfg Config) bee.Executor {
 			// right build never picks up a service-file fix — which is the exact
 			// case this ran into: every agent was current, every unit was stale,
 			// and the upgrade reported success having changed nothing.
-			refreshUnit(ctx, e)
+			refreshUnit(ctx, e, target)
 			return nil
 		} else if derr != nil {
 			// Not fatal: the digest of the DOWNLOAD is still verified before
@@ -109,7 +119,7 @@ func upgradeTask(cfg Config) bee.Executor {
 		// Unit deliberately EMPTY: the restart is handled below, after this
 		// executor has returned and its outcome has been recorded.
 		res, err := selfupgrade.Apply(ctx, osRunner{}, selfupgrade.Plan{
-			Binary: body, SHA256: sha,
+			Binary: body, SHA256: sha, Target: target,
 		})
 		if err != nil {
 			return err
@@ -117,7 +127,9 @@ func upgradeTask(cfg Config) bee.Executor {
 		e.Logf("agent", "installed %s at %s; previous kept at %s",
 			dist.GetVersion(), res.Target, res.Backup)
 
-		refreshUnit(ctx, e)
+		// res.Target, not os.Executable(): by now this process's own path is the
+		// backup Apply just renamed it to.
+		refreshUnit(ctx, e, res.Target)
 
 		// Declared BEFORE the restart is armed, and synchronously. The agent is
 		// about to disappear for a few seconds, and a host that goes quiet without
@@ -165,8 +177,14 @@ func armRestart(after time.Duration, unit string) error {
 // Best effort: a unit that cannot be written is worth reporting and is not worth
 // failing an upgrade that has otherwise succeeded, which would leave the fleet
 // on mixed binaries to protect a service file.
-func refreshUnit(ctx context.Context, e *bee.Env) {
-	if err := hostinstall.RefreshUnit(ctx, osRunner{}, hostinstall.Unit, ""); err != nil {
+// refreshUnit converges the service file at an EXPLICIT path.
+//
+// Never "" — that made RefreshUnit fall back to os.Executable(), which on Linux
+// reads /proc/self/exe and follows the inode. After Apply has renamed the
+// running binary to <path>.previous, that is where the unit was pointed, and the
+// next start ran the backup. See hostinstall.CanonicalExecPath.
+func refreshUnit(ctx context.Context, e *bee.Env, execPath string) {
+	if err := hostinstall.RefreshUnit(ctx, osRunner{}, hostinstall.Unit, execPath); err != nil {
 		e.Logf("agent", "the service file could not be refreshed (%v); this host keeps the "+
 			"unit it had, which may predate this build", err)
 		return

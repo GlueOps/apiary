@@ -230,3 +230,61 @@ func TestTheUnitDoesNotSandboxAwayDistUpgrade(t *testing.T) {
 		}
 	}
 }
+
+// THE FIVE-DEEP FAULT. RefreshUnit resolved its own path with os.Executable(),
+// which on Linux reads /proc/self/exe and follows the INODE — so once Apply had
+// renamed the running binary to <path>.previous, that is what the unit was
+// rewritten to point at. The next start ran the backup, the next upgrade renamed
+// THAT, and the suffixes accumulated.
+//
+// Found in the lab as apiary-agent.previous.previous.previous.previous.previous:
+// five upgrades, five reported successes, and an agent still on the build it
+// started with.
+func TestCanonicalExecPathStripsAccumulatedBackups(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"/usr/sbin/apiary-agent", "/usr/sbin/apiary-agent"},
+		{"/usr/sbin/apiary-agent.previous", "/usr/sbin/apiary-agent"},
+		{"/usr/sbin/apiary-agent.previous.previous.previous.previous.previous",
+			"/usr/sbin/apiary-agent"},
+		{"/usr/local/bin/apiary-agent", "/usr/local/bin/apiary-agent"},
+		// A path that merely CONTAINS the word is not a backup of anything.
+		{"/opt/previous/apiary-agent", "/opt/previous/apiary-agent"},
+	}
+	for _, c := range cases {
+		if got := CanonicalExecPath(c.in); got != c.want {
+			t.Errorf("CanonicalExecPath(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// The unit is what systemd actually runs, so it is what an upgrade must replace.
+func TestUnitExecPathReadsWhatSystemdWouldRun(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{"plain", "ExecStart=/usr/sbin/apiary-agent start", "/usr/sbin/apiary-agent"},
+		{"no args", "ExecStart=/usr/sbin/apiary-agent", "/usr/sbin/apiary-agent"},
+		// systemd's prefix modifiers are not part of the path.
+		{"ignore-errors prefix", "ExecStart=-/usr/sbin/apiary-agent start", "/usr/sbin/apiary-agent"},
+		{"indented", "  ExecStart=/opt/apiary/agent start", "/opt/apiary/agent"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "apiary-agent.service")
+			body := "[Unit]\nDescription=x\n\n[Service]\n" + c.line + "\n"
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := unitExecPathFrom(path)
+			if err != nil {
+				t.Fatalf("unitExecPathFrom: %v", err)
+			}
+			if got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}

@@ -31,6 +31,8 @@ type UpdateHiveRequestBody struct {
 	InsecureSkipVerify *bool `json:"insecure_skip_verify,omitempty"`
 	// Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
 	MinimumNodes *int64 `json:"minimum_nodes,omitempty"`
+	// Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
+	Name *string `json:"name,omitempty"`
 }
 
 // NewUpdateHiveRequestBody instantiates a new UpdateHiveRequestBody object
@@ -274,6 +276,38 @@ func (o *UpdateHiveRequestBody) SetMinimumNodes(v int64) {
 	o.MinimumNodes = &v
 }
 
+// GetName returns the Name field value if set, zero value otherwise.
+func (o *UpdateHiveRequestBody) GetName() string {
+	if o == nil || IsNil(o.Name) {
+		var ret string
+		return ret
+	}
+	return *o.Name
+}
+
+// GetNameOk returns a tuple with the Name field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *UpdateHiveRequestBody) GetNameOk() (*string, bool) {
+	if o == nil || IsNil(o.Name) {
+		return nil, false
+	}
+	return o.Name, true
+}
+
+// HasName returns a boolean if a field has been set.
+func (o *UpdateHiveRequestBody) HasName() bool {
+	if o != nil && !IsNil(o.Name) {
+		return true
+	}
+
+	return false
+}
+
+// SetName gets a reference to the given string and assigns it to the Name field.
+func (o *UpdateHiveRequestBody) SetName(v string) {
+	o.Name = &v
+}
+
 func (o UpdateHiveRequestBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -304,6 +338,9 @@ func (o UpdateHiveRequestBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.MinimumNodes) {
 		toSerialize["minimum_nodes"] = o.MinimumNodes
+	}
+	if !IsNil(o.Name) {
+		toSerialize["name"] = o.Name
 	}
 	return toSerialize, nil
 }

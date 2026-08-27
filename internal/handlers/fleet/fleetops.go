@@ -341,6 +341,18 @@ type HiveDetailView struct {
 type UpdateHiveRequest struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
+		// Renaming is allowed, and validated as a COROSYNC cluster name.
+		//
+		// The name is a label everywhere except one place, and that place is
+		// creating the cluster: `pvecm create` is given the hive's name. So a
+		// hive called "Lab A" cannot become a cluster at all — a space is not
+		// legal — and until this was checked here, the operator found out from a
+		// worker, after clicking the button, with the reason in a job log.
+		//
+		// The same rule applies once a cluster exists, where it holds a
+		// different kind of value: the label keeps matching what corosync calls
+		// it, instead of drifting into a second name for the same thing.
+		Name        *string `json:"name,omitempty" doc:"Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric."`
 		Description *string `json:"description,omitempty"`
 		APIURL      *string `json:"api_url,omitempty" doc:"e.g. https://10.0.0.1:8006/api2/json"`
 		// NO format:"uuid" HERE, deliberately. The empty string is a legal value
@@ -463,6 +475,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		}
 
 		fields := map[string]any{}
+		if in.Body.Name != nil {
+			name := strings.TrimSpace(*in.Body.Name)
+			if err := tenant.ValidateClusterName(name); err != nil {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+			fields["name"] = name
+		}
 		if in.Body.Description != nil {
 			fields["description"] = *in.Body.Description
 		}

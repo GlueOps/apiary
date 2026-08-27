@@ -310,6 +310,18 @@ export const Hypervisors = () => {
   // is JOINED. Read off the chosen cluster rather than asked, because the node
   // count already decides it and there is no second answer available.
   const chosenHive = hiveList.find((h) => h.id === arriveHive);
+  // Radix resolves a trigger's label from the MOUNTED item with the matching
+  // value, so on the render where the value is set but the list has not arrived
+  // — or where the item is in a closed popover — the raw uuid is shown. A uuid
+  // is not a slower way of saying the name; it is a different fact, and nobody
+  // picks a cluster by it.
+  const hiveLabel = () => {
+    if (!arriveHive) return hiveList.length ? 'Choose a cluster' : 'No clusters yet';
+    if (!chosenHive) return hives.isLoading ? 'Loading…' : 'A cluster that no longer exists';
+    return chosenHive.node_count === 0
+      ? `${chosenHive.name} — no nodes yet, so it is created here`
+      : `${chosenHive.name} (${chosenHive.node_count} node${chosenHive.node_count === 1 ? '' : 's'})`;
+  };
   const creatingTheCluster = chosenHive !== undefined && chosenHive.node_count === 0;
   const submitting = arrive.isPending || bootstrap.isPending;
 
@@ -721,12 +733,15 @@ export const Hypervisors = () => {
             <Label htmlFor="target-cluster">Destination cluster</Label>
             <Select value={arriveHive} onValueChange={(v) => setArriveHive(v ?? '')}>
               <SelectTrigger id="target-cluster">
-                <SelectValue placeholder="Choose a cluster" />
+                <SelectValue>{hiveLabel()}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {hiveList.map((h) => (
                   <SelectItem key={h.id} value={h.id}>
-                    {h.name} ({h.node_count} node{h.node_count === 1 ? '' : 's'})
+                    {h.name}{' '}
+                    {h.node_count === 0
+                      ? '— no nodes yet, so it is created here'
+                      : `(${h.node_count} node${h.node_count === 1 ? '' : 's'})`}
                   </SelectItem>
                 ))}
               </SelectContent>

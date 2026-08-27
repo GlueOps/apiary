@@ -1987,6 +1987,10 @@ export type UpdateHiveRequestBody = {
      * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
      */
     minimum_nodes?: number;
+    /**
+     * Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
+     */
+    name?: string;
 };
 
 export type UpdateMeRequestBody = {
@@ -3253,6 +3257,10 @@ export type UpdateHiveRequestBodyWritable = {
      * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
      */
     minimum_nodes?: number;
+    /**
+     * Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
+     */
+    name?: string;
 };
 
 export type UpdateMeRequestBodyWritable = {

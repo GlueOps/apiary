@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -261,9 +262,18 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		if err != nil {
 			return nil, err
 		}
+		// Validated as a COROSYNC cluster name, because that is what it becomes
+		// on the day this cluster acquires its first node: `pvecm create` is
+		// given the hive's name. Accepting "Lab A" here only defers the refusal
+		// to a worker, after the operator has bound a credential, chosen rings
+		// and clicked the button — with the reason in a job log.
+		name := strings.TrimSpace(in.Body.Name)
+		if err := tenant.ValidateClusterName(name); err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
 		// No organization column: the database is the organization.
 		hive := tenant.Hive{
-			Name: in.Body.Name, Provider: provider, Description: in.Body.Description,
+			Name: name, Provider: provider, Description: in.Body.Description,
 		}
 		if err := db.WithContext(ctx).Create(&hive).Error; err != nil {
 			return nil, mapErr(ctx, err)
