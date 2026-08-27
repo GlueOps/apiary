@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { firewallSetsListOptions } from '@/sdk/@tanstack/react-query.gen';
+import type { SetView } from '@/sdk/types.gen';
 import type { RuleBodyWritable, RuleView } from '@/sdk/types.gen';
 
 export type Family = 'inet' | 'ip' | 'ip6';
@@ -345,6 +346,20 @@ export function RuleFormDialog({
   const dstCidrError = draft.dst_set_id ? null : cidrProblem(draft.dst_cidr, draft.family);
 
   const setById = (id: string) => sets.find((x) => x.id === id) ?? null;
+
+  // The trigger renders its label EXPLICITLY rather than letting the select
+  // resolve it from a matching item.
+  //
+  // The list is fetched when this form mounts, so on the first render — which is
+  // the one an operator sees when editing a rule that already names a set —
+  // there are no items to match against and the raw uuid is shown instead of the
+  // name. A uuid in a field is not a slower way of saying the name; it is a
+  // different piece of information, and not one anybody chose a set by.
+  const setLabel = (id: string, found: SetView | null) => {
+    if (!id) return 'A range, not a set';
+    if (!found) return setsQuery.isLoading ? 'Loading…' : 'A set that no longer exists';
+    return `${found.name} (${(found.elements ?? []).length})`;
+  };
   const srcSet = setById(draft.src_set_id);
   const dstSet = setById(draft.dst_set_id);
 
@@ -545,7 +560,7 @@ export function RuleFormDialog({
               onValueChange={(v) => set('src_set_id', v === 'none' ? '' : (v ?? ''))}
             >
               <SelectTrigger id="rule-src-set" className="w-full">
-                <SelectValue />
+                <SelectValue>{setLabel(draft.src_set_id, srcSet)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">A range, not a set</SelectItem>
@@ -590,7 +605,7 @@ export function RuleFormDialog({
               onValueChange={(v) => set('dst_set_id', v === 'none' ? '' : (v ?? ''))}
             >
               <SelectTrigger id="rule-dst-set" className="w-full">
-                <SelectValue />
+                <SelectValue>{setLabel(draft.dst_set_id, dstSet)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">A range, not a set</SelectItem>
