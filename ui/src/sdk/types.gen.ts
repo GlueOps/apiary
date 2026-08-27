@@ -186,6 +186,34 @@ export type ArriveResponseBody = {
     queued: boolean;
 };
 
+export type AuditEventView = {
+    action: string;
+    /**
+     * The platform administrator behind an impersonated session, when there was one.
+     */
+    actor_id?: string;
+    created_at: string;
+    /**
+     * Why it was refused. Empty when it was not.
+     */
+    detail?: string;
+    id: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+    /**
+     * ok, refused or failed.
+     */
+    outcome: string;
+    principal_id: string;
+    /**
+     * user, org_key, agent or system.
+     */
+    principal_kind: string;
+    target_id?: string;
+    target_kind: string;
+};
+
 export type AuthenticatorSelection = {
     authenticatorAttachment?: string;
     requireResidentKey?: boolean;
@@ -1035,6 +1063,14 @@ export type ListApiKeysResponseBody = {
      */
     readonly $schema?: string;
     keys: Array<ApiKeyView> | null;
+};
+
+export type ListAuditResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    events: Array<AuditEventView> | null;
 };
 
 export type ListBeesResponseBody = {
@@ -2740,6 +2776,10 @@ export type ListApiKeysResponseBodyWritable = {
     keys: Array<ApiKeyView> | null;
 };
 
+export type ListAuditResponseBodyWritable = {
+    events: Array<AuditEventView> | null;
+};
+
 export type ListBeesResponseBodyWritable = {
     bees: Array<BeeView> | null;
 };
@@ -3648,6 +3688,49 @@ export type ApiKeysRevokeResponses = {
 };
 
 export type ApiKeysRevokeResponse = ApiKeysRevokeResponses[keyof ApiKeysRevokeResponses];
+
+export type AuditEventsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Exact action, e.g. hypervisor.cordon.
+         */
+        action?: string;
+        /**
+         * hypervisor, hive, agent, firewall, estate or fleet.
+         */
+        target_kind?: string;
+        /**
+         * Narrow to one resource.
+         */
+        target_id?: string;
+        /**
+         * Default 50.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/audit/events';
+};
+
+export type AuditEventsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type AuditEventsListError = AuditEventsListErrors[keyof AuditEventsListErrors];
+
+export type AuditEventsListResponses = {
+    /**
+     * OK
+     */
+    200: ListAuditResponseBody;
+};
+
+export type AuditEventsListResponse = AuditEventsListResponses[keyof AuditEventsListResponses];
 
 export type AuthForgotPasswordData = {
     body: ForgotPasswordRequestBodyWritable;

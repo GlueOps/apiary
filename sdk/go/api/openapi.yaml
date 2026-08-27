@@ -454,6 +454,85 @@ paths:
       summary: Revoke an API key
       tags:
       - API Keys
+  /api/v1/audit/events:
+    get:
+      description: |-
+        Every action taken inside this organization's boundary, newest first: who took it, what it was done to, and whether it was allowed.
+
+        REFUSALS ARE RECORDED TOO. Someone who tried to depart a node and was told no is a different fact from someone who never tried, and only one of them appears in the result of the action.
+
+        The principal is not always a person. An organization API key authenticates a tenant rather than a human, and its actions are recorded against the key — so that 'automation did this' and 'nobody knows who did this' never look the same here.
+      operationId: audit-events-list
+      parameters:
+      - description: "Exact action, e.g. hypervisor.cordon."
+        explode: false
+        in: query
+        name: action
+        required: false
+        schema:
+          description: "Exact action, e.g. hypervisor.cordon."
+          type: string
+        style: form
+      - description: "hypervisor, hive, agent, firewall, estate or fleet."
+        explode: false
+        in: query
+        name: target_kind
+        required: false
+        schema:
+          description: "hypervisor, hive, agent, firewall, estate or fleet."
+          type: string
+        style: form
+      - description: Narrow to one resource.
+        explode: false
+        in: query
+        name: target_id
+        required: false
+        schema:
+          description: Narrow to one resource.
+          type: string
+        style: form
+      - description: Default 50.
+        explode: false
+        in: query
+        name: limit
+        required: false
+        schema:
+          description: Default 50.
+          format: int64
+          maximum: 200
+          minimum: 1
+          type: integer
+        style: form
+      - explode: false
+        in: query
+        name: offset
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: "What has been done in this organization, and by whom"
+      tags:
+      - Fleet
   /api/v1/auth/forgot-password:
     post:
       description: Sends a password reset link if the address belongs to an active
@@ -4320,6 +4399,59 @@ components:
       required:
       - detail
       - queued
+    AuditEventView:
+      additionalProperties: false
+      example:
+        action: action
+        actor_id: actor_id
+        created_at: 2000-01-23T04:56:07.000+00:00
+        detail: detail
+        id: id
+        metadata:
+          key: ""
+        outcome: outcome
+        principal_id: principal_id
+        principal_kind: principal_kind
+        target_id: target_id
+        target_kind: target_kind
+      properties:
+        action:
+          type: string
+        actor_id:
+          description: "The platform administrator behind an impersonated session,\
+            \ when there was one."
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        detail:
+          description: Why it was refused. Empty when it was not.
+          type: string
+        id:
+          type: string
+        metadata:
+          additionalProperties:
+            nullable: true
+        outcome:
+          description: "ok, refused or failed."
+          type: string
+        principal_id:
+          type: string
+        principal_kind:
+          description: "user, org_key, agent or system."
+          type: string
+        target_id:
+          type: string
+        target_kind:
+          type: string
+      required:
+      - action
+      - created_at
+      - id
+      - outcome
+      - principal_id
+      - principal_kind
+      - target_kind
     AuthenticatorSelection:
       additionalProperties: false
       example:
@@ -6290,6 +6422,49 @@ components:
           default: null
       required:
       - keys
+    ListAuditResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        events:
+        - action: action
+          actor_id: actor_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          detail: detail
+          id: id
+          metadata:
+            key: ""
+          outcome: outcome
+          principal_id: principal_id
+          principal_kind: principal_kind
+          target_id: target_id
+          target_kind: target_kind
+        - action: action
+          actor_id: actor_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          detail: detail
+          id: id
+          metadata:
+            key: ""
+          outcome: outcome
+          principal_id: principal_id
+          principal_kind: principal_kind
+          target_id: target_id
+          target_kind: target_kind
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        events:
+          items:
+            $ref: "#/components/schemas/AuditEventView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - events
     ListBeesResponseBody:
       additionalProperties: false
       example:

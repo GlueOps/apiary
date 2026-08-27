@@ -278,6 +278,8 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		if err := db.WithContext(ctx).Create(&hive).Error; err != nil {
 			return nil, mapErr(ctx, err)
 		}
+		auditOK(ctx, db, p, tenant.AuditHiveCreate, tenant.AuditTargetHive, &hive.ID,
+			map[string]any{"name": hive.Name, "provider": hive.Provider})
 		return &CreateHiveResponse{Body: HiveView{ID: hive.ID.String(), Name: hive.Name, Provider: hive.Provider}}, nil
 	})
 
@@ -313,11 +315,15 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		// be adopted into this cluster by a capacity sync between the count and the
 		// delete, and the delete would then take the cluster out from under a live
 		// machine record.
+		// Captured outside the transaction because the audit row is written after
+		// it, by which point the cluster is gone and its id resolves to nothing.
+		var hiveName string
 		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var hive tenant.Hive
 			if err := tx.First(&hive, "id = ?", id).Error; err != nil {
 				return err
 			}
+			hiveName = hive.Name
 			var members int64
 			if err := tx.Model(&tenant.Hypervisor{}).
 				Where("hive_id = ?", id).Count(&members).Error; err != nil {
@@ -344,10 +350,20 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			}
 			var se huma.StatusError
 			if errors.As(err, &se) {
+				// A refused delete is worth a row: someone tried to remove a
+				// cluster that still holds machines, and an incident review reads
+				// the absence of that as nobody having tried.
+				auditRefused(ctx, db, p, tenant.AuditHiveDelete, tenant.AuditTargetHive, &id,
+					err.Error(), map[string]any{"name": hiveName})
 				return nil, err
 			}
 			return nil, mapErr(ctx, err)
 		}
+		// Recorded AFTER the delete, so the row describes something that happened
+		// rather than something attempted. The cluster's name is in the metadata
+		// because the id it refers to no longer resolves to anything.
+		auditOK(ctx, db, p, tenant.AuditHiveDelete, tenant.AuditTargetHive, &id,
+			map[string]any{"name": hiveName})
 		return &DeleteHiveResponse{}, nil
 	})
 
@@ -644,6 +660,9 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		if err != nil {
 			return nil, err
 		}
+		auditOK(ctx, db, p, tenant.AuditAgentRemove, tenant.AuditTargetBee, &beeID,
+			map[string]any{"hypervisor_id": hypID})
+
 		out := &DeleteBeeResponse{}
 		out.Body.HypervisorID = hypID
 		out.Body.Detail = "agent removed and its credential revoked; the machine record survives"

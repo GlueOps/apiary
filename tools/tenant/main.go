@@ -11,6 +11,7 @@ import (
 
 func main() {
 	stmts, err := gormschema.New("postgres").Load(
+		&tenant.AuditEvent{},
 		&tenant.Credential{},
 		&tenant.Estate{},
 		&tenant.SshKey{},

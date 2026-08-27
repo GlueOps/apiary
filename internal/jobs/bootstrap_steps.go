@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
 )
@@ -71,7 +73,7 @@ func CreateCluster(
 	// The command's own output is not the evidence, for the same reason it is not
 	// on the join path: pvecm reports success before the local stack has
 	// necessarily converged.
-	return AssertClusterCreated(ctx, r, name)
+	return AwaitClusterCreated(ctx, r, name)
 }
 
 // AssertClusterCreated verifies the node is now a quorate single-node cluster
@@ -83,6 +85,62 @@ func CreateCluster(
 // from a healthy one until the first configuration change fails. The NODE COUNT
 // catches the case this whole operation exists to avoid: a "create" that in fact
 // joined something, leaving a cluster with members nobody here added.
+// clusterSettle bounds the wait for a freshly created cluster to converge.
+//
+// Vars rather than consts so a test can shorten them; nothing writes to them at
+// runtime.
+var (
+	clusterSettleTimeout  = 90 * time.Second
+	clusterSettleInterval = 3 * time.Second
+)
+
+// AwaitClusterCreated waits for the cluster to exist AND be quorate.
+//
+// `pvecm create` returns before corosync has finished starting, so the very
+// first `pvecm status` after it routinely reports no Quorate line at all. Read
+// once, that is indistinguishable from a cluster that came up without quorum,
+// and it was reported as one: a lab bootstrap failed with
+//
+//	cluster "lab-b" was created but is not quorate (Quorate: "")
+//
+// having created the cluster perfectly well. The job then never reached
+// MarkJoined, so the control plane never recorded membership, and every retry
+// refused because the host was by then already a member of the cluster it had
+// just built. The cluster existed and nothing knew.
+//
+// The same mistake as trusting the exit code, one step later: the command
+// finishing is not the state arriving.
+func AwaitClusterCreated(ctx context.Context, r Runner, wantName string) error {
+	deadline := time.Now().Add(clusterSettleTimeout)
+	var last error
+	for {
+		last = AssertClusterCreated(ctx, r, wantName)
+		if last == nil {
+			return nil
+		}
+		// A cluster reporting the WRONG NAME is not going to converge into the
+		// right one, and neither is a host that reports no cluster at all after
+		// a create that claimed success. Only the not-yet-quorate case is worth
+		// waiting on.
+		if !errors.Is(last, errNotYetQuorate) {
+			return last
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("bootstrap: cluster %q was created but did not reach quorum within "+
+				"%s: %w", wantName, clusterSettleTimeout, last)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(clusterSettleInterval):
+		}
+	}
+}
+
+// errNotYetQuorate marks the one failure worth retrying: the cluster is there
+// and has not finished forming.
+var errNotYetQuorate = errors.New("not yet quorate")
+
 func AssertClusterCreated(ctx context.Context, r Runner, wantName string) error {
 	out, err := r.Run(ctx, `pvecm status 2>&1 || true`)
 	if err != nil {
@@ -107,8 +165,10 @@ func AssertClusterCreated(ctx context.Context, r Runner, wantName string) error 
 	}
 
 	if gotName == "" {
-		return fmt.Errorf("bootstrap: `pvecm create %s` reported success but the node is in no "+
-			"cluster afterwards; its output was: %s", wantName, strings.TrimSpace(out))
+		// Transient too: pmxcfs has to restart before the name appears, so an
+		// empty read moments after create is "not yet", not "never".
+		return fmt.Errorf("%w: `pvecm create %s` reported success but the node reports no "+
+			"cluster yet; its output was: %s", errNotYetQuorate, wantName, strings.TrimSpace(out))
 	}
 	if gotName != wantName {
 		return fmt.Errorf("bootstrap: created cluster %q but the node reports %q; the control "+
@@ -116,11 +176,16 @@ func AssertClusterCreated(ctx context.Context, r Runner, wantName string) error 
 			wantName, gotName)
 	}
 	if !strings.EqualFold(quorate, "yes") {
-		return fmt.Errorf("bootstrap: cluster %q was created but is not quorate (Quorate: %q); "+
+		return fmt.Errorf("%w: cluster %q was created but is not quorate (Quorate: %q); "+
 			"/etc/pve is read-only in that state and every later configuration change fails",
-			wantName, quorate)
+			errNotYetQuorate, wantName, quorate)
 	}
+	// Also transient: the node count is read from corosync membership, which is
+	// empty for a moment after the service starts.
 	if nodes != 1 {
+		if nodes < 1 {
+			return fmt.Errorf("%w: cluster %q reports %d nodes", errNotYetQuorate, wantName, nodes)
+		}
 		return fmt.Errorf("bootstrap: cluster %q reports %d nodes immediately after creation, "+
 			"want exactly 1; something other than this host is already a member, so this was a "+
 			"join wearing a create's clothes", wantName, nodes)

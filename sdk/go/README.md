@@ -125,6 +125,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallSetsUpdate**](docs/FirewallAPI.md#firewallsetsupdate) | **Put** /api/v1/firewall/sets/{id} | Rename a firewall set
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
+*FleetAPI* | [**AuditEventsList**](docs/FleetAPI.md#auditeventslist) | **Get** /api/v1/audit/events | What has been done in this organization, and by whom
 *FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
@@ -198,6 +199,7 @@ Class | Method | HTTP request | Description
  - [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
+ - [AuditEventView](docs/AuditEventView.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
  - [BeeView](docs/BeeView.md)
  - [BindingScopeBody](docs/BindingScopeBody.md)
@@ -261,6 +263,7 @@ Class | Method | HTTP request | Description
  - [Item](docs/Item.md)
  - [KeyView](docs/KeyView.md)
  - [ListAPIKeysResponseBody](docs/ListAPIKeysResponseBody.md)
+ - [ListAuditResponseBody](docs/ListAuditResponseBody.md)
  - [ListBeesResponseBody](docs/ListBeesResponseBody.md)
  - [ListBindingsResponseBody](docs/ListBindingsResponseBody.md)
  - [ListFleetlessResponseBody](docs/ListFleetlessResponseBody.md)

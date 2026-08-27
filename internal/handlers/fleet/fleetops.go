@@ -297,6 +297,40 @@ func bootstrapRefusalViews(rs []tenant.BootstrapRefusal) []RefusalView {
 	return out
 }
 
+type ListAuditRequest struct {
+	Action     string `query:"action" doc:"Exact action, e.g. hypervisor.cordon."`
+	TargetKind string `query:"target_kind" doc:"hypervisor, hive, agent, firewall, estate or fleet."`
+	TargetID   string `query:"target_id" doc:"Narrow to one resource."`
+	Limit      int    `query:"limit" minimum:"1" maximum:"200" doc:"Default 50."`
+	Offset     int    `query:"offset" minimum:"0"`
+}
+
+// AuditEventView is one recorded action.
+//
+// The principal is returned as an id and a KIND rather than a resolved name.
+// Resolving it would mean a lookup per row against a different database, and a
+// name that changed since the action would misreport history — the id is what
+// was true at the time.
+type AuditEventView struct {
+	ID            string         `json:"id"`
+	PrincipalID   string         `json:"principal_id"`
+	PrincipalKind string         `json:"principal_kind" doc:"user, org_key, agent or system."`
+	ActorID       string         `json:"actor_id,omitempty" doc:"The platform administrator behind an impersonated session, when there was one."`
+	Action        string         `json:"action"`
+	TargetKind    string         `json:"target_kind"`
+	TargetID      string         `json:"target_id,omitempty"`
+	Outcome       string         `json:"outcome" doc:"ok, refused or failed."`
+	Detail        string         `json:"detail,omitempty" doc:"Why it was refused. Empty when it was not."`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	CreatedAt     string         `json:"created_at" format:"date-time"`
+}
+
+type ListAuditResponse struct {
+	Body struct {
+		Events []AuditEventView `json:"events"`
+	}
+}
+
 type SyncHiveRequest struct {
 	ID string `path:"id" format:"uuid"`
 }
@@ -731,6 +765,18 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, huma.Error404NotFound("hypervisor not found")
 		}
 
+		// THE ACTION THAT PROMPTED ALL OF THIS. A node found schedulable could
+		// not be explained: an operator un-cordoning it deliberately and the
+		// control plane resetting it looked identical afterwards, and those are
+		// the difference between "fine" and "a node took placements before
+		// anything confirmed it was healthy in its new cluster".
+		action := tenant.AuditHypervisorCordon
+		if in.Body.Schedulable {
+			action = tenant.AuditHypervisorUncordon
+		}
+		auditOK(ctx, db, p, action, tenant.AuditTargetHypervisor, &id,
+			map[string]any{"schedulable": in.Body.Schedulable})
+
 		var hv tenant.Hypervisor
 		if err := db.WithContext(ctx).First(&hv, "id = ?", id).Error; err != nil {
 			return nil, mapErr(ctx, err)
@@ -857,6 +903,8 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			// an operator's click into an immediate, explained refusal instead of a
 			// job that fails somewhere they have to go and look for it. The job's
 			// own check remains authoritative, because state moves between the two.
+			auditRefused(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor,
+				&id, refusalCodes(refusalViews(refusals)), nil)
 			return nil, refusalConflict("this hypervisor cannot leave its hive yet", refusalViews(refusals))
 		}
 
@@ -870,6 +918,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		}); err != nil {
 			return nil, mapErr(ctx, err)
 		}
+
+		// The credential disposition is recorded because it is a decision with a
+		// security consequence: accepting exposure leaves the departed host
+		// holding credentials for the cluster it left, and six months later the
+		// only record that somebody chose that is this row.
+		auditOK(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor, &id,
+			map[string]any{"credential_disposition": in.Body.CredentialDisposition})
 
 		out := &DepartResponse{}
 		out.Body.Queued = true
@@ -1025,6 +1080,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			TargetNodeCount: int(nodes),
 		})
 		if len(refusals) > 0 {
+			auditRefused(ctx, db, p, tenant.AuditHypervisorArrive, tenant.AuditTargetHypervisor,
+				&hypID, refusalCodes(arrivalRefusalViews(refusals)),
+				map[string]any{"target_hive": hive.Name})
 			return nil, refusalConflict("this host cannot join that hive yet", arrivalRefusalViews(refusals))
 		}
 
@@ -1039,6 +1097,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		}); err != nil {
 			return nil, mapErr(ctx, err)
 		}
+
+		auditOK(ctx, db, p, tenant.AuditHypervisorArrive, tenant.AuditTargetHypervisor, &hypID,
+			map[string]any{"target_hive": hive.Name, "target_hive_id": hiveID.String()})
 
 		out := &ArriveResponse{}
 		out.Body.Queued = true
@@ -1115,6 +1176,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			ProvisioningState: hv.ProvisioningState,
 		})
 		if len(refusals) > 0 {
+			auditRefused(ctx, db, p, tenant.AuditHypervisorBootstrap, tenant.AuditTargetHypervisor,
+				&hypID, refusalCodes(bootstrapRefusalViews(refusals)),
+				map[string]any{"target_hive": hive.Name})
 			return nil, refusalConflict("this host cannot create that cluster",
 				bootstrapRefusalViews(refusals))
 		}
@@ -1131,9 +1195,83 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, mapErr(ctx, err)
 		}
 
+		auditOK(ctx, db, p, tenant.AuditHypervisorBootstrap, tenant.AuditTargetHypervisor, &hypID,
+			map[string]any{"cluster": hive.Name, "cluster_id": hiveID.String()})
+
 		out := &BootstrapResponse{}
 		out.Body.Queued = true
 		out.Body.Detail = fmt.Sprintf("creating %q on this host, queued", hive.Name)
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "audit-events-list",
+		Method:      http.MethodGet,
+		Path:        "/audit/events",
+		Summary:     "What has been done in this organization, and by whom",
+		Description: "Every action taken inside this organization's boundary, newest first: who " +
+			"took it, what it was done to, and whether it was allowed.\n\n" +
+			"REFUSALS ARE RECORDED TOO. Someone who tried to depart a node and was told no is a " +
+			"different fact from someone who never tried, and only one of them appears in the " +
+			"result of the action.\n\n" +
+			"The principal is not always a person. An organization API key authenticates a tenant " +
+			"rather than a human, and its actions are recorded against the key — so that " +
+			"'automation did this' and 'nobody knows who did this' never look the same here.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *ListAuditRequest) (*ListAuditResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		f := repo.AuditFilter{
+			Action:     strings.TrimSpace(in.Action),
+			TargetKind: strings.TrimSpace(in.TargetKind),
+			Limit:      in.Limit,
+			Offset:     in.Offset,
+		}
+		if strings.TrimSpace(in.TargetID) != "" {
+			tid, perr := uuid.Parse(in.TargetID)
+			if perr != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid target id")
+			}
+			f.TargetID = &tid
+		}
+
+		events, err := repo.ListAudit(ctx, db, f)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &ListAuditResponse{}
+		out.Body.Events = make([]AuditEventView, 0, len(events))
+		for _, e := range events {
+			v := AuditEventView{
+				ID:            e.ID.String(),
+				PrincipalID:   e.PrincipalID.String(),
+				PrincipalKind: e.PrincipalKind,
+				Action:        e.Action,
+				TargetKind:    e.TargetKind,
+				Outcome:       e.Outcome,
+				Detail:        e.Detail,
+				CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
+			}
+			if e.TargetID != nil {
+				v.TargetID = e.TargetID.String()
+			}
+			if e.ActorID != nil {
+				v.ActorID = e.ActorID.String()
+			}
+			if m := e.Metadata.Data(); len(m) > 0 {
+				v.Metadata = m
+			}
+			out.Body.Events = append(out.Body.Events, v)
+		}
 		return out, nil
 	})
 
@@ -1322,6 +1460,17 @@ func reprovisionRefusals(hv tenant.Hypervisor, now time.Time) []RefusalView {
 // 409 rather than 422: the request is well-formed and would be valid at another
 // moment. And never 500 — a refusal is the gate working, and reporting an
 // operator's own drain policy as a server error puts it on their 5xx dashboard.
+// refusalCodes joins the reason codes for the audit trail.
+//
+// Codes rather than prose: they are stable, and a trail is read by filtering.
+func refusalCodes(rs []RefusalView) string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, r.Code)
+	}
+	return strings.Join(out, ",")
+}
+
 func refusalConflict(message string, rs []RefusalView) error {
 	details := make([]error, 0, len(rs))
 	for _, r := range rs {

@@ -31,6 +31,7 @@ docs/AgentUpgradeRequestBody.md
 docs/AgentUpgradeResponseBody.md
 docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
+docs/AuditEventView.md
 docs/AuthAPI.md
 docs/AuthenticatorSelection.md
 docs/BeeView.md
@@ -99,6 +100,7 @@ docs/InvitationsAPI.md
 docs/Item.md
 docs/KeyView.md
 docs/ListAPIKeysResponseBody.md
+docs/ListAuditResponseBody.md
 docs/ListBeesResponseBody.md
 docs/ListBindingsResponseBody.md
 docs/ListFleetlessResponseBody.md
@@ -219,6 +221,7 @@ model_agent_upgrade_response_body.go
 model_api_key_view.go
 model_arrive_request_body.go
 model_arrive_response_body.go
+model_audit_event_view.go
 model_authenticator_selection.go
 model_bee_view.go
 model_binding_scope_body.go
@@ -282,6 +285,7 @@ model_invitation_view.go
 model_item.go
 model_key_view.go
 model_list_api_keys_response_body.go
+model_list_audit_response_body.go
 model_list_bees_response_body.go
 model_list_bindings_response_body.go
 model_list_fleetless_response_body.go

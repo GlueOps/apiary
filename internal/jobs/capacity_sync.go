@@ -205,10 +205,30 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 			// than creating.
 			if !known {
 				if m := tenant.MatchMachineByNodeName(unclustered, name, addrs[name]); m != nil {
+					// CORDONED on adoption, for the reason MarkJoined cordons on a
+					// join: nothing has observed this machine's capacity in this
+					// cluster yet, and Proxmox reports zeros for a node the moment
+					// it appears. Landing a guest on it in that window is not the
+					// control plane's call to make.
+					//
+					// Adoption specifically means the membership was NOT recorded
+					// through this system — a join that failed after `pvecm` had
+					// already succeeded, or one performed out of band. Observed in
+					// the lab: a bootstrap created the cluster, failed its own
+					// post-create check, never reached MarkJoined, and the node
+					// arrived in the fleet schedulable because this path set
+					// membership and nothing cordoned it.
+					//
+					// A node in a pre-existing cluster that this system never
+					// onboarded is unaffected: it has no unclustered record to
+					// adopt, so it takes the create branch below and keeps the
+					// schedulable default, which is right for a host nobody has
+					// expressed intent about.
 					if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", m.ID).
 						Updates(map[string]any{
-							"hive_id": hiveID,
-							"name":    name,
+							"hive_id":     hiveID,
+							"name":        name,
+							"schedulable": false,
 						}).Error; err != nil {
 						return fmt.Errorf("adopt machine %q into this hive: %w", name, err)
 					}

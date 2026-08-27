@@ -23,6 +23,208 @@ import (
 // FleetAPIService FleetAPI service
 type FleetAPIService service
 
+type ApiAuditEventsListRequest struct {
+	ctx context.Context
+	ApiService *FleetAPIService
+	action *string
+	targetKind *string
+	targetId *string
+	limit *int64
+	offset *int64
+}
+
+// Exact action, e.g. hypervisor.cordon.
+func (r ApiAuditEventsListRequest) Action(action string) ApiAuditEventsListRequest {
+	r.action = &action
+	return r
+}
+
+// hypervisor, hive, agent, firewall, estate or fleet.
+func (r ApiAuditEventsListRequest) TargetKind(targetKind string) ApiAuditEventsListRequest {
+	r.targetKind = &targetKind
+	return r
+}
+
+// Narrow to one resource.
+func (r ApiAuditEventsListRequest) TargetId(targetId string) ApiAuditEventsListRequest {
+	r.targetId = &targetId
+	return r
+}
+
+// Default 50.
+func (r ApiAuditEventsListRequest) Limit(limit int64) ApiAuditEventsListRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiAuditEventsListRequest) Offset(offset int64) ApiAuditEventsListRequest {
+	r.offset = &offset
+	return r
+}
+
+func (r ApiAuditEventsListRequest) Execute() (*ListAuditResponseBody, *http.Response, error) {
+	return r.ApiService.AuditEventsListExecute(r)
+}
+
+/*
+AuditEventsList What has been done in this organization, and by whom
+
+Every action taken inside this organization's boundary, newest first: who took it, what it was done to, and whether it was allowed.
+
+REFUSALS ARE RECORDED TOO. Someone who tried to depart a node and was told no is a different fact from someone who never tried, and only one of them appears in the result of the action.
+
+The principal is not always a person. An organization API key authenticates a tenant rather than a human, and its actions are recorded against the key — so that 'automation did this' and 'nobody knows who did this' never look the same here.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return ApiAuditEventsListRequest
+*/
+func (a *FleetAPIService) AuditEventsList(ctx context.Context) ApiAuditEventsListRequest {
+	return ApiAuditEventsListRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+//  @return ListAuditResponseBody
+func (a *FleetAPIService) AuditEventsListExecute(r ApiAuditEventsListRequest) (*ListAuditResponseBody, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *ListAuditResponseBody
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "FleetAPIService.AuditEventsList")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/api/v1/audit/events"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.action != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "action", r.action, "form", "")
+	}
+	if r.targetKind != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "target_kind", r.targetKind, "form", "")
+	}
+	if r.targetId != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "target_id", r.targetId, "form", "")
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	}
+	if r.offset != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "offset", r.offset, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json", "application/problem+json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["OrgKeySecret"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-ORG-Secret"] = key
+			}
+		}
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["OrgKeyAuth"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-ORG-Key"] = key
+			}
+		}
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["ApiKeyAuth"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-API-Key"] = key
+			}
+		}
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+			var v ErrorModel
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiFleetAgentUpgradeRequest struct {
 	ctx context.Context
 	ApiService *FleetAPIService
