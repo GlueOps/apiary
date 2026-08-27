@@ -175,3 +175,58 @@ func keys(m map[string][]byte) []string {
 	}
 	return out
 }
+
+// The unit must not sandbox away the agent's primary job.
+//
+// This agent exists to run `apt-get dist-upgrade` on a Proxmox host. Three
+// directives break that, each failing at the NEXT step so the previous fix looks
+// like progress: without CAP_SETUID apt cannot drop to _apt and `apt-get update`
+// exits 100; ProtectHome makes /root read-only and the proxmox-kernel postinst
+// cannot write /root/.ssh; RestrictNamespaces blocks the unshare(2) that
+// proxmox-boot-sync uses, leaving initramfs-tools unconfigured.
+//
+// Measured against a live node, not reasoned about. This test is here so the
+// next person tightening the unit has to delete an explanation rather than
+// silently re-break a dist-upgrade that only fails on hosts they do not own.
+func TestTheUnitDoesNotSandboxAwayDistUpgrade(t *testing.T) {
+	// Directives only, never a substring of the whole file — the unit EXPLAINS
+	// which options are excluded and why, so a naive Contains matches the very
+	// comment that documents the exclusion.
+	directives := map[string]bool{}
+	for _, line := range strings.Split(string(Unit), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
+			continue
+		}
+		directives[line] = true
+	}
+	has := func(d string) bool { return directives[d] }
+
+	for _, forbidden := range []string{
+		"ProtectHome=yes",
+		"RestrictNamespaces=yes",
+		"ProtectSystem=strict",
+		"ProtectKernelModules=yes",
+	} {
+		if has(forbidden) {
+			t.Errorf("%s breaks apt dist-upgrade on Proxmox; see the comment above it in the unit", forbidden)
+		}
+	}
+
+	// apt drops to uid 42 for its download methods and cannot without this.
+	if !has("AmbientCapabilities=CAP_SETUID CAP_SETGID") {
+		t.Error("the unit must grant CAP_SETUID, or apt-get update fails before reading a package")
+	}
+
+	// The narrowing that costs nothing must stay — this is not licence to drop
+	// hardening wholesale.
+	for _, required := range []string{
+		"NoNewPrivileges=yes",
+		"RestrictSUIDSGID=yes",
+		"LockPersonality=yes",
+	} {
+		if !has(required) {
+			t.Errorf("%s costs this agent nothing and must stay", required)
+		}
+	}
+}

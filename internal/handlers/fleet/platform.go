@@ -444,7 +444,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 
 		task := tenant.FleetTask{
 			BeeID: beeID, Kind: in.Body.Kind, Spec: datatypes.JSON(spec),
-			Status: tenant.FleetTaskPending, CreatedByID: *p.UserID,
+			Status: tenant.FleetTaskPending, CreatedByID: p.UserID,
 		}
 		if err := repo.NewFleetRepoGorm(db).CreateTask(ctx, &task); err != nil {
 			return nil, mapErr(ctx, err)
@@ -509,7 +509,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			digests[b.SHA256] = true
 		}
 
-		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, *p.UserID,
+		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, p.UserID,
 			in.Body.Force, time.Now().UTC(), 2*time.Minute)
 		if err != nil {
 			return nil, mapErr(ctx, err)

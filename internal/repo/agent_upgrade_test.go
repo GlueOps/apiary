@@ -110,7 +110,7 @@ func TestAgentsAlreadyOnTheTargetVersionAreSkipped(t *testing.T) {
 	joinFleet(t, db, current, hive)
 	joinFleet(t, db, old, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestAnOfflineAgentIsNotQueuedForLater(t *testing.T) {
 	offline := seedBee(t, db, "v1.0.0", now.Add(-time.Hour))
 	joinFleet(t, db, offline, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestForceQueuesAnAgentAlreadyOnTheVersion(t *testing.T) {
 	b := seedBee(t, db, "v2.0.0", now)
 	joinFleet(t, db, b, hive)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), true, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), true, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -185,10 +185,10 @@ func TestAnAgentIsQueuedAtMostOnce(t *testing.T) {
 	b := seedBee(t, db, "v1.0.0", now)
 	joinFleet(t, db, b, hive)
 
-	if _, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute); err != nil {
+	if _, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), false, now, 2*time.Minute); err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestScopingToAFleetLeavesOtherFleetsAlone(t *testing.T) {
 	joinFleet(t, db, inA, hiveA)
 	joinFleet(t, db, inB, hiveB)
 
-	got, err := QueueAgentUpgrades(ctx, db, &hiveA.ID, "v2.0.0", serving(), uuid.New(), false, now, 2*time.Minute)
+	got, err := QueueAgentUpgrades(ctx, db, &hiveA.ID, "v2.0.0", serving(), ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestAnAgentRunningTheServedBuildIsSkippedWhateverItsVersionSays(t *testing.
 	// The version differs from the target and the digest matches. Version alone
 	// would queue this agent; the digest says it is already running these bytes.
 	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "dev", serving("sha256:abc"),
-		uuid.New(), false, now, 2*time.Minute)
+		ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
@@ -280,12 +280,47 @@ func TestAnAgentRunningSomethingElseIsQueuedEvenWhenTheVersionMatches(t *testing
 	}
 
 	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v2.0.0", serving("sha256:abc"),
-		uuid.New(), false, now, 2*time.Minute)
+		ptrUUID(uuid.New()), false, now, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("queue: %v", err)
 	}
 	if !bySkip(got, b).Queued {
 		t.Fatal("an agent whose binary is not the served one was skipped because its version " +
 			"label matched")
+	}
+}
+
+// A person queued it. The nil case — an org API key, which has no user — is
+// covered by TestAnOrgKeyQueuesUpgradesWithNoActor.
+func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }
+
+// An org API key has no user behind it, and these endpoints accept one on
+// purpose — they are registered SecurityUserOrKey so a CI job can drive a fleet.
+//
+// The handler dereferenced p.UserID for the actor, which panicked for an org key
+// and returned a 500 with an empty body. Found by calling the endpoint with one.
+func TestAnOrgKeyQueuesUpgradesWithNoActor(t *testing.T) {
+	db := upgradeDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	hive := seedFleet(t, db)
+	b := seedBee(t, db, "v0.0.1", now)
+	joinFleet(t, db, b, hive)
+
+	got, err := QueueAgentUpgrades(ctx, db, &hive.ID, "v0.0.2", serving("sha256:new"),
+		nil, false, now, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("an org key must be able to queue upgrades: %v", err)
+	}
+	if !bySkip(got, b).Queued {
+		t.Fatal("the agent must have been queued")
+	}
+
+	var task tenant.FleetTask
+	if err := db.Where("bee_id = ?", b.ID).First(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	if task.CreatedByID != nil {
+		t.Fatalf("no person queued this, so the actor must be null; got %v", *task.CreatedByID)
 	}
 }
