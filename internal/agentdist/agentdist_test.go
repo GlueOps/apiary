@@ -1,6 +1,7 @@
 package agentdist
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -128,5 +129,49 @@ func TestAPlatformCannotEscapeTheDistributionDirectory(t *testing.T) {
 		if _, err := agentFileName(tc.goos, tc.goarch); err != nil {
 			t.Errorf("%q/%q was refused: %v", tc.goos, tc.goarch, err)
 		}
+	}
+}
+
+// The staleness warning exists because the failure it catches is silent.
+//
+// dist/ is gitignored and built by one recipe nothing depends on, so editing
+// agent code and running the server ships the previous cross-compile with no
+// indication at all. A fix committed at 18:24 was still missing from every
+// onboarded host hours later because the binaries were built at 17:24.
+func TestWarnsWhenTheEmbeddedAgentsAreFromAnotherBuild(t *testing.T) {
+	var got []string
+	collect := func(msg string, args ...any) { got = append(got, msg) }
+
+	stamp := Stamp()
+	if stamp == "" {
+		// No agents cross-compiled into this tree, which is the normal state of a
+		// fresh checkout and of CI. Nothing to compare, and Catalogue already
+		// reports the absence where it matters.
+		WarnIfStale("anything", collect)
+		if len(got) != 0 {
+			t.Fatalf("an empty dist must not warn at every startup; got %v", got)
+		}
+		t.Skip("no agent binaries embedded; the mismatch path needs a built dist")
+	}
+
+	// Matching: silent.
+	WarnIfStale(stamp, collect)
+	if len(got) != 0 {
+		t.Fatalf("agents built from this version must not warn; got %v", got)
+	}
+
+	// Whitespace is not a mismatch — the stamp is written by a shell recipe.
+	WarnIfStale("  "+stamp+"\n", collect)
+	if len(got) != 0 {
+		t.Fatalf("surrounding whitespace must not read as a mismatch; got %v", got)
+	}
+
+	// Differing: says so, and says what to do.
+	WarnIfStale(stamp+"-something-else", collect)
+	if len(got) != 1 {
+		t.Fatalf("a mismatch must warn exactly once; got %v", got)
+	}
+	if !strings.Contains(got[0], "just agent-dist") {
+		t.Fatalf("the warning must name the command that fixes it; got %q", got[0])
 	}
 }
