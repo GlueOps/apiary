@@ -280,7 +280,7 @@ func findOrCreateMachine(tx *gorm.DB, in EnrolBeeInput) (tenant.Hypervisor, erro
 	if err := tx.Where("machine_id IS NULL").Find(&candidates).Error; err != nil {
 		return machine, fmt.Errorf("look for a discovered machine to adopt: %w", err)
 	}
-	if m := tenant.MatchMachineByAddress(candidates, in.Address); m != nil {
+	if m := tenant.MatchMachineByAddress(candidates, in.Address, in.PeerAddress); m != nil {
 		res := tx.Model(&tenant.Hypervisor{}).
 			Where("id = ? AND machine_id IS NULL", m.ID).
 			Updates(map[string]any{"machine_id": in.MachineID, "updated_at": in.Now})

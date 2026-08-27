@@ -128,10 +128,10 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	one.HiveID = nil
 	two.HiveID = nil
 
-	if m := MatchMachineByAddress([]Hypervisor{one}, "hv7.example.com"); m == nil || m.ID != one.ID {
+	if m := MatchMachineByAddress([]Hypervisor{one}, "hv7.example.com", ""); m == nil || m.ID != one.ID {
 		t.Fatal("a single discovered node matching the enrolling host's name must be adopted")
 	}
-	if m := MatchMachineByAddress([]Hypervisor{one, two}, "hv7.example.com"); m != nil {
+	if m := MatchMachineByAddress([]Hypervisor{one, two}, "hv7.example.com", ""); m != nil {
 		t.Fatalf("two discovered nodes with the same name must adopt NEITHER, got %s", m.ID)
 	}
 
@@ -140,12 +140,12 @@ func TestMatchMachineByAddressRefusesAmbiguityAndKnownMachines(t *testing.T) {
 	// from it on the strength of a name.
 	other := "some-other-digest"
 	claimed := named("hv7", &other)
-	if m := MatchMachineByAddress([]Hypervisor{claimed}, "hv7.example.com"); m != nil {
+	if m := MatchMachineByAddress([]Hypervisor{claimed}, "hv7.example.com", ""); m != nil {
 		t.Fatal("a machine that already has a machine id must never be adopted by a different " +
 			"one; the name is weaker evidence than the identity already on the row")
 	}
 
-	if m := MatchMachineByAddress([]Hypervisor{one}, "10.0.0.7"); m != nil {
+	if m := MatchMachineByAddress([]Hypervisor{one}, "10.0.0.7", ""); m != nil {
 		t.Fatal("an IP address yields no node name, so it must adopt nothing rather than " +
 			"matching on the first octet")
 	}
@@ -165,12 +165,12 @@ func TestMatchMachineByAddressAdoptsADiscoveredNode(t *testing.T) {
 	// id, no address. Proxmox's /cluster/resources reports nothing else.
 	candidates := []Hypervisor{{ID: uuid.New(), HiveID: &dc1, Name: &name}}
 
-	if m := MatchMachineByAddress(candidates, "hv5.dc1.example.com"); m == nil {
+	if m := MatchMachineByAddress(candidates, "hv5.dc1.example.com", ""); m == nil {
 		t.Fatal("an agent enrolling on a node the sync already discovered adopted nothing, " +
 			"so enrolment creates a second record for one machine — one carrying the " +
 			"cluster membership and capacity, the other the agent, and neither the machine")
 	}
-	if m := MatchMachineByAddress(candidates, "hv5"); m == nil {
+	if m := MatchMachineByAddress(candidates, "hv5", ""); m == nil {
 		t.Fatal("a bare node name must adopt too")
 	}
 }
@@ -191,7 +191,7 @@ func TestTwoClustersWithTheSameNodeNameAdoptNeither(t *testing.T) {
 		{ID: uuid.New(), HiveID: &dc1, Name: &n1},
 		{ID: uuid.New(), HiveID: &dc2, Name: &n2},
 	}
-	if m := MatchMachineByAddress(candidates, "hv5.dc2.example.com"); m != nil {
+	if m := MatchMachineByAddress(candidates, "hv5.dc2.example.com", ""); m != nil {
 		t.Fatalf("adopted %s — with the same node name in two clusters there is no evidence "+
 			"which one enrolled, and attaching an agent's credential to the wrong physical "+
 			"host is worse than a duplicate row an operator can merge", m.ID)
@@ -205,11 +205,41 @@ func TestMatchMachineByAddressRequiresARecordedAddressToAgree(t *testing.T) {
 	candidates := []Hypervisor{
 		{ID: uuid.New(), Name: &name, Address: "10.0.0.9"},
 	}
-	if m := MatchMachineByAddress(candidates, "hv5"); m != nil {
+	if m := MatchMachineByAddress(candidates, "hv5", ""); m != nil {
 		t.Fatal("a candidate whose recorded address disagrees must not be adopted")
 	}
 	byAddr := []Hypervisor{{ID: uuid.New(), Name: &name, Address: "hv5"}}
-	if m := MatchMachineByAddress(byAddr, "hv5"); m == nil {
+	if m := MatchMachineByAddress(byAddr, "hv5", ""); m == nil {
 		t.Fatal("a candidate whose recorded address agrees must be adopted")
+	}
+}
+
+// A discovered node now carries the address the CLUSTER knows it by, which is
+// an IP — while an agent calls itself by hostname. Matching those two against
+// each other rejected every adoption this function exists to perform, and the
+// second record appeared on a live cluster before this test existed.
+//
+// The peer address is what closes it: it is where the enrolment request
+// demonstrably arrived from, so a recorded address agreeing with IT is evidence
+// of the same machine just as much as one agreeing with the reported name.
+func TestMatchAdoptsWhenTheRecordedAddressIsTheClusterIP(t *testing.T) {
+	name := "pve4"
+	discovered := Hypervisor{ID: uuid.New(), Name: &name, Address: "10.10.10.5"}
+
+	// The agent calls itself pve4 and its request came from 10.10.10.5.
+	if m := MatchMachineByAddress([]Hypervisor{discovered}, "pve4", "10.10.10.5"); m == nil {
+		t.Fatal("an agent whose request came from the recorded address must adopt that record")
+	}
+
+	// Same host, no peer address known: the recorded IP cannot be corroborated,
+	// so this must NOT adopt on the name alone — the address is evidence that has
+	// to agree, not decoration to ignore.
+	if m := MatchMachineByAddress([]Hypervisor{discovered}, "pve4", ""); m != nil {
+		t.Fatal("a recorded address that agrees with nothing the agent is must not adopt")
+	}
+
+	// A different machine that happens to share the node name must not take it.
+	if m := MatchMachineByAddress([]Hypervisor{discovered}, "pve4", "10.10.10.99"); m != nil {
+		t.Fatal("a peer address disagreeing with the recorded one must not adopt")
 	}
 }

@@ -103,7 +103,20 @@ func MatchMachineByNodeName(candidates []Hypervisor, nodeName string) *Hyperviso
 // id are excluded by the caller's query rather than here, because a machine id
 // that does not match is a DIFFERENT machine — this fallback must never take a
 // record away from a host that already proved its identity.
-func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor {
+// peerAddress is where the enrolment request DEMONSTRABLY came from, and it is
+// not optional decoration. A candidate's recorded address used to imply it had
+// been onboarded — the address this control plane reaches the host on, the same
+// kind of string an agent reports as its own. That stopped being true when the
+// capacity sync began recording the address the CLUSTER knows a node by, read
+// from /cluster/status: a discovered node now carries an IP while an agent still
+// calls itself by hostname, so comparing the two rejected every adoption it was
+// meant to allow. Observed live — pve4 and pve5 each gained a second record the
+// moment their discovered rows learned an address.
+//
+// So a recorded address must agree with something the agent actually is: the
+// name it reports, or the address its request arrived from. Either is evidence;
+// neither is a guess.
+func MatchMachineByAddress(candidates []Hypervisor, address, peerAddress string) *Hypervisor {
 	nodeName := NodeNameFromAddress(address)
 	if nodeName == "" {
 		return nil
@@ -119,7 +132,9 @@ func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor 
 		// rediscovered keeps that address, so when one is recorded it must agree.
 		// Costs nothing when absent and settles the case outright when present.
 		if c.Address != "" {
-			if !strings.EqualFold(strings.TrimSpace(c.Address), strings.TrimSpace(address)) {
+			rec := strings.TrimSpace(c.Address)
+			if !strings.EqualFold(rec, strings.TrimSpace(address)) &&
+				!strings.EqualFold(rec, strings.TrimSpace(peerAddress)) {
 				continue
 			}
 			if found != nil {
