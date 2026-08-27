@@ -150,20 +150,45 @@ func (r *FirewallRepoGorm) CreateRule(ctx context.Context, rule *tenant.Firewall
 	// never correct anything. The struct cannot be asked what the caller wanted.
 	wanted := rule.Enabled
 
+	// The address columns carry `default:'0.0.0.0/0'` and are the same trap.
+	//
+	// A rule that names a SET carries no literal on that side — the service layer
+	// leaves it empty deliberately, because a literal alongside a set is refused.
+	// Create then omits the empty string and Postgres writes 0.0.0.0/0, so the
+	// stored row asserts a source constraint the renderer does not enforce: it
+	// prefers the set and ignores the literal. Harmless to the host and wrong
+	// everywhere it is read, which includes the API response a client edits from.
+	wantedSrc, wantedDst := rule.SrcCidr, rule.DstCidr
+
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(rule).Error; err != nil {
 			return translateFirewallConflict(err)
 		}
-		if wanted {
+
+		// Only the fields whose wanted value is the zero one, because those are
+		// exactly the fields Create dropped.
+		fix := map[string]any{}
+		if !wanted {
+			fix["enabled"] = false
+		}
+		if wantedSrc == "" {
+			fix["src_cidr"] = ""
+		}
+		if wantedDst == "" {
+			fix["dst_cidr"] = ""
+		}
+		if len(fix) == 0 {
 			return nil
 		}
 		if err := tx.Model(&tenant.FirewallRule{}).Where("id = ?", rule.ID).
-			Update("enabled", false).Error; err != nil {
+			Updates(fix).Error; err != nil {
 			return err
 		}
-		// Keep the returned struct honest: it would otherwise say enabled while
-		// the row says disabled, and the caller renders the struct.
-		rule.Enabled = false
+		// Keep the returned struct honest: it would otherwise say enabled, or
+		// carry an address the row does not, and the caller renders the struct.
+		rule.Enabled = wanted
+		rule.SrcCidr = wantedSrc
+		rule.DstCidr = wantedDst
 		return nil
 	})
 }

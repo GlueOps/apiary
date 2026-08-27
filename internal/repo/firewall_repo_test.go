@@ -1001,3 +1001,60 @@ func TestASetInUseCannotBeDeleted(t *testing.T) {
 		t.Fatal("deleting a set a rule still references must be refused")
 	}
 }
+
+// A rule naming a set must store NO literal on that side.
+//
+// src_cidr carries `default:'0.0.0.0/0'` and GORM omits zero values for such
+// fields on Create, so the empty string the service layer deliberately preserves
+// was replaced by the column default. The row then asserted a source constraint
+// the renderer does not enforce — it prefers the set and ignores the literal —
+// which is harmless to the host and wrong everywhere it is read, including the
+// API response a client edits from.
+//
+// Third instance of this trap in this codebase after schedulable and
+// provisioning_state, and the first where the field is an address.
+func TestARuleNamingASetStoresNoLiteral(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	set := &tenant.FirewallSet{Name: "wl-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4}
+	if err := r.CreateSet(ctx, set); err != nil {
+		t.Fatal(err)
+	}
+	rs := &tenant.FirewallRuleset{Name: "rs-" + uuid.NewString()[:8]}
+	if err := r.CreateRuleset(ctx, rs); err != nil {
+		t.Fatal(err)
+	}
+
+	rule := &tenant.FirewallRule{
+		RulesetID: rs.ID, Name: "ssh from the whitelist", Enabled: true,
+		Family: "inet", TableName: "filter", ChainName: "input",
+		Protocol: tenant.TCP, Action: tenant.Accept, DstPort: 22,
+		SrcSetID: &set.ID,
+		SrcCidr:  "", // a set was named, so there is no literal
+		DstCidr:  "0.0.0.0/0",
+	}
+	if err := r.CreateRule(ctx, rule); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// The struct the caller renders must agree with the row.
+	if rule.SrcCidr != "" {
+		t.Fatalf("the returned struct must not gain a literal; got %q", rule.SrcCidr)
+	}
+
+	stored, err := r.GetRule(ctx, rule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.SrcCidr != "" {
+		t.Fatalf("the stored row must carry no source literal beside its set; got %q", stored.SrcCidr)
+	}
+	if stored.DstCidr != "0.0.0.0/0" {
+		t.Fatalf("a side WITHOUT a set keeps the literal it was given; got %q", stored.DstCidr)
+	}
+	if stored.SrcSetID == nil || *stored.SrcSetID != set.ID {
+		t.Fatal("the set reference must survive the correction")
+	}
+}
