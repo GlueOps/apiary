@@ -50,6 +50,11 @@ type BootstrapDeps struct {
 
 	EnqueueCapacitySyncAfter func(ctx context.Context, orgID, hiveID uuid.UUID, after time.Duration) error
 	EnqueueCapacitySync      func(ctx context.Context, orgID, hiveID uuid.UUID) error
+
+	// RecordOutcome stores why this bootstrap failed, or clears it on success.
+	// The same dependency the arrival takes, for the same reason: this package
+	// keeps needing no tenant database handle of its own.
+	RecordOutcome func(ctx context.Context, orgID, hypervisorID uuid.UUID, operation string, err error) error
 }
 
 type BootstrapInput struct {

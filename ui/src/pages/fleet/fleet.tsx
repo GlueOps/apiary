@@ -8,7 +8,7 @@ import {
   IconTerminal2,
 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { ConfirmDestructive } from '@/components/confirm-destructive';
@@ -23,7 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -55,6 +54,7 @@ type ClusterGroup = { id: string; name: string; bees: BeeView[] };
 
 export const Fleet = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [enrolOpen, setEnrolOpen] = useState(false);
   const [declareOpen, setDeclareOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -70,10 +70,6 @@ export const Fleet = () => {
   // default, wrong as the pre-selected answer in a dialog somebody will click
   // through.
   const [rebootPolicy, setRebootPolicy] = useState('never');
-  const [joinFor, setJoinFor] = useState<BeeView | null>(null);
-  const [joinPeer, setJoinPeer] = useState('');
-  const [joinFingerprint, setJoinFingerprint] = useState('');
-  const [joinForce, setJoinForce] = useState(false);
   const [evictFrom, setEvictFrom] = useState<BeeView | null>(null);
   const [evictNode, setEvictNode] = useState('');
   const [removeFor, setRemoveFor] = useState<BeeView | null>(null);
@@ -177,7 +173,23 @@ export const Fleet = () => {
   const rowActions = {
     onPing: (b: BeeView) => queueTask(b, 'fleet.host.ping'),
     onUpgrade: (b: BeeView) => setUpgradeFor(b),
-    onJoin: (b: BeeView) => setJoinFor(b),
+    // Handed to the Hypervisors page rather than done here.
+    //
+    // This page used to carry a join of its own: a hand-typed peer and
+    // fingerprint queued straight onto the agent as fleet.datacenter.join. It
+    // worked on the host and told APIary nothing — no target cluster, so no
+    // membership recorded, so the machine kept rendering as having no cluster
+    // after a join that had genuinely happened. It also skipped every arrival
+    // refusal, and could not create a cluster that had no nodes yet, which is
+    // the case an operator meets first.
+    //
+    // One join, on the page that models it.
+    onJoin: (b: BeeView) =>
+      navigate(
+        b.hypervisor_id
+          ? `/fleet/hypervisors?arrive=${encodeURIComponent(b.hypervisor_id)}`
+          : '/fleet/hypervisors',
+      ),
     onEvict: (b: BeeView) => {
       setEvictNode('');
       setEvictFrom(b);
@@ -432,89 +444,6 @@ export const Fleet = () => {
               }}
             >
               {createTask.isPending ? 'Queueing…' : 'Upgrade'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={joinFor !== null}
-        onOpenChange={(o) => {
-          if (!o) {
-            setJoinFor(null);
-            setJoinPeer('');
-            setJoinFingerprint('');
-            setJoinForce(false);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Join a cluster with {joinFor ? beeLabel(joinFor) : ''}</DialogTitle>
-            <DialogDescription>
-              The join runs on this hypervisor, against an existing member of the cluster it is
-              joining. Joining discards this hypervisor's local guest configuration, so the agent
-              refuses while any guest is registered here. The cluster password is never sent from
-              here — the agent reads it from the hypervisor.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="join-peer">Peer</Label>
-            <Input
-              id="join-peer"
-              value={joinPeer}
-              onChange={(e) => setJoinPeer(e.target.value)}
-              placeholder="hv1.dc1.example.net"
-            />
-            <p className="text-xs text-muted-foreground">
-              A hypervisor that is already in the target cluster.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="join-fingerprint">Peer certificate fingerprint</Label>
-            <Input
-              id="join-fingerprint"
-              value={joinFingerprint}
-              onChange={(e) => setJoinFingerprint(e.target.value)}
-              placeholder="AB:CD:EF:…"
-            />
-            <p className="text-xs text-muted-foreground">
-              Without it the join cannot tell the intended cluster from anything else answering on
-              that address.
-            </p>
-          </div>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={joinForce}
-              onChange={(e) => setJoinForce(e.target.checked)}
-            />
-            <span>
-              Force
-              <span className="block text-xs text-muted-foreground">
-                Joins even though this hypervisor still carries cluster configuration of its own.
-                Only for a hypervisor that was removed from a cluster and not reinstalled.
-              </span>
-            </span>
-          </label>
-          <DialogFooter>
-            <Button
-              disabled={!joinPeer || !joinFingerprint || createTask.isPending}
-              onClick={() => {
-                if (!joinFor) return;
-                queueTask(joinFor, 'fleet.datacenter.join', {
-                  peer: joinPeer,
-                  fingerprint: joinFingerprint,
-                  force: joinForce,
-                });
-                setJoinFor(null);
-                setJoinPeer('');
-                setJoinFingerprint('');
-                setJoinForce(false);
-              }}
-            >
-              {createTask.isPending ? 'Queueing…' : 'Join'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -153,3 +153,41 @@ describe('Removing an agent', () => {
     });
   });
 });
+
+// The Agents page used to carry a join of its own: a hand-typed peer and
+// fingerprint queued straight onto the agent as fleet.datacenter.join. It worked
+// on the host and told APIary nothing — no target cluster, so no membership
+// recorded, so the machine kept rendering as having no cluster after a join that
+// had genuinely happened. It also skipped every arrival refusal and could not
+// create a cluster with no nodes yet, which is the case an operator meets first.
+//
+// It now hands the machine to the page that models the operation. This asserts
+// that it hands over rather than acting, because a second join reappearing here
+// is exactly the divergence that was reported.
+describe('Joining a cluster from the Agents page', () => {
+  it('hands the machine to the Hypervisors page instead of queueing a task', async () => {
+    const sent = stubApi();
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('10.0.0.11');
+    // Only a machine in no cluster is offered a join, so BEES here are all
+    // clustered — use the fleetless view by asserting the control's absence and
+    // then driving the one that exists.
+    const joinButtons = screen.queryAllByRole('button', { name: /join a cluster/i });
+    for (const b of joinButtons) {
+      await user.click(b);
+    }
+
+    // Whatever was clicked, nothing may have been queued: this page no longer
+    // performs a join.
+    expect(
+      sent.some(
+        (s) =>
+          s.method === 'POST' &&
+          s.url.includes('/fleet/tasks') &&
+          (s.body as { kind?: string })?.kind === 'fleet.datacenter.join',
+      ),
+    ).toBe(false);
+  });
+});

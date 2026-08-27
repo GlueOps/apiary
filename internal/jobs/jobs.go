@@ -49,6 +49,11 @@ func (e *RiverEnqueuer) EnqueueArriveHypervisor(ctx context.Context, args *workf
 	return err
 }
 
+func (e *RiverEnqueuer) EnqueueBootstrapHive(ctx context.Context, args *workflow.BootstrapHiveArgs) error {
+	_, err := e.client.Insert(ctx, args, nil)
+	return err
+}
+
 // EnqueueSyncHiveCapacity is deliberately tolerant of River's unique-job
 // rejection. The job is unique per hive while queued or running, so an operator
 // pressing "sync now" twice — or pressing it while the scheduled tick already

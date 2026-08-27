@@ -21,6 +21,7 @@ Method | HTTP request | Description
 [**FleetHivesSync**](FleetAPI.md#FleetHivesSync) | **Post** /api/v1/fleet/hives/{id}/sync | Refresh a hive&#39;s capacity observations now
 [**FleetHivesUpdate**](FleetAPI.md#FleetHivesUpdate) | **Patch** /api/v1/fleet/hives/{id} | Update a hive&#39;s configuration
 [**FleetHostsArrive**](FleetAPI.md#FleetHostsArrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
+[**FleetHostsBootstrap**](FleetAPI.md#FleetHostsBootstrap) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/bootstrap | Create a cluster on a standalone machine
 [**FleetHostsFleetless**](FleetAPI.md#FleetHostsFleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 [**FleetHypervisorsCordon**](FleetAPI.md#FleetHypervisorsCordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
 [**FleetHypervisorsDeclare**](FleetAPI.md#FleetHypervisorsDeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
@@ -1165,6 +1166,78 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**ArriveResponseBody**](ArriveResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetHostsBootstrap
+
+> BootstrapResponseBody FleetHostsBootstrap(ctx, hypervisorId).BootstrapRequestBody(bootstrapRequestBody).Execute()
+
+Create a cluster on a standalone machine
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	hypervisorId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	bootstrapRequestBody := *openapiclient.NewBootstrapRequestBody([]openapiclient.CorosyncLinkInput{*openapiclient.NewCorosyncLinkInput("Address_example", int64(123))}, "TargetHiveId_example") // BootstrapRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetHostsBootstrap(context.Background(), hypervisorId).BootstrapRequestBody(bootstrapRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetHostsBootstrap``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetHostsBootstrap`: BootstrapResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetHostsBootstrap`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**hypervisorId** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetHostsBootstrapRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **bootstrapRequestBody** | [**BootstrapRequestBody**](BootstrapRequestBody.md) |  | 
+
+### Return type
+
+[**BootstrapResponseBody**](BootstrapResponseBody.md)
 
 ### Authorization
 

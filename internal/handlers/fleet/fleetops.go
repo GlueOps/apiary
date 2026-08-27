@@ -264,6 +264,39 @@ type ArriveResponse struct {
 	}
 }
 
+// BootstrapRequest creates a hive's FIRST cluster on one standalone host.
+//
+// Same shape as ArriveRequest because it answers the same operator question —
+// put this machine into that cluster — and a different shape would make the two
+// look like different decisions when only the fleet's state distinguishes them.
+type BootstrapRequest struct {
+	HypervisorID string `path:"hypervisor_id" format:"uuid"`
+	Body         struct {
+		TargetHiveID string `json:"target_hive_id" required:"true" format:"uuid"`
+
+		// Required for the arrival's reasons, and with more at stake. `pvecm
+		// create` writes the ring configuration that every node joining later
+		// inherits, so a single-ring cluster created here is a single point of
+		// failure for quorum for as long as the cluster exists.
+		Links []CorosyncLinkInput `json:"links" required:"true" minItems:"1" maxItems:"8" doc:"The first node's corosync rings. Every node that joins later inherits this ring configuration."`
+	}
+}
+
+type BootstrapResponse struct {
+	Body struct {
+		Queued bool   `json:"queued"`
+		Detail string `json:"detail"`
+	}
+}
+
+func bootstrapRefusalViews(rs []tenant.BootstrapRefusal) []RefusalView {
+	out := make([]RefusalView, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail})
+	}
+	return out
+}
+
 type SyncHiveRequest struct {
 	ID string `path:"id" format:"uuid"`
 }
@@ -991,6 +1024,97 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		out := &ArriveResponse{}
 		out.Body.Queued = true
 		out.Body.Detail = fmt.Sprintf("arrival into %q queued", hive.Name)
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-hosts-bootstrap",
+		Method:      http.MethodPost,
+		Path:        "/fleet/fleetless/{hypervisor_id}/bootstrap",
+		Summary:     "Create a cluster on a standalone machine",
+		Description: "Makes this host the FIRST node of a cluster that has none.\n\n" +
+			"The counterpart of arrival, and the reason a new cluster can ever acquire a node: " +
+			"arrival refuses with target_hive_empty until a cluster has at least one member, which " +
+			"is every cluster on the day it is created.\n\n" +
+			"Not the same operation as arriving, despite looking like it. `pvecm create` replaces " +
+			"nothing and is safe on a host already running guests, while `pvecm add` replaces the " +
+			"joining node's cluster configuration and refuses a host carrying any guest at all — " +
+			"so this has no guest gate and arrival does.\n\n" +
+			"Refused with 409 and reason codes when the host already belongs to a cluster, when " +
+			"the target already has nodes (that is an arrival), or when the host has not finished " +
+			"onboarding.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *BootstrapRequest) (*BootstrapResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		hypID, err := uuid.Parse(in.HypervisorID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid hypervisor id")
+		}
+		hiveID, err := uuid.Parse(in.Body.TargetHiveID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid target hive id")
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		var hv tenant.Hypervisor
+		if err := db.WithContext(ctx).First(&hv, "id = ?", hypID).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		var hive tenant.Hive
+		if err := db.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		var nodes int64
+		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+			Where("hive_id = ?", hiveID).Count(&nodes).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		links := make([]tenant.CorosyncLink, 0, len(in.Body.Links))
+		for _, l := range in.Body.Links {
+			links = append(links, tenant.CorosyncLink{
+				Number: l.Number, Address: l.Address, Priority: l.Priority,
+			})
+		}
+		if err := tenant.ValidateCorosyncLinks(links); err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+
+		// Checked here so the operator is told immediately, and again in the job
+		// because state moves between the two.
+		refusals := tenant.CheckBootstrap(tenant.BootstrapRequest{
+			TargetHive:        hive,
+			CurrentHiveID:     hv.HiveID,
+			HiveNodeCount:     int(nodes),
+			ProvisioningState: hv.ProvisioningState,
+		})
+		if len(refusals) > 0 {
+			return nil, refusalConflict("this host cannot create that cluster",
+				bootstrapRefusalViews(refusals))
+		}
+
+		if deps.Jobs == nil {
+			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
+		}
+		if err := deps.Jobs.EnqueueBootstrapHive(ctx, &workflow.BootstrapHiveArgs{
+			OrganizationID: p.OrganizationID.String(),
+			HypervisorID:   hypID.String(),
+			TargetHiveID:   hiveID.String(),
+			Links:          links,
+		}); err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &BootstrapResponse{}
+		out.Body.Queued = true
+		out.Body.Detail = fmt.Sprintf("creating %q on this host, queued", hive.Name)
 		return out, nil
 	})
 

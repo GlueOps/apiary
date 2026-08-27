@@ -142,6 +142,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHivesSync**](docs/FleetAPI.md#fleethivessync) | **Post** /api/v1/fleet/hives/{id}/sync | Refresh a hive&#39;s capacity observations now
 *FleetAPI* | [**FleetHivesUpdate**](docs/FleetAPI.md#fleethivesupdate) | **Patch** /api/v1/fleet/hives/{id} | Update a hive&#39;s configuration
 *FleetAPI* | [**FleetHostsArrive**](docs/FleetAPI.md#fleethostsarrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
+*FleetAPI* | [**FleetHostsBootstrap**](docs/FleetAPI.md#fleethostsbootstrap) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/bootstrap | Create a cluster on a standalone machine
 *FleetAPI* | [**FleetHostsFleetless**](docs/FleetAPI.md#fleethostsfleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 *FleetAPI* | [**FleetHypervisorsCordon**](docs/FleetAPI.md#fleethypervisorscordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
 *FleetAPI* | [**FleetHypervisorsDeclare**](docs/FleetAPI.md#fleethypervisorsdeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
@@ -201,6 +202,8 @@ Class | Method | HTTP request | Description
  - [BeeView](docs/BeeView.md)
  - [BindingScopeBody](docs/BindingScopeBody.md)
  - [BindingView](docs/BindingView.md)
+ - [BootstrapRequestBody](docs/BootstrapRequestBody.md)
+ - [BootstrapResponseBody](docs/BootstrapResponseBody.md)
  - [CapacityView](docs/CapacityView.md)
  - [ChangePasswordRequestBody](docs/ChangePasswordRequestBody.md)
  - [ChangePasswordResponseBody](docs/ChangePasswordResponseBody.md)

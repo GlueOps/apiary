@@ -242,6 +242,20 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 
 	})
 
+	t.Run("Test FleetAPIService FleetHostsBootstrap", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var hypervisorId string
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetHostsBootstrap(context.Background(), hypervisorId).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetHostsFleetless", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test

@@ -239,6 +239,27 @@ export type BindingView = {
     swarm_id?: string;
 };
 
+export type BootstrapRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The first node's corosync rings. Every node that joins later inherits this ring configuration.
+     */
+    links: Array<CorosyncLinkInput> | null;
+    target_hive_id: string;
+};
+
+export type BootstrapResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    detail: string;
+    queued: boolean;
+};
+
 export type CapacityView = {
     cpu: number;
     disk_gb: number;
@@ -2204,6 +2225,19 @@ export type BindingViewWritable = {
     ruleset_id: string;
     ruleset_name: string;
     swarm_id?: string;
+};
+
+export type BootstrapRequestBodyWritable = {
+    /**
+     * The first node's corosync rings. Every node that joins later inherits this ring configuration.
+     */
+    links: Array<CorosyncLinkInput> | null;
+    target_hive_id: string;
+};
+
+export type BootstrapResponseBodyWritable = {
+    detail: string;
+    queued: boolean;
 };
 
 export type ChangePasswordRequestBodyWritable = {
@@ -5065,6 +5099,33 @@ export type FleetHostsArriveResponses = {
 };
 
 export type FleetHostsArriveResponse = FleetHostsArriveResponses[keyof FleetHostsArriveResponses];
+
+export type FleetHostsBootstrapData = {
+    body: BootstrapRequestBodyWritable;
+    path: {
+        hypervisor_id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/fleetless/{hypervisor_id}/bootstrap';
+};
+
+export type FleetHostsBootstrapErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetHostsBootstrapError = FleetHostsBootstrapErrors[keyof FleetHostsBootstrapErrors];
+
+export type FleetHostsBootstrapResponses = {
+    /**
+     * OK
+     */
+    200: BootstrapResponseBody;
+};
+
+export type FleetHostsBootstrapResponse = FleetHostsBootstrapResponses[keyof FleetHostsBootstrapResponses];
 
 export type FleetHivesListData = {
     body?: never;

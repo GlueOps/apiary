@@ -36,6 +36,8 @@ docs/AuthenticatorSelection.md
 docs/BeeView.md
 docs/BindingScopeBody.md
 docs/BindingView.md
+docs/BootstrapRequestBody.md
+docs/BootstrapResponseBody.md
 docs/CapacityView.md
 docs/ChangePasswordRequestBody.md
 docs/ChangePasswordResponseBody.md
@@ -221,6 +223,8 @@ model_authenticator_selection.go
 model_bee_view.go
 model_binding_scope_body.go
 model_binding_view.go
+model_bootstrap_request_body.go
+model_bootstrap_response_body.go
 model_capacity_view.go
 model_change_password_request_body.go
 model_change_password_response_body.go
