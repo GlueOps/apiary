@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/glueops/apiary/internal/app"
@@ -212,13 +213,13 @@ func TestFrontendProxyIsRefusedOutsideDevelopment(t *testing.T) {
 	}
 
 	router := chiLikeRouter{}
-	if err := WireFrontend(&router, "PROXY", "staging", nil, "http://localhost:5173"); err == nil {
+	if err := WireFrontend(&router, "PROXY", "staging", nil, "http://localhost:5173", "/api/v1"); err == nil {
 		t.Fatal("WireFrontend mounted the proxy for ENV=staging")
 	}
 	if router.notFound != nil {
 		t.Fatal("WireFrontend installed a NotFound handler despite refusing the mode")
 	}
-	if err := WireFrontend(&router, "proxy", "development", nil, "http://localhost:5173"); err != nil {
+	if err := WireFrontend(&router, "proxy", "development", nil, "http://localhost:5173", "/api/v1"); err != nil {
 		t.Fatalf("WireFrontend refused the proxy in development: %v", err)
 	}
 }
@@ -262,5 +263,93 @@ func TestUnmatchedPathsAreRateLimited(t *testing.T) {
 	if !limited {
 		t.Fatalf("%d requests to unmatched paths were all served: the rate limiter's default branch has no limiter",
 			budget+50)
+	}
+}
+
+// TestUnknownAPIRoutesDoNotReachTheFrontend pins the boundary between the API
+// and the frontend fallback.
+//
+// The frontend is mounted on every unmatched path, so a request to an API route
+// that does not exist reaches it. Neither mode then answers in a way an API
+// client can read: embed serves index.html with 200 for a browser Accept header,
+// so a missing endpoint reports SUCCESS and returns HTML; proxy forwards to Vite,
+// whose config proxies the API prefix straight back, and the request rebounds
+// until something gives up — the reported symptom was a 502 for a route that
+// simply is not there.
+//
+// Both are worse than the truth, and the truth is a 404.
+func TestUnknownAPIRoutesDoNotReachTheFrontend(t *testing.T) {
+	dist := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>spa</title>")},
+	}
+
+	modes := []struct {
+		name string
+		wire func(r *chiLikeRouter) error
+	}{
+		{"embed", func(r *chiLikeRouter) error {
+			return WireFrontend(r, "embed", "production", dist, "", "/api/v1")
+		}},
+		{"proxy", func(r *chiLikeRouter) error {
+			return WireFrontend(r, "proxy", "development", nil, "http://127.0.0.1:1", "/api/v1")
+		}},
+	}
+
+	// Every method, because a fallback that only guards GET leaves a POST to a
+	// retired endpoint being reverse-proxied. Every Accept header, because that
+	// is precisely what decides the wrong answer in embed mode.
+	cases := []struct{ method, path, accept string }{
+		{http.MethodGet, "/api/v1/nope", "text/html"},
+		{http.MethodGet, "/api/v1/nope", "application/json"},
+		{http.MethodGet, "/api/v1/nope", "*/*"},
+		{http.MethodGet, "/api/v1/fleet/nope", "text/html"},
+		{http.MethodPost, "/api/v1/nope", "application/json"},
+		{http.MethodDelete, "/api/v1/fleet/bees/x/nope", "*/*"},
+		// The prefix itself, with nothing after it.
+		{http.MethodGet, "/api/v1", "text/html"},
+	}
+
+	for _, m := range modes {
+		t.Run(m.name, func(t *testing.T) {
+			router := chiLikeRouter{}
+			if err := m.wire(&router); err != nil {
+				t.Fatalf("wire: %v", err)
+			}
+			if router.notFound == nil {
+				t.Fatal("no NotFound handler was installed")
+			}
+
+			for _, c := range cases {
+				req := httptest.NewRequest(c.method, c.path, nil)
+				req.Header.Set("Accept", c.accept)
+				rec := httptest.NewRecorder()
+				router.notFound(rec, req)
+
+				if rec.Code != http.StatusNotFound {
+					t.Errorf("%s %s (Accept: %s) answered %d, want 404; body: %s",
+						c.method, c.path, c.accept, rec.Code, rec.Body.String())
+					continue
+				}
+				if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+					t.Errorf("%s %s (Accept: %s) answered 404 as %q — a client that parses "+
+						"errors as JSON cannot read it", c.method, c.path, c.accept, ct)
+				}
+				if strings.Contains(rec.Body.String(), "<!doctype") {
+					t.Errorf("%s %s (Accept: %s) was served the SPA", c.method, c.path, c.accept)
+				}
+			}
+
+			// The guard must not swallow the frontend. A real page still renders.
+			req := httptest.NewRequest(http.MethodGet, "/settings/security", nil)
+			req.Header.Set("Accept", "text/html")
+			rec := httptest.NewRecorder()
+			router.notFound(rec, req)
+			if m.name == "embed" && rec.Code != http.StatusOK {
+				t.Errorf("an ordinary SPA route answered %d, want 200", rec.Code)
+			}
+			if m.name == "embed" && !strings.Contains(rec.Body.String(), "<!doctype") {
+				t.Error("an ordinary SPA route was not served index.html")
+			}
+		})
 	}
 }

@@ -251,13 +251,13 @@ func Build(cfg config.Config, deps *app.Deps) (*App, error) {
 			slog.Warn("FRONTEND_MODE=embed but no index.html is compiled into this binary; " +
 				"run `yarn build` in ui/ before building the Go binary, or set FRONTEND_MODE=none")
 		}
-		if err := WireFrontend(router, frontendMode, cfg.Env, dist, ""); err != nil {
+		if err := WireFrontend(router, frontendMode, cfg.Env, dist, "", cfg.BasePath); err != nil {
 			return nil, err
 		}
 	case config.FrontendModeProxy:
 		slog.Warn("FRONTEND_MODE=proxy: every unmatched path is reverse-proxied into this host's loopback interface — development only",
 			"target", cfg.ViteDevURL, "env", config.NormalizeEnv(cfg.Env))
-		if err := WireFrontend(router, frontendMode, cfg.Env, nil, cfg.ViteDevURL); err != nil {
+		if err := WireFrontend(router, frontendMode, cfg.Env, nil, cfg.ViteDevURL, cfg.BasePath); err != nil {
 			return nil, err
 		}
 	case config.FrontendModeNone:
