@@ -83,6 +83,12 @@ func upgradeTask(cfg Config) bee.Executor {
 		// anyway is a restart of the whole fleet to reach the state it was in.
 		if self, derr := selfupgrade.SelfDigest(); derr == nil && self == sha {
 			e.Logf("agent", "already running this build (%s); nothing to install", sha[:19])
+			// The UNIT is still converged. It is separate state from the binary,
+			// and gating it behind a binary change means a host already on the
+			// right build never picks up a service-file fix — which is the exact
+			// case this ran into: every agent was current, every unit was stale,
+			// and the upgrade reported success having changed nothing.
+			refreshUnit(ctx, e)
 			return nil
 		} else if derr != nil {
 			// Not fatal: the digest of the DOWNLOAD is still verified before
@@ -111,22 +117,7 @@ func upgradeTask(cfg Config) bee.Executor {
 		e.Logf("agent", "installed %s at %s; previous kept at %s",
 			dist.GetVersion(), res.Target, res.Backup)
 
-		// The unit travels with the binary, or it never travels at all.
-		//
-		// An upgrade replaces the executable and nothing else, so a change to the
-		// service file — a hardening directive that turned out to break apt, say —
-		// would reach newly onboarded hosts and quietly skip every host already
-		// running. A fix that applies only to machines nobody has yet is not a fix.
-		//
-		// Best effort, and after the binary is in place: a unit that cannot be
-		// written is worth reporting, but it is not worth failing an upgrade that
-		// has already succeeded and leaving the fleet on mixed binaries.
-		if err := hostinstall.RefreshUnit(ctx, osRunner{}, hostinstall.Unit, res.Target); err != nil {
-			e.Logf("agent", "the binary is installed but the service file could not be "+
-				"refreshed (%v); it keeps the unit it had, which may predate this build", err)
-		} else {
-			e.Logf("agent", "service file refreshed and systemd reloaded")
-		}
+		refreshUnit(ctx, e)
 
 		// Declared BEFORE the restart is armed, and synchronously. The agent is
 		// about to disappear for a few seconds, and a host that goes quiet without
@@ -161,4 +152,24 @@ func armRestart(after time.Duration, unit string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// refreshUnit converges the service file, and never fails the task.
+//
+// Separate state from the binary. An upgrade replaces the executable and
+// nothing else, so a change to the unit reached newly onboarded hosts and
+// quietly skipped every host already running — and gating the refresh behind an
+// install repeats that in miniature, because a fleet that is already on the
+// right build never installs anything again.
+//
+// Best effort: a unit that cannot be written is worth reporting and is not worth
+// failing an upgrade that has otherwise succeeded, which would leave the fleet
+// on mixed binaries to protect a service file.
+func refreshUnit(ctx context.Context, e *bee.Env) {
+	if err := hostinstall.RefreshUnit(ctx, osRunner{}, hostinstall.Unit, ""); err != nil {
+		e.Logf("agent", "the service file could not be refreshed (%v); this host keeps the "+
+			"unit it had, which may predate this build", err)
+		return
+	}
+	e.Logf("agent", "service file refreshed and systemd reloaded")
 }
