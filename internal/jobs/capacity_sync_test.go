@@ -1139,3 +1139,57 @@ func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
 		t.Fatalf("membership was released on a failed check; %d members remain, want 1", count)
 	}
 }
+
+// THE CREDENTIAL BREAK PATH. A hive's API URL names ONE node, and the credential
+// is bound to it. When that node departs, the address still points at it and it
+// now answers as standalone — while the cluster it left is running, quorate and
+// full of members.
+//
+// Releasing on that answer would mark every remaining member fleetless: a live
+// fleet erased from the control plane's records because one address went stale.
+// The standalone answer only ever proved that the machine at the API URL is in
+// no cluster; it never proved anything about the others.
+func TestSyncDoesNotReleaseALiveClusterWhenItsApiUrlPointsAtADepartedNode(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Three members: the departed node's address is what the hive still points
+	// at, and two nodes that are genuinely still in the cluster.
+	for _, n := range []string{"hv1", "hv2", "hv3"} {
+		m := machine(hive.ID, n)
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv2", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		// What the departed node reports: a clean read, and no cluster.
+		return "", false, nil
+	}
+
+	_, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if !errors.Is(err, ErrHiveIsNotACluster) {
+		t.Fatalf("err = %v, want ErrHiveIsNotACluster", err)
+	}
+	// It must name the actual problem — a stale address, not a vanished cluster —
+	// because the remedy is to repoint it, and the other message sends an
+	// operator to create a cluster that already exists.
+	if !strings.Contains(err.Error(), "Repoint") {
+		t.Fatalf("the refusal does not say to repoint the API URL: %v", err)
+	}
+
+	var still int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&still).Error; err != nil {
+		t.Fatal(err)
+	}
+	if still != 3 {
+		t.Fatalf("%d members survived, want all 3 — a stale API URL must never erase a live "+
+			"cluster's records", still)
+	}
+}

@@ -84,13 +84,6 @@ var ErrHiveIsNotACluster = errors.New("capacity sync: this hive's endpoint is a 
 func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uuid.UUID) (int, error) {
 	// ASKED BEFORE THE INVENTORY, because a standalone host answers the inventory
 	// perfectly well and the answer is the problem.
-	//
-	// Any membership already recorded for this hive is cleared: it was never
-	// true, and leaving it is what makes bootstrap refuse the one host that needs
-	// it. Clearing is safe here precisely because the read SUCCEEDED and said
-	// there is no cluster — a node that is clustered but has lost quorum still
-	// reports its cluster entry, and an unreachable endpoint is an error above,
-	// not a standalone.
 	if d.ClusterIdentity != nil {
 		_, clustered, cerr := d.ClusterIdentity(ctx, orgID, hiveID)
 		switch {
@@ -100,6 +93,33 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 			slog.WarnContext(ctx, "could not establish whether this hive's endpoint is a cluster",
 				"organization_id", orgID, "hive_id", hiveID, "error", cerr)
 		case !clustered:
+			// WHAT A STANDALONE ANSWER ACTUALLY PROVES is only that the machine at
+			// the API URL is in no cluster. It says nothing about the other
+			// machines recorded in this hive, and conflating the two is a way to
+			// destroy a live fleet's records.
+			//
+			// A hive's API URL names ONE node. When that node departs, the address
+			// still points at it, and it now answers as standalone — while the
+			// cluster it left is running, quorate, and full of members. Releasing
+			// on that answer would mark every one of them fleetless.
+			//
+			// So the release is confined to the case it was written for: a hive
+			// whose only recorded member is the standalone host itself, which is
+			// membership that was never true. With more than one member the
+			// endpoint is simply pointed at the wrong node, and the fix is to
+			// repoint it — said, not guessed at.
+			members, merr := countHiveMembers(ctx, d, orgID, hiveID)
+			if merr != nil {
+				return 0, fmt.Errorf("capacity sync: count members before deciding whether this "+
+					"hive is a cluster: %w", merr)
+			}
+			if members > 1 {
+				return 0, fmt.Errorf("%w: the API URL points at a machine that is in no cluster, "+
+					"but %d hypervisors are recorded as members of this one — so the address is "+
+					"pointed at a node that has left rather than at a cluster that is gone. "+
+					"Nothing was changed. Repoint this cluster's API URL at a node that is still "+
+					"in it", ErrHiveIsNotACluster, members)
+			}
 			if n, rerr := releaseStandaloneMembers(ctx, d, orgID, hiveID); rerr != nil {
 				slog.ErrorContext(ctx, "could not release members of a hive that is not a cluster",
 					"organization_id", orgID, "hive_id", hiveID, "error", rerr)
@@ -537,4 +557,18 @@ func releaseStandaloneMembers(
 		Where("hive_id = ?", hiveID).
 		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil})
 	return res.RowsAffected, res.Error
+}
+
+// countHiveMembers is how many hypervisors this hive is recorded as holding.
+func countHiveMembers(
+	ctx context.Context, d CapacitySyncDeps, orgID, hiveID uuid.UUID,
+) (int64, error) {
+	db, err := d.TenantDB(ctx, orgID)
+	if err != nil {
+		return 0, fmt.Errorf("open tenant database: %w", err)
+	}
+	var n int64
+	err = db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hiveID).Count(&n).Error
+	return n, err
 }
