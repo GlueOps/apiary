@@ -111,6 +111,23 @@ func upgradeTask(cfg Config) bee.Executor {
 		e.Logf("agent", "installed %s at %s; previous kept at %s",
 			dist.GetVersion(), res.Target, res.Backup)
 
+		// The unit travels with the binary, or it never travels at all.
+		//
+		// An upgrade replaces the executable and nothing else, so a change to the
+		// service file — a hardening directive that turned out to break apt, say —
+		// would reach newly onboarded hosts and quietly skip every host already
+		// running. A fix that applies only to machines nobody has yet is not a fix.
+		//
+		// Best effort, and after the binary is in place: a unit that cannot be
+		// written is worth reporting, but it is not worth failing an upgrade that
+		// has already succeeded and leaving the fleet on mixed binaries.
+		if err := hostinstall.RefreshUnit(ctx, osRunner{}, hostinstall.Unit, res.Target); err != nil {
+			e.Logf("agent", "the binary is installed but the service file could not be "+
+				"refreshed (%v); it keeps the unit it had, which may predate this build", err)
+		} else {
+			e.Logf("agent", "service file refreshed and systemd reloaded")
+		}
+
 		// Declared BEFORE the restart is armed, and synchronously. The agent is
 		// about to disappear for a few seconds, and a host that goes quiet without
 		// saying so first is indistinguishable from one that has failed.

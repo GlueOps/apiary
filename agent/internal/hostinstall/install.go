@@ -245,3 +245,49 @@ func mergeEnv(path string, set map[string]string) ([]byte, error) {
 	body = strings.TrimRight(body, "\n") + "\n"
 	return []byte(body), nil
 }
+
+// RefreshUnit rewrites the service file and reloads systemd, starting nothing.
+//
+// A fleet agent upgrade replaces the BINARY and nothing else: selfupgrade.Plan's
+// Unit field is only the unit NAME to restart, and the upgrade task passes no
+// unit content at all. So a change to the unit FILE could never reach a host
+// that was already onboarded — it would apply to new hosts and quietly not to
+// the fleet, which is the worst shape for a fix.
+//
+// That mattered concretely. Three hardening directives in this unit broke
+// `apt-get dist-upgrade` on Proxmox — the agent's primary job — and correcting
+// them was undeliverable to every host already running.
+//
+// Deliberately NOT `enable --now`, and no restart: the caller is the agent being
+// replaced, and it restarts itself on its own schedule once the task's outcome
+// has been reported. Restarting here would kill the process mid-report and the
+// control plane would see the upgrade as never having finished.
+func RefreshUnit(ctx context.Context, r Runner, unit []byte, execPath string) error {
+	if len(unit) == 0 {
+		return fmt.Errorf("refresh unit: nothing to write")
+	}
+	if execPath == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("refresh unit: locate this binary: %w", err)
+		}
+		// Resolved for the same reason install resolves it: a unit pointing at a
+		// symlink breaks the moment the link is replaced.
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = resolved
+		}
+		execPath = exe
+	}
+
+	body, err := pointExecStartAt(unit, execPath)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(UnitPath, 0o644, body); err != nil {
+		return err
+	}
+	if out, err := r.Run(ctx, "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("refresh unit: systemctl daemon-reload: %w (%s)", err, strings.TrimSpace(out))
+	}
+	return nil
+}
