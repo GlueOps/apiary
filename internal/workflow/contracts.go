@@ -146,6 +146,9 @@ func OpenEmailBody(key []byte, args *SendEmailArgs) (string, error) {
 type DepartHypervisorArgs struct {
 	OrganizationID string `json:"organization_id"`
 	HypervisorID   string `json:"hypervisor_id"`
+
+	// Mirrors jobs.DepartHypervisorArgs.
+	CredentialDisposition string `json:"credential_disposition"`
 }
 
 func (DepartHypervisorArgs) Kind() string { return "fleet.depart_hypervisor" }

@@ -3070,6 +3070,12 @@ type ApiFleetHypervisorsDepartRequest struct {
 	ctx context.Context
 	ApiService *FleetAPIService
 	id string
+	departRequestBody *DepartRequestBody
+}
+
+func (r ApiFleetHypervisorsDepartRequest) DepartRequestBody(departRequestBody DepartRequestBody) ApiFleetHypervisorsDepartRequest {
+	r.departRequestBody = &departRequestBody
+	return r
 }
 
 func (r ApiFleetHypervisorsDepartRequest) Execute() (*DepartResponseBody, *http.Response, error) {
@@ -3116,9 +3122,12 @@ func (a *FleetAPIService) FleetHypervisorsDepartExecute(r ApiFleetHypervisorsDep
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
+	if r.departRequestBody == nil {
+		return localVarReturnValue, nil, reportError("departRequestBody is required and must be specified")
+	}
 
 	// to determine the Content-Type header
-	localVarHTTPContentTypes := []string{}
+	localVarHTTPContentTypes := []string{"application/json"}
 
 	// set Content-Type header
 	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
@@ -3134,6 +3143,8 @@ func (a *FleetAPIService) FleetHypervisorsDepartExecute(r ApiFleetHypervisorsDep
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
+	// body params
+	localVarPostBody = r.departRequestBody
 	if r.ctx != nil {
 		// API Key Authentication
 		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {

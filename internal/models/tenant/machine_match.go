@@ -70,17 +70,35 @@ func NodeNameFromAddress(addr string) string {
 // give no evidence which one joined, and attaching an agent's credential and
 // machine id to the wrong physical host is a far worse outcome than a duplicate
 // row an operator can merge deliberately. Nil means "create a fresh record".
-func MatchMachineByNodeName(candidates []Hypervisor, nodeName string) *Hypervisor {
+// nodeAddress is the address the CLUSTER reports for this node, from
+// /cluster/status. It is what makes this work for a host onboarded by IP.
+//
+// Deriving a name from the candidate's address was the only test here, and
+// NodeNameFromAddress returns "" for anything net.ParseIP accepts — so a machine
+// onboarded as 10.10.10.2 produced "" , never equalled "pve", and the sync
+// created a SECOND record for it on first contact with its cluster. Reproduced
+// end to end: five hosts onboarded by IP, then two clusters created, gave ten
+// rows — each machine once as an onboarded fleetless record and once as a
+// discovered cluster member.
+//
+// Comparing the addresses directly needs no derivation and no guess. The name
+// path stays for hosts onboarded by hostname, where the candidate's address
+// carries a name and the cluster's address may not be recorded at all.
+func MatchMachineByNodeName(candidates []Hypervisor, nodeName, nodeAddress string) *Hypervisor {
 	if nodeName == "" {
 		return nil
 	}
+	addr := strings.TrimSpace(nodeAddress)
 	var found *Hypervisor
 	for i := range candidates {
 		c := &candidates[i]
 		if c.HiveID != nil {
 			continue
 		}
-		if NodeNameFromAddress(c.Address) != nodeName {
+		rec := strings.TrimSpace(c.Address)
+		byAddress := addr != "" && rec != "" && strings.EqualFold(rec, addr)
+		byName := NodeNameFromAddress(rec) == nodeName
+		if !byAddress && !byName {
 			continue
 		}
 		if found != nil {
@@ -103,54 +121,85 @@ func MatchMachineByNodeName(candidates []Hypervisor, nodeName string) *Hyperviso
 // id are excluded by the caller's query rather than here, because a machine id
 // that does not match is a DIFFERENT machine — this fallback must never take a
 // record away from a host that already proved its identity.
-func MatchMachineByAddress(candidates []Hypervisor, address string) *Hypervisor {
+// peerAddress is where the enrolment request DEMONSTRABLY came from, and it is
+// not optional decoration. A candidate's recorded address used to imply it had
+// been onboarded — the address this control plane reaches the host on, the same
+// kind of string an agent reports as its own. That stopped being true when the
+// capacity sync began recording the address the CLUSTER knows a node by, read
+// from /cluster/status: a discovered node now carries an IP while an agent still
+// calls itself by hostname, so comparing the two rejected every adoption it was
+// meant to allow. Observed live — pve4 and pve5 each gained a second record the
+// moment their discovered rows learned an address.
+//
+// So a recorded address must agree with something the agent actually is: the
+// name it reports, or the address its request arrived from. Either is evidence;
+// neither is a guess.
+func MatchMachineByAddress(candidates []Hypervisor, address, peerAddress string) *Hypervisor {
 	nodeName := NodeNameFromAddress(address)
-	if nodeName == "" {
-		return nil
-	}
+	addr := strings.TrimSpace(address)
+	peer := strings.TrimSpace(peerAddress)
+
 	var found *Hypervisor
 	for i := range candidates {
 		c := &candidates[i]
-		if c.MachineID != nil || c.Name == nil || *c.Name != nodeName {
+		// A machine id that does not match is a DIFFERENT machine. Excluded by the
+		// caller's query too, but never adopt a record that already proved itself.
+		if c.MachineID != nil {
 			continue
 		}
 
-		// Strongest evidence first: a machine onboarded by address and later
-		// rediscovered keeps that address, so when one is recorded it must agree.
-		// Costs nothing when absent and settles the case outright when present.
-		if c.Address != "" {
-			if !strings.EqualFold(strings.TrimSpace(c.Address), strings.TrimSpace(address)) {
+		rec := strings.TrimSpace(c.Address)
+		hasName := c.Name != nil && strings.TrimSpace(*c.Name) != ""
+
+		// ADDRESS is evidence on its own, and it has to be — a host DECLARED by an
+		// operator has an address and no name, because nothing names it until a
+		// capacity sync sees it in a cluster. Requiring a name meant an agent
+		// enrolling on a freshly onboarded host matched nothing and created a
+		// second record every time. Reproduced from a clean tenant: five hosts
+		// declared, onboarded and enrolled produced ten rows.
+		//
+		// The peer address is what makes it evidence rather than assertion: it is
+		// where the enrolment request demonstrably arrived from, not something the
+		// agent claims about itself.
+		addrAgrees := rec != "" && (strings.EqualFold(rec, addr) || strings.EqualFold(rec, peer))
+		nameAgrees := hasName && nodeName != "" && strings.EqualFold(strings.TrimSpace(*c.Name), nodeName)
+
+		switch {
+		case rec != "" && hasName:
+			// Both recorded, so both must agree. A record the control plane reaches
+			// at this address but which the cluster calls something else is not
+			// obviously this machine, and adopting on half the evidence is how an
+			// agent's identity lands on the wrong host.
+			if !addrAgrees || !nameAgrees {
 				continue
 			}
-			if found != nil {
-				return nil
+		case rec != "":
+			if !addrAgrees {
+				continue
 			}
-			found = c
+		case hasName:
+			// No recorded address, so the node name is the only evidence there is —
+			// and adopting on it is the POINT of this fallback. A node the capacity
+			// sync discovered before it could read cluster addresses has a hive and
+			// a name and nothing else; refusing here would mean every agent
+			// enrolling on such a node creates a second record.
+			//
+			// The residual risk is real and bounded: `hv5.dc2.example.com` truncates
+			// to `hv5` and would match an `hv5` discovered in dc1. If both clusters
+			// hold that name two candidates match and the ambiguity refusal below
+			// returns nil; it only bites when exactly one does.
+			if !nameAgrees {
+				continue
+			}
+		default:
+			// Neither. Nothing to match on, and matching everything is worse than
+			// matching nothing.
 			continue
 		}
 
-		// No recorded address, so the node name is the only evidence there is —
-		// and adopting on it is the POINT of this fallback, not a concession. A
-		// node the capacity sync discovered has a hive and a name and nothing
-		// else; refusing here would mean every agent enrolling on a discovered
-		// node creates a second record, which is the exact duplicate this function
-		// exists to prevent.
-		//
-		// The residual risk is real and bounded: `hv5.dc2.example.com` truncates
-		// to `hv5` and would match an `hv5` the sync discovered in dc1. A domain
-		// cannot rule that out, because a discovered machine has no address to
-		// compare a domain against — nothing in the model maps a DNS domain to a
-		// hive. It is narrower than it first looks, though: if both clusters have
-		// an `hv5`, two candidates match and the ambiguity refusal below returns
-		// nil. It only bites when exactly one cluster holds that node name and the
-		// enrolling host is a different machine of the same name in a cluster this
-		// system has not discovered yet.
-		//
-		// Closing it properly needs evidence, not a heuristic — the machine id the
-		// sync cannot report, or a hive recorded against a domain. A guard on
-		// "the address looks qualified" was tried and reverted: it refused the
-		// ordinary discovered-node adoption, which is the common case, to narrow
-		// an uncommon one.
+		// Ambiguity refuses outright. Two records that both look like this machine
+		// mean the evidence does not identify one, and picking either writes an
+		// agent's identity onto a host that might not be it.
 		if found != nil {
 			return nil
 		}

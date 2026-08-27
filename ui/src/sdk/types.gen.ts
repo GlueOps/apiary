@@ -546,6 +546,17 @@ export type DeletedResponseBody = {
     deleted: boolean;
 };
 
+export type DepartRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * What to do about the cluster secrets this host has seen. "rotate" if the host is not trusted: it can otherwise mint auth tickets for the cluster it left. "accept-exposure" if it is trusted and being redeployed.
+     */
+    credential_disposition: 'rotate' | 'accept-exposure';
+};
+
 export type DepartResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2270,6 +2281,13 @@ export type DeleteResponseBody2Writable = {
 
 export type DeletedResponseBodyWritable = {
     deleted: boolean;
+};
+
+export type DepartRequestBodyWritable = {
+    /**
+     * What to do about the cluster secrets this host has seen. "rotate" if the host is not trusted: it can otherwise mint auth tickets for the cluster it left. "accept-exposure" if it is trusted and being redeployed.
+     */
+    credential_disposition: 'rotate' | 'accept-exposure';
 };
 
 export type DepartResponseBodyWritable = {
@@ -4951,7 +4969,7 @@ export type FleetHypervisorsCordonResponses = {
 export type FleetHypervisorsCordonResponse = FleetHypervisorsCordonResponses[keyof FleetHypervisorsCordonResponses];
 
 export type FleetHypervisorsDepartData = {
-    body?: never;
+    body: DepartRequestBodyWritable;
     path: {
         id: string;
     };

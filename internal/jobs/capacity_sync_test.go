@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -887,5 +888,123 @@ func TestSyncCreatesNewlyDiscoveredNodesCordoned(t *testing.T) {
 	if !hv.Schedulable {
 		t.Fatal("a later sync re-cordoned a host the operator had enabled; the cordon rule " +
 			"belongs to the create path alone, or the fleet refuses work at every tick")
+	}
+}
+
+// syncDepsWithAddresses is syncDeps plus the /cluster/status lookup.
+func syncDepsWithAddresses(db *gorm.DB, rows []tenant.ResourceRow,
+	addrs map[string]string) CapacitySyncDeps {
+	d := syncDeps(db, rows)
+	d.NodeAddresses = func(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error) {
+		return addrs, nil
+	}
+	return d
+}
+
+// A discovered node must be recorded with the address the cluster knows it by.
+//
+// Without it the row is a name and nothing to reach the host on, and onboarding
+// — which looks rows up by ADDRESS — creates a second row for the same machine.
+// Observed on a live four-node cluster: pve4 and pve5 each ended up with a
+// name-only row from the sync and an address-only row from a later declaration.
+func TestSyncRecordsTheAddressForADiscoveredNode(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rows := []tenant.ResourceRow{
+		{Type: "node", Node: "pve4", Status: "online", CPUCores: 4, MemBytes: 8 << 30},
+	}
+	addrs := map[string]string{"pve4": "10.10.10.5"}
+	if _, err := SyncHiveCapacity(context.Background(),
+		syncDepsWithAddresses(db, rows, addrs), uuid.New(), hive.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.Where("hive_id = ?", hive.ID).First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Address != "10.10.10.5" {
+		t.Fatalf("a discovered node must carry the address the cluster knows it by; got %q",
+			got.Address)
+	}
+}
+
+// The address is BACKFILLED onto a record that has none, and never overwritten.
+//
+// Backfilled because rows discovered before this lookup existed — or before the
+// hive had a credential to read it with — are otherwise stuck without one
+// forever. Never overwritten because an onboarding run records the address this
+// control plane actually reaches the host on, which is not always the address
+// corosync knows it by; replacing it would silently repoint every SSH the fleet
+// makes to that host.
+func TestSyncBackfillsAnAddressButNeverReplacesOne(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	blank := machine(hive.ID, "pve4")
+	operatorSet := machine(hive.ID, "pve5")
+	operatorSet.Address = "mgmt-pve5.example.com"
+	if err := db.Create(&blank).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&operatorSet).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rows := []tenant.ResourceRow{
+		{Type: "node", Node: "pve4", Status: "online", CPUCores: 4, MemBytes: 8 << 30},
+		{Type: "node", Node: "pve5", Status: "online", CPUCores: 4, MemBytes: 8 << 30},
+	}
+	addrs := map[string]string{"pve4": "10.10.10.5", "pve5": "10.10.10.6"}
+	if _, err := SyncHiveCapacity(context.Background(),
+		syncDepsWithAddresses(db, rows, addrs), uuid.New(), hive.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var filled, kept tenant.Hypervisor
+	if err := db.First(&filled, "id = ?", blank.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&kept, "id = ?", operatorSet.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if filled.Address != "10.10.10.5" {
+		t.Fatalf("an empty address must be backfilled; got %q", filled.Address)
+	}
+	if kept.Address != "mgmt-pve5.example.com" {
+		t.Fatalf("an address already recorded must survive the sync; got %q", kept.Address)
+	}
+}
+
+// A hive whose status call fails still syncs. Capacity is what this job exists
+// to refresh; failing the whole run because an optional field could not be
+// filled would trade a cosmetic gap for a real one.
+func TestSyncStillWritesCapacityWhenAddressesCannotBeRead(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rows := []tenant.ResourceRow{
+		{Type: "node", Node: "pve4", Status: "online", CPUCores: 4, MemBytes: 8 << 30},
+	}
+	d := syncDeps(db, rows)
+	d.NodeAddresses = func(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error) {
+		return nil, fmt.Errorf("the hive API is unreachable")
+	}
+	n, err := SyncHiveCapacity(context.Background(), d, uuid.New(), hive.ID)
+	if err != nil {
+		t.Fatalf("a failed address lookup must not fail the sync: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("the node must still be written; wrote %d", n)
 	}
 }

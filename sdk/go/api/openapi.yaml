@@ -2468,6 +2468,12 @@ paths:
           format: uuid
           type: string
         style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartRequestBody"
+        required: true
       responses:
         "200":
           content:
@@ -4853,6 +4859,28 @@ components:
           type: boolean
       required:
       - deleted
+    DepartRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        credential_disposition: rotate
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        credential_disposition:
+          description: "What to do about the cluster secrets this host has seen. \"\
+            rotate\" if the host is not trusted: it can otherwise mint auth tickets\
+            \ for the cluster it left. \"accept-exposure\" if it is trusted and being\
+            \ redeployed."
+          enum:
+          - rotate
+          - accept-exposure
+          type: string
+      required:
+      - credential_disposition
     DepartResponseBody:
       additionalProperties: false
       example:

@@ -1134,7 +1134,11 @@ export const fleetHypervisorsDepart = <ThrowOnError extends boolean = false>(opt
         { name: 'X-ORG-Secret', type: 'apiKey' }
     ],
     url: '/api/v1/fleet/hypervisors/{id}/depart',
-    ...options
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

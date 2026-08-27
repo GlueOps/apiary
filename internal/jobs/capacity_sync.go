@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
@@ -19,6 +21,15 @@ type CapacitySyncDeps struct {
 
 	// TenantDB opens the organization's database.
 	TenantDB func(ctx context.Context, orgID uuid.UUID) (*gorm.DB, error)
+
+	// NodeAddresses maps each cluster member's name to the address the CLUSTER
+	// knows it by, from /cluster/status. Optional: nil, or an error, degrades to
+	// the previous behaviour of recording a discovered node with no address.
+	//
+	// It exists because a node this system did not onboard is otherwise recorded
+	// with a name and nothing to reach it by, and onboarding looks a host up by
+	// ADDRESS — so the same machine ends up with two rows, one from each side.
+	NodeAddresses func(ctx context.Context, orgID, hiveID uuid.UUID) (map[string]string, error)
 }
 
 // SyncHiveCapacity refreshes the Hypervisor rows for one hive.
@@ -57,6 +68,23 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 	rows, err := d.Inventory(ctx, orgID, hiveID)
 	if err != nil {
 		return 0, fmt.Errorf("capacity sync: read inventory: %w", err)
+	}
+
+	// Best effort, and deliberately not fatal. An address makes a discovered
+	// record USABLE; capacity is what the sync exists to refresh, and failing the
+	// whole run because one optional field could not be filled would trade a
+	// cosmetic gap for a real one.
+	var addrs map[string]string
+	if d.NodeAddresses != nil {
+		a, aerr := d.NodeAddresses(ctx, orgID, hiveID)
+		if aerr != nil {
+			slog.WarnContext(ctx, "could not read node addresses for this hive, so any node "+
+				"discovered by this sync is recorded without one; onboarding it by address will "+
+				"create a second record for the same machine until a later sync fills it in",
+				"organization_id", orgID, "hive_id", hiveID, "error", aerr)
+		} else {
+			addrs = a
+		}
 	}
 
 	db, err := d.TenantDB(ctx, orgID)
@@ -125,7 +153,7 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 			// onboarding left them, which is the entire point of adopting rather
 			// than creating.
 			if !known {
-				if m := tenant.MatchMachineByNodeName(unclustered, name); m != nil {
+				if m := tenant.MatchMachineByNodeName(unclustered, name, addrs[name]); m != nil {
 					if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", m.ID).
 						Updates(map[string]any{
 							"hive_id": hiveID,
@@ -169,6 +197,20 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 			}
 
 			if known {
+				// Backfill an address onto a record that has none — a node
+				// discovered before this system could read cluster addresses, or
+				// before the hive had a credential to read them with.
+				//
+				// ONLY when empty. An operator or an onboarding run may have
+				// recorded the address this control plane actually reaches the
+				// host on, and that is not always the address corosync knows it
+				// by; overwriting it here would silently repoint every SSH the
+				// fleet makes to that host.
+				if strings.TrimSpace(cur.Address) == "" {
+					if a := strings.TrimSpace(addrs[name]); a != "" {
+						fields["address"] = a
+					}
+				}
 				if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", cur.ID).
 					Updates(fields).Error; err != nil {
 					return fmt.Errorf("update hypervisor %q: %w", name, err)
@@ -184,8 +226,13 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 				// later enrolled on it.
 				nodeName := name
 				h := tenant.Hypervisor{
-					HiveID:              &hiveID,
-					Name:                &nodeName,
+					HiveID: &hiveID,
+					Name:   &nodeName,
+					// The address the CLUSTER knows this node by, when the status
+					// call could supply it. Recording it here is what stops a
+					// later declaration of the same host — which looks rows up by
+					// address — from creating a second record for one machine.
+					Address:             addrs[name],
 					ObservedCPUTotal:    obs.CPUTotal,
 					ObservedRAMGBTotal:  obs.RAMGBTotal,
 					ObservedDiskGBTotal: obs.DiskGBTotal,

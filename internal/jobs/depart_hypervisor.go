@@ -119,6 +119,12 @@ type DepartureSnapshot struct {
 type DepartInput struct {
 	OrganizationID uuid.UUID
 	HypervisorID   uuid.UUID
+
+	// CredentialDisposition is the operator's answer about the cluster secrets
+	// this node has seen. Carried per departure rather than configured, because
+	// it is a judgement about ONE host leaving ONE cluster on ONE occasion — the
+	// same host may be trusted this week and not the next. Empty refuses.
+	CredentialDisposition string
 }
 
 // Depart removes one host from its hive, leaving it standalone and fleetless.
@@ -163,10 +169,11 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 
 	drain := tenant.DrainStateAt(time.Now().UTC(), snap.Hypervisor, snap.HeldPlacements, d.Thresholds)
 	refusals := tenant.CheckDeparture(tenant.DepartureRequest{
-		Hive:          snap.Hive,
-		Hypervisor:    snap.Hypervisor,
-		Drain:         drain,
-		HiveNodeCount: snap.HiveNodeCount,
+		Hive:                  snap.Hive,
+		Hypervisor:            snap.Hypervisor,
+		Drain:                 drain,
+		HiveNodeCount:         snap.HiveNodeCount,
+		CredentialDisposition: in.CredentialDisposition,
 	})
 	if len(refusals) > 0 {
 		// Wrapped so a caller can distinguish a policy refusal from a broken
@@ -206,6 +213,15 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	// still on disk, but reading them is one more thing that can fail at a point
 	// where the prune can no longer be identified.
 	keys, err := ReadNodeClientKeys(ctx, departing)
+	if err != nil {
+		return err
+	}
+
+	// Also before the stack stops, and for the same reason: /etc/pve is a fuse
+	// mount that pve-cluster provides, so once it is stopped there is nothing
+	// there to fingerprint. These digests are what MakeStandalone proves its
+	// destruction against.
+	secretsBefore, err := ReadClusterSecretDigests(ctx, departing)
 	if err != nil {
 		return err
 	}
@@ -259,7 +275,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return err
 	}
 
-	if err := MakeStandalone(ctx, departing, snap.PeerNames); err != nil {
+	if err := MakeStandalone(ctx, departing, snap.PeerNames, secretsBefore); err != nil {
 		return err
 	}
 

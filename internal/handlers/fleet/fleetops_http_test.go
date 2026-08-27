@@ -183,7 +183,12 @@ func mutations() []call {
 	return []call{
 		{"cordon", http.MethodPost, "/fleet/hypervisors/" + hypID + "/cordon",
 			map[string]any{"schedulable": false}},
-		{"depart", http.MethodPost, "/fleet/hypervisors/" + hypID + "/depart", nil},
+		// A valid body, deliberately: departure now requires a credential decision,
+		// and huma validates the body BEFORE this handler runs. Sending none would
+		// make these authorization cases pass on a 422 from the schema rather than
+		// on the 403 they exist to prove.
+		{"depart", http.MethodPost, "/fleet/hypervisors/" + hypID + "/depart",
+			map[string]any{"credential_disposition": "rotate"}},
 		{"reprovision", http.MethodPost, "/fleet/hypervisors/" + hypID + "/reprovision", nil},
 		{"sync", http.MethodPost, "/fleet/hives/" + hiveID + "/sync", nil},
 		{"update hive", http.MethodPatch, "/fleet/hives/" + hiveID,

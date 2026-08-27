@@ -190,6 +190,25 @@ func TestDepartureGateAgainstLiveClusters(t *testing.T) {
 				"refused: %v", cycleName(hv), cycleCodes(rs))
 		}
 		t.Logf("[gate] ok  allowed: %s (empty, cordoned)", cycleName(hv))
+
+		// The same host, through the gate a real departure uses. A node the
+		// cluster is ready to lose still may not leave until somebody has said
+		// what happens to the hive's token.cfg, ticket-signing key and root CA —
+		// all of which it holds, because /etc/pve/priv is shared by every member.
+		if rs := cycleGateExecuting(t, db, h, hv, ""); !cycleHas(rs, tenant.RefuseCredentialsUndecided) {
+			t.Fatalf("[gate] executing with no credential decision must refuse; got %v",
+				cycleCodes(rs))
+		}
+		t.Logf("[gate] ok  refused: credentials_undecided (%s, state is ready but nobody has "+
+			"said what happens to the secrets it holds)", cycleName(hv))
+
+		for _, d := range []string{tenant.CredentialsRotate, tenant.CredentialsAcceptExposure} {
+			if rs := cycleGateExecuting(t, db, h, hv, d); len(rs) != 0 {
+				t.Fatalf("[gate] %q is a decision and must be accepted; refused with %v",
+					d, cycleCodes(rs))
+			}
+			t.Logf("[gate] ok  allowed with disposition %q", d)
+		}
 	})
 
 	// ---- freshness -----------------------------------------------------------

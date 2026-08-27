@@ -38,9 +38,21 @@ type BeeEnrolmentToken struct {
 	Uses    int `gorm:"not null;default:0" json:"uses"`
 	MaxUses int `gorm:"not null;default:0" json:"max_uses"`
 
-	ExpiresAt   time.Time  `gorm:"type:timestamptz;not null;index" json:"expires_at"`
-	RevokedAt   *time.Time `gorm:"type:timestamptz" json:"revoked_at,omitempty"`
-	CreatedByID uuid.UUID  `gorm:"type:uuid;not null" json:"created_by_id"`
+	ExpiresAt time.Time  `gorm:"type:timestamptz;not null;index" json:"expires_at"`
+	RevokedAt *time.Time `gorm:"type:timestamptz" json:"revoked_at,omitempty"`
+
+	// NULL when this system minted the token rather than a person.
+	//
+	// Onboarding a host automatically means a worker needs a token to hand it,
+	// and a worker has no user — there is no service principal in this model and
+	// inventing one, or attributing the mint to whoever last logged in, would put
+	// a name against an action they did not take. An audit column that is
+	// sometimes a lie is worse than one that is sometimes empty.
+	//
+	// Not-null was what stopped this being wired at all: OnboardDeps.EnrolmentToken
+	// was declared, nil-checked and never assigned, so every automated onboarding
+	// failed at the enrol step with "no enrolment token source configured".
+	CreatedByID *uuid.UUID `gorm:"type:uuid" json:"created_by_id,omitempty"`
 	CreatedAt   time.Time  `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
 }
 

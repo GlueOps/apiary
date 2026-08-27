@@ -47,6 +47,42 @@ const (
 	RefusePlacementsHeld = "placements_held"
 	RefuseHiveTooSmall   = "hive_too_small"
 	RefuseNotAMember     = "not_a_member"
+
+	// RefuseCredentialsUndecided is raised when the caller has not said what to
+	// do about the secrets the departing node has already seen. It is the one
+	// refusal here that is not about the cluster's state — it is about a decision
+	// only an operator can make. See CredentialDisposition.
+	RefuseCredentialsUndecided = "credentials_undecided"
+)
+
+// What to do about the cluster secrets a departing node has seen.
+//
+// /etc/pve/priv is pmxcfs, so it is CLUSTER-WIDE: every node holds the same
+// token.cfg, the same authkey.key — the key PVE signs auth tickets with — and
+// the same pve-root-ca.key. A node that leaves has had all three.
+//
+// Measured on a live pair, 2026-08-26: after a departure in which the departing
+// node was deliberately told nothing — corosync stopped and masked, no expected
+// vote count ever set, delnode completed from the survivor — the departed node's
+// copies were still byte-identical to the live cluster's:
+//
+//	token.cfg        40edfa5c…  ==  40edfa5c…
+//	authkey.key      21303244…  ==  21303244…
+//	pve-root-ca.key  b311e385…  ==  b311e385…
+//
+// Quorum does not protect them. It gates WRITES to pmxcfs; starting pve-cluster
+// alone mounts the tree from the local config.db and serves every byte of it.
+// So there is no arrangement of vote counts that keeps a departed node from
+// reading what it already has, and the only question left is an operator's.
+const (
+	// CredentialsRotate: the departed node is not trusted, so the cluster rotates
+	// what it saw. Destroying its copy is not enough — it has already read them.
+	CredentialsRotate = "rotate"
+
+	// CredentialsAcceptExposure: the node is trusted and is being redeployed, so
+	// its copy is destroyed and the cluster keeps its secrets. A deliberate
+	// choice, recorded as one.
+	CredentialsAcceptExposure = "accept-exposure"
 )
 
 // DepartureRefusal is one reason a host may not leave its hive.
@@ -106,6 +142,18 @@ type DepartureRequest struct {
 	// cluster's own opinion, because that is the count the rest of this system
 	// acts on.
 	HiveNodeCount int
+
+	// CredentialDisposition is what to do about the secrets this node has seen,
+	// and it has NO DEFAULT on purpose.
+	//
+	// Every other field here describes the cluster; this one is a judgement about
+	// trust, and the two safe answers cost different things — rotating disrupts
+	// every API client in the hive, accepting leaves a departed host able to mint
+	// tickets for it. Picking either silently would be this system deciding, on
+	// an operator's behalf, which of those they can afford. An empty value
+	// refuses, in the same spirit as every other gate here: a check that cannot
+	// reach a decision denies rather than guesses.
+	CredentialDisposition string
 }
 
 // CheckDeparture returns every reason the host may not leave, or nil.
@@ -118,7 +166,51 @@ type DepartureRequest struct {
 //
 // A refusal is not an error condition of this system. It is the gate doing its
 // job, and callers must not report it as a 500 — see the handler mapping.
+// CheckDeparture is the gate at EXECUTION: every state precondition, plus the
+// operator's decision about the secrets this node has seen.
+//
+// Split from CheckDepartureState because the two are answered in different
+// places. The state gates describe the cluster and an operator fixes them by
+// acting on it — cordon the host, move the guests, run a sync — so they belong
+// in the preview, where they can be fixed before anything is attempted. The
+// credential decision is not fixable and not pre-existing: it is a question
+// asked at the moment of departure and answered in the same request.
+//
+// Evaluating it in the preview would refuse every host, always, and leave a
+// Depart control that can never enable — reporting an unanswered question as a
+// blocked cluster.
 func CheckDeparture(req DepartureRequest) []DepartureRefusal {
+	out := CheckDepartureState(req)
+
+	// Only when the state gates are otherwise satisfied. A host with four guests
+	// on it is not yet at the point where its credentials are the question, and
+	// stacking an unanswerable item onto a list of fixable ones buries them.
+	if len(out) > 0 {
+		return out
+	}
+	switch req.CredentialDisposition {
+	case CredentialsRotate, CredentialsAcceptExposure:
+	default:
+		out = append(out, DepartureRefusal{
+			Code:    RefuseCredentialsUndecided,
+			Summary: "no decision has been recorded about the cluster secrets this host has seen",
+			Detail: "this host holds the cluster's token.cfg, its ticket-signing authkey.key " +
+				"and its root CA private key, because /etc/pve/priv is shared by every node; " +
+				"departure destroys its copy but cannot make it un-seen",
+			Remedy: "Choose one. Rotate, if this host is not trusted — it can otherwise mint " +
+				"auth tickets for the cluster it left, which no SSH key removal prevents. " +
+				"Accept the exposure, if it is trusted and being redeployed. There is no " +
+				"safe default: rotating disrupts every API client in the fleet, and accepting " +
+				"leaves a credential behind.",
+		})
+	}
+	return out
+}
+
+// CheckDepartureState returns every reason the CLUSTER is not ready for this
+// host to leave. It is what the preview shows, and it reads nothing about
+// credentials — see CheckDeparture.
+func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 	var out []DepartureRefusal
 
 	// Membership first. Everything below is a statement about a node in a hive,

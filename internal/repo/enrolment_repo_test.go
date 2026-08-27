@@ -41,9 +41,13 @@ func seedOrg(t *testing.T, db *gorm.DB) control.Organization {
 func seedToken(t *testing.T, db *gorm.DB, orgID uuid.UUID, maxUses int, ttl time.Duration) string {
 	t.Helper()
 	raw := uuid.NewString()
+	// A person minted this one. The nullable case — a worker minting a token
+	// during automated onboarding, where there is no user to name — is covered
+	// separately below.
+	creator := uuid.New()
 	tok := control.BeeEnrolmentToken{
 		OrganizationID: orgID, TokenHash: raw, MaxUses: maxUses,
-		ExpiresAt: time.Now().UTC().Add(ttl), CreatedByID: uuid.New(),
+		ExpiresAt: time.Now().UTC().Add(ttl), CreatedByID: &creator,
 	}
 	if err := db.Create(&tok).Error; err != nil {
 		t.Fatalf("create token: %v", err)
@@ -151,5 +155,35 @@ func TestRedeemTokenRefusesEveryClosedShapeIdentically(t *testing.T) {
 					"rejected token is the one thing this must never do", got)
 			}
 		})
+	}
+}
+
+// A token minted by the system carries no creator, and must still redeem.
+//
+// created_by_id was NOT NULL until 2026-08-27, which is what stopped
+// OnboardDeps.EnrolmentToken from ever being wired: a worker is not a person,
+// and the alternatives were inventing a service principal or attributing the
+// mint to whoever last logged in. An audit column that is sometimes a lie is
+// worse than one that is sometimes empty.
+func TestRedeemsATokenMintedWithNoCreator(t *testing.T) {
+	db := enrolmentDB(t)
+	orgID := seedOrg(t, db).ID
+
+	raw := uuid.NewString()
+	tok := control.BeeEnrolmentToken{
+		OrganizationID: orgID, TokenHash: raw, MaxUses: 1,
+		ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+		// No CreatedByID: this is the worker's path.
+	}
+	if err := db.Create(&tok).Error; err != nil {
+		t.Fatalf("a token with no creator must be storable: %v", err)
+	}
+
+	got, err := NewEnrolmentRepoGorm(db).RedeemToken(context.Background(), raw, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("a system-minted token must redeem: %v", err)
+	}
+	if got != orgID {
+		t.Fatalf("redeemed into %s, want %s", got, orgID)
 	}
 }

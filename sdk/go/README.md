@@ -222,6 +222,7 @@ Class | Method | HTTP request | Description
  - [DeleteResponseBody1](docs/DeleteResponseBody1.md)
  - [DeleteResponseBody2](docs/DeleteResponseBody2.md)
  - [DeletedResponseBody](docs/DeletedResponseBody.md)
+ - [DepartRequestBody](docs/DepartRequestBody.md)
  - [DepartResponseBody](docs/DepartResponseBody.md)
  - [EnrolRequestBody](docs/EnrolRequestBody.md)
  - [EnrolResponseBody](docs/EnrolResponseBody.md)
