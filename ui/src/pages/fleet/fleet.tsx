@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { ConfirmDestructive } from '@/components/confirm-destructive';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import type { BeeView, CreateTaskRequestBodyWritable } from '@/sdk';
 import {
+  fleetBeesDeleteMutation,
   fleetBeesListOptions,
   fleetBeesListQueryKey,
   fleetHivesListOptions,
@@ -74,6 +76,7 @@ export const Fleet = () => {
   const [joinForce, setJoinForce] = useState(false);
   const [evictFrom, setEvictFrom] = useState<BeeView | null>(null);
   const [evictNode, setEvictNode] = useState('');
+  const [removeFor, setRemoveFor] = useState<BeeView | null>(null);
 
   // There is no endpoint that lists hives, only one that creates them, so the
   // only names this page can know are the ones it watched being created. Every
@@ -106,6 +109,20 @@ export const Fleet = () => {
       refresh();
     },
     onError: (e) => toast.error((e as { detail?: string })?.detail ?? 'Could not queue that task'),
+  });
+
+  const removeAgent = useMutation({
+    ...fleetBeesDeleteMutation(),
+    onSuccess: () => {
+      toast.success('Agent removed. Its credential is revoked; the hypervisor is unchanged.');
+      setRemoveFor(null);
+      refresh();
+    },
+    // The server refuses with 409 while an onboarding worker holds a lease on
+    // this machine, and that detail says so. Replacing it with a generic
+    // failure would turn "try again in a minute" into "something broke".
+    onError: (e) =>
+      toast.error((e as { detail?: string })?.detail ?? 'Could not remove that agent'),
   });
 
   // Queueing opens the log tail on the same task. A bee may hold only one
@@ -165,6 +182,7 @@ export const Fleet = () => {
       setEvictNode('');
       setEvictFrom(b);
     },
+    onRemove: (b: BeeView) => setRemoveFor(b),
   };
 
   return (
@@ -572,6 +590,28 @@ export const Fleet = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDestructive
+        open={removeFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setRemoveFor(null);
+        }}
+        title={removeFor ? `Remove the agent on ${beeLabel(removeFor)}?` : 'Remove this agent?'}
+        description="This removes the agent, not the machine."
+        consequences={[
+          'The hypervisor record survives — its cluster membership, address and onboarding history are kept, and it appears as having no agent.',
+          "The agent's credential is revoked first, and the revocation is verified before anything is deleted.",
+          'The agent process on the host is NOT stopped. It keeps running and starts failing authentication, which is the point: the credential is what this revokes.',
+          'To bring the machine back under management, enrol an agent on it again.',
+        ]}
+        confirmLabel="Remove the agent"
+        pendingLabel="Removing…"
+        pending={removeAgent.isPending}
+        onConfirm={() => {
+          if (!removeFor) return;
+          removeAgent.mutate({ path: { id: removeFor.id } });
+        }}
+      />
 
       <EnrolmentDialog open={enrolOpen} onOpenChange={setEnrolOpen} />
       <DeclareDialog open={declareOpen} onOpenChange={setDeclareOpen} />

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 
-import { IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
+import { ConfirmDestructive } from '@/components/confirm-destructive';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import type { EstateView, HiveDetailView } from '@/sdk';
 import {
   estatesListOptions,
   fleetHivesCreateMutation,
+  fleetHivesDeleteMutation,
   fleetHivesListOptions,
   fleetHivesListQueryKey,
   fleetHivesSyncMutation,
@@ -47,6 +49,7 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
   const [insecure, setInsecure] = useState(cluster.insecure_skip_verify);
   const [overcommit, setOvercommit] = useState(String(cluster.cpu_overcommit_ratio ?? 1));
   const [description, setDescription] = useState(cluster.description ?? '');
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const update = useMutation({
     ...fleetHivesUpdateMutation(),
@@ -62,6 +65,22 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
     onSuccess: () => toast.success('Capacity sync queued'),
     onError: () => toast.error('Could not queue a sync'),
   });
+
+  const remove = useMutation({
+    ...fleetHivesDeleteMutation(),
+    onSuccess: () => {
+      toast.success('Cluster deleted');
+      setDeleteOpen(false);
+      void queryClient.invalidateQueries({ queryKey: fleetHivesListQueryKey() });
+    },
+    onError: (e) =>
+      toast.error((e as { detail?: string })?.detail ?? 'Could not delete this cluster'),
+  });
+
+  // The server refuses while the cluster still holds hypervisors. Disabling the
+  // button here is not a second gate — it is saying why in advance, instead of
+  // spending a round trip to be told.
+  const holdsNodes = cluster.node_count > 0;
 
   const parsedMin = minimumNodes.trim() === '' ? undefined : Number(minimumNodes);
   const belowDefault = parsedMin !== undefined && parsedMin < DEFAULT_MINIMUM_NODES;
@@ -83,17 +102,43 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
             departures need at least {cluster.effective_minimum_nodes}
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!cluster.configured || sync.isPending}
-          onClick={() => sync.mutate({ path: { id: cluster.id } })}
-        >
-          <IconRefresh className="size-4" />
-          Sync now
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!cluster.configured || sync.isPending}
+            onClick={() => sync.mutate({ path: { id: cluster.id } })}
+          >
+            <IconRefresh className="size-4" />
+            Sync now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            disabled={holdsNodes}
+            aria-label={`Delete ${cluster.name}`}
+            title={
+              holdsNodes
+                ? 'Depart its hypervisors first — each one keeps its identity and becomes fleetless.'
+                : undefined
+            }
+            onClick={() => setDeleteOpen(true)}
+          >
+            <IconTrash className="size-4" />
+            Delete
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {holdsNodes ? (
+          <Hint>
+            This cluster cannot be deleted while it holds {cluster.node_count} hypervisor
+            {cluster.node_count === 1 ? '' : 's'}. Depart them first — each keeps its machine
+            identity and onboarding history, and becomes a hypervisor in no cluster.
+          </Hint>
+        ) : null}
+
         {!cluster.configured ? (
           <Hint>
             Without an API URL and a credential this cluster is never synced, so every node in it
@@ -233,6 +278,22 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
           </Button>
         </div>
       </CardContent>
+
+      <ConfirmDestructive
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete ${cluster.name}?`}
+        description="Only the cluster record here is removed. Nothing is done to Proxmox."
+        consequences={[
+          'No hypervisor is touched — this cluster holds none, which is why the action is available at all.',
+          'The API URL and the credential binding are forgotten. The credential itself is not revoked and stays registered as an estate.',
+          'Nothing about the real Proxmox cluster changes; if one still exists at that address, creating a cluster here again and re-binding is how it comes back.',
+        ]}
+        confirmLabel="Delete this cluster"
+        pendingLabel="Deleting…"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate({ path: { id: cluster.id } })}
+      />
     </Card>
   );
 }
