@@ -504,3 +504,69 @@ func TestAPreflightThatRefusesStillStopsTheUpgrade(t *testing.T) {
 		t.Fatal("a cluster that is not quorate must still refuse a reboot")
 	}
 }
+
+// settleFastAPI shortens the post-reboot wait for a test.
+func settleFastAPI(t *testing.T) {
+	t.Helper()
+	ot, oi := apiSettleTimeout, apiSettleInterval
+	apiSettleTimeout, apiSettleInterval = 120*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { apiSettleTimeout, apiSettleInterval = ot, oi })
+}
+
+// ATTEMPT 39. The host has just booted, so pveproxy is not listening yet.
+// Reading once and failing turned "the API is not up in the second after a
+// reboot" into a failed task — and a failed task is collected again, so a
+// dist-upgrade reached attempt 39, each one dialling 127.0.0.1:8006 and getting
+// connection refused.
+func TestVerifyAfterRebootWaitsForTheApiToComeBack(t *testing.T) {
+	settleFastAPI(t)
+	cl := healthyCluster()
+	cl.statusErr = errors.New("dial tcp 127.0.0.1:8006: connect: connection refused")
+	cl.statusHook = func(call int, f *fakeCluster) {
+		if call >= 3 { // pveproxy finishes starting
+			f.statusErr = nil
+		}
+	}
+	var phases []string
+	var declared time.Duration
+
+	if err := verifyAfterReboot(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil)); err != nil {
+		t.Fatalf("a host whose API came back a moment later was reported as failed: %v", err)
+	}
+	if cl.statusCalls < 3 {
+		t.Fatalf("status was read %d time(s); the API must be given time to start", cl.statusCalls)
+	}
+}
+
+// And when it never comes back, the task still succeeds. The upgrade has already
+// happened and the host has already returned; failing now undoes neither, and a
+// node that has left a cluster has no local API credential to answer with at all.
+func TestVerifyAfterRebootDoesNotFailOnAnUnreadableApi(t *testing.T) {
+	settleFastAPI(t)
+	cl := healthyCluster()
+	cl.statusErr = errors.New("not authorized to access endpoint")
+	var phases []string
+	var declared time.Duration
+
+	if err := verifyAfterReboot(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil)); err != nil {
+		t.Fatalf("an unreadable API failed a task whose work had already completed: %v", err)
+	}
+}
+
+// A cluster that CAN be read and is not quorate still fails. That is a live fact,
+// and the moment a rotation must stop before taking another node down.
+func TestVerifyAfterRebootStillFailsOnALostQuorum(t *testing.T) {
+	settleFastAPI(t)
+	cl := healthyCluster()
+	cl.quorate = false
+	var phases []string
+	var declared time.Duration
+
+	err := verifyAfterReboot(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil))
+	if err == nil || !strings.Contains(err.Error(), "NOT quorate") {
+		t.Fatalf("err = %v, want a failure naming the lost quorum", err)
+	}
+}

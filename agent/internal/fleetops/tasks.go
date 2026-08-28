@@ -232,14 +232,51 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 	return d.Reboot(ctx)
 }
 
+// apiSettle bounds the wait for the local Proxmox API after a reboot.
+//
+// Vars rather than consts so a test can shorten them.
+var (
+	apiSettleTimeout  = 3 * time.Minute
+	apiSettleInterval = 5 * time.Second
+)
+
 func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
-	if err := d.Cluster.Status(ctx); err != nil {
+	// THE HOST HAS JUST BOOTED, so pveproxy is not listening yet. Reading once
+	// and failing turned "the API is not up in the second after reboot" into a
+	// failed task, and a failed task is collected again — observed as a
+	// dist-upgrade reaching attempt 39, each one dialling 127.0.0.1:8006 and
+	// getting connection refused.
+	//
+	// Waited for, bounded, and then not fatal. See below.
+	deadline := time.Now().Add(apiSettleTimeout)
+	var err error
+	for {
+		err = d.Cluster.Status(ctx)
+		if err == nil || isNotClustered(err) || time.Now().After(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(apiSettleInterval):
+		}
+	}
+
+	if err != nil {
 		if isNotClustered(err) {
 			e.Logf("agent", "host is up; not a cluster member")
 			return nil
 		}
-		return fmt.Errorf("host is back but the cluster cannot be read: %w", err)
+		// COULD NOT ASK, not WAS TOLD NO — the same distinction the preflight
+		// makes. The upgrade has already happened and the host has already come
+		// back; failing the task now cannot undo either, and the control plane
+		// gated this before it was queued. A node that has left a cluster has no
+		// local API credential at all, so it can never answer this.
+		e.Logf("agent", "host is back; the cluster could not be read after %s (%v), so its "+
+			"state is not confirmed here", apiSettleTimeout, err)
+		return nil
 	}
+
 	if !d.Cluster.Quorate() {
 		// Reported as a failure, not a note. A node that returns to a cluster
 		// that has lost quorum is the moment a rotation must stop, before the
