@@ -2,9 +2,15 @@ package fleetops
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/glueops/apiary/pkg/proxmox"
 )
@@ -149,5 +155,55 @@ func NewLocalClient(baseURL, tokenID, secret string) (*proxmox.Client, error) {
 			"and only the uuid after it is the secret. Passing the whole string builds a doubled " +
 			"header that Proxmox rejects as unauthorized")
 	}
-	return proxmox.NewClient(baseURL, proxmox.WithAPIToken(tokenID, secret)), nil
+	return proxmox.NewClient(baseURL,
+		proxmox.WithAPIToken(tokenID, secret),
+		proxmox.WithHTTPClient(localAPIClient()),
+	), nil
+}
+
+// pveRootCAPath is the certificate authority a Proxmox node issues its own API
+// certificate from. A var so a test can point it at a fixture.
+var pveRootCAPath = "/etc/pve/pve-root-ca.pem"
+
+// localAPIClient trusts THIS node's own Proxmox CA.
+//
+// The agent talks to https://127.0.0.1:8006, and that certificate is issued by a
+// CA which exists only on the node — it is not in any system trust store. So
+// verification failed with
+//
+//	tls: failed to verify certificate: x509: certificate signed by unknown authority
+//
+// and every task that reads cluster state failed with it, including the
+// dist-upgrade's post-reboot check. The certificate itself is fine: its SANs
+// cover 127.0.0.1, localhost and the node's own name and address.
+//
+// READ FROM DISK on every client, not cached and not installed into the system
+// store, because the CA changes underneath a running agent more often than it
+// looks: `pvecm updatecerts` reissues it, a departure mints a fresh one so the
+// node leaves sharing nothing, and joining a cluster replaces it with that
+// cluster's. Anything that copied it once would be stale after each of those.
+//
+// Falls back to the system roots when the file cannot be read, rather than
+// disabling verification. A missing CA is not a reason to start trusting
+// anything that answers on the port.
+func localAPIClient() *http.Client {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	pem, err := os.ReadFile(pveRootCAPath)
+	if err != nil {
+		slog.Warn("could not read this node's Proxmox CA, so the local API is verified against "+
+			"the system trust store, which does not contain it",
+			"path", pveRootCAPath, "error", err)
+		return &http.Client{Timeout: 30 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: tlsCfg}}
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		slog.Warn("this node's Proxmox CA could not be parsed", "path", pveRootCAPath)
+		return &http.Client{Timeout: 30 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: tlsCfg}}
+	}
+	tlsCfg.RootCAs = pool
+	return &http.Client{Timeout: 30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: tlsCfg}}
 }

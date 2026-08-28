@@ -20,6 +20,7 @@ func TestMain(m *testing.M) {
 		authFailureTestSchema,
 		credentialTestSchema,
 		declareTestSchema,
+		declareNoMgmtTestSchema,
 		estateTestSchema,
 		firewallTestSchema,
 		publishTestSchema,

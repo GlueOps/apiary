@@ -46,6 +46,27 @@ func (p *Principal) IsImpersonating() bool {
 	return p.Impersonating && p.ActorID != nil
 }
 
+// ActingUser returns the person this principal is, and refuses when there is
+// none.
+//
+// An ORG key authenticates a tenant, not a human: it carries no UserID by
+// design, and every SecurityUserOrKey endpoint admits one. An operation that
+// records who acted — an audit row, an inviter, the author of a policy change —
+// therefore has a principal it cannot describe, and `*p.UserID` on that path is
+// a nil dereference that takes the process down.
+//
+// Refusing is the honest answer rather than the conservative one. The
+// alternatives are to panic, or to write the nil uuid into the actor column,
+// and an audit trail that names nobody is worse than one that has no row: it
+// looks like an answer. What these operations need is a human, and an org key
+// is not one — so it is told so, in terms that name the fix.
+func (p *Principal) ActingUser() (uuid.UUID, error) {
+	if p == nil || p.UserID == nil {
+		return uuid.Nil, ErrNoActingUser
+	}
+	return *p.UserID, nil
+}
+
 type principalCtxKey struct{}
 
 func WithPrincipal(ctx context.Context, p *Principal) context.Context {

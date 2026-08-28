@@ -132,7 +132,7 @@ func TestDeleteAgentRevokesTheCredentialAndKeepsTheMachine(t *testing.T) {
 		ProvisioningState: tenant.OnboardProvisioned,
 	})
 
-	task := tenant.FleetTask{BeeID: beeID, Kind: "fleet.host.ping", CreatedByID: uuid.New()}
+	task := tenant.FleetTask{BeeID: beeID, Kind: "fleet.host.ping", CreatedByID: ptrUUID(uuid.New())}
 	if err := tdb.Create(&task).Error; err != nil {
 		t.Fatalf("seed task: %v", err)
 	}
@@ -421,3 +421,7 @@ func TestReprovisionRefusalsExplainEveryRefusal(t *testing.T) {
 		})
 	}
 }
+
+// A person created it. Nil is the org-API-key case; see
+// repo.TestAnOrgKeyQueuesUpgradesWithNoActor.
+func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }

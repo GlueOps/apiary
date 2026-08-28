@@ -173,3 +173,48 @@ func safeIdent(s string) bool {
 	}
 	return true
 }
+
+// Stamp is the version `just agent-dist` stamped into these binaries, or "" when
+// none have been built into this server.
+//
+// It exists because nothing else can answer the question. The version is applied
+// with `-X main.version`, which is only readable by executing the binary, and
+// embed.FS carries no modification times — so a server has no way to tell
+// whether the agents it is about to install came from its own source or from
+// whatever was last cross-compiled into the tree.
+//
+// That is not hypothetical. The dist directory is gitignored and produced by one
+// recipe that nothing depends on, so editing agent code and running the server
+// ships the previous build with no warning at all. A change that made a
+// dist-upgrade stop requiring a Proxmox token was committed at 18:24 and was
+// still missing from every host onboarded hours afterwards, because the binaries
+// were built at 17:24.
+func Stamp() string {
+	b, err := embedded.ReadFile(distDir + "/stamp")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// WarnIfStale reports a mismatch between the embedded agents and this server.
+//
+// A warning rather than a refusal: agents built from a different commit are
+// usually a developer mid-change, and refusing to start would make the common
+// case worse than the problem. What matters is that it is SAID — the failure
+// this prevents is silent, and costs its whole diagnosis before anyone thinks to
+// check a build artefact.
+//
+// Empty stamp means no agents are embedded at all, which Catalogue already
+// reports usefully at the point an upgrade is attempted; saying it again at
+// every startup would train people to ignore this line.
+func WarnIfStale(serverVersion string, warn func(msg string, args ...any)) {
+	stamp := Stamp()
+	if stamp == "" || stamp == strings.TrimSpace(serverVersion) {
+		return
+	}
+	warn("the embedded agent binaries were built from a different version than this "+
+		"server, so onboarding and upgrades will install agents that do not match this "+
+		"source; run `just agent-dist` and restart",
+		"agent_build", stamp, "server_version", serverVersion)
+}

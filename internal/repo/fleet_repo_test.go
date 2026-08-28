@@ -303,12 +303,12 @@ func TestABeeMayHoldOnlyOneOutstandingTask(t *testing.T) {
 	hive := fleetSeedHive(t, db, "dc2")
 	bee := fleetSeedBee(t, db, hive.ID, "hv-a")
 
-	first := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	first := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &first); err != nil {
 		t.Fatalf("first task: %v", err)
 	}
 
-	second := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.upgrade", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	second := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.upgrade", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &second); !errors.Is(err, ErrBeeBusy) {
 		t.Fatalf("queuing a second task: err = %v, want ErrBeeBusy", err)
 	}
@@ -333,7 +333,7 @@ func TestClaimReturnsTheSameTaskToACrashedBee(t *testing.T) {
 	hive := fleetSeedHive(t, db, "dc3")
 	bee := fleetSeedBee(t, db, hive.ID, "hv-b")
 
-	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &task); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestTerminalReportsAreIdempotent(t *testing.T) {
 	hive := fleetSeedHive(t, db, "dc4")
 	bee := fleetSeedBee(t, db, hive.ID, "hv-c")
 
-	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.upgrade", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.upgrade", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &task); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestResentLogBatchesAreNoOps(t *testing.T) {
 	hive := fleetSeedHive(t, db, "dc5")
 	bee := fleetSeedBee(t, db, hive.ID, "hv-d")
 
-	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	task := tenant.FleetTask{BeeID: bee.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &task); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -442,7 +442,7 @@ func TestABeeCannotReportOrLogAgainstAnotherBeesTask(t *testing.T) {
 	mine := fleetSeedBee(t, db, hive.ID, "hv-mine")
 	theirs := fleetSeedBee(t, db, hive.ID, "hv-theirs")
 
-	task := tenant.FleetTask{BeeID: theirs.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: uuid.New()}
+	task := tenant.FleetTask{BeeID: theirs.ID, Kind: "fleet.host.drain", Status: tenant.FleetTaskPending, CreatedByID: ptrUUID(uuid.New())}
 	if err := r.CreateTask(context.Background(), &task); err != nil {
 		t.Fatalf("create: %v", err)
 	}

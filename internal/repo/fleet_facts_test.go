@@ -282,3 +282,80 @@ func fleetSeedHiveIn(t *testing.T, db *gorm.DB) tenant.Hive {
 	}
 	return h
 }
+
+// THE GAP THIS CLOSES. The capacity sync runs per CLUSTER, so a machine in no
+// cluster is never observed by it — and fleetless is exactly the state a machine
+// is in when it is about to join one. observed_guests therefore read zero for
+// every join candidate, and the arrival gate's guests_present refusal, which
+// exists because `pvecm add` discards the joining node's guest configuration,
+// could not fire for the only case it covers.
+//
+// Measured on a five-node lab on 2026-08-27: two fleetless hosts recorded at
+// observed_guests=0 while each held two containers.
+func TestAFleetlessHostsOwnGuestCountIsRecorded(t *testing.T) {
+	db := factsDB(t)
+
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := tenant.Hypervisor{BeeID: &bee.ID, Address: "192.0.2.20"}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 2); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.ObservedGuests != 2 {
+		t.Fatalf("observed_guests = %d, want 2 — the gate reads this column", got.ObservedGuests)
+	}
+	// Stamped, because the gates also refuse on a stale observation. Recording
+	// the count and leaving the machine looking never-observed would trade one
+	// refusal for another.
+	if got.LastSyncedAt == nil {
+		t.Fatal("last_synced_at was not stamped, so the observation still reads as never made")
+	}
+}
+
+// A CLUSTERED machine is the capacity sync's to observe: it sees the whole
+// cluster and can tell this host's guests from its peers'. Two writers on one
+// column would take turns and flap on every tick where they disagree.
+//
+// The predicate is in the UPDATE rather than in a read-then-write on purpose, so
+// a machine that joins between an agent's report and this write cannot have the
+// stale observation land afterwards.
+func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
+	db := factsDB(t)
+
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	name := "hv1"
+	hv := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Name: &name, ObservedGuests: 7}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 0); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.ObservedGuests != 7 {
+		t.Fatalf("observed_guests = %d, want the sync's 7 left alone", got.ObservedGuests)
+	}
+}

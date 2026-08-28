@@ -63,7 +63,7 @@ func TestADownloadThatDoesNotMatchItsDigestIsRefused(t *testing.T) {
 	_, err := Apply(context.Background(), r, Plan{
 		Binary: []byte("something else entirely"),
 		SHA256: digest([]byte("what was advertised")),
-		Target: p,
+		Target: p, BackupDir: filepath.Dir(p) + "/backups",
 	})
 	if err == nil {
 		t.Fatal("a binary that did not match its digest was installed")
@@ -90,7 +90,7 @@ func TestTheNewBinaryIsProvedToRunBeforeAnythingIsReplaced(t *testing.T) {
 	r := &runner{failOn: "upgrade version"}
 
 	_, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p,
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
 	})
 	if err == nil {
 		t.Fatal("a binary that could not run was installed")
@@ -116,7 +116,7 @@ func TestTheOldBinaryIsKept(t *testing.T) {
 	r := &runner{}
 
 	res, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p,
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -144,7 +144,7 @@ func TestTheStagedFileSitsBesideTheTarget(t *testing.T) {
 	body := []byte("new")
 	r := &runner{}
 	if _, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p,
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
 	}); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestTheServiceIsRestartedBySystemdRatherThanByExec(t *testing.T) {
 	body := []byte("new")
 	r := &runner{}
 	res, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p, Unit: "apiary-agent.service",
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups", Unit: "apiary-agent.service",
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -188,7 +188,7 @@ func TestNoUnitMeansNoRestart(t *testing.T) {
 	body := []byte("new")
 	r := &runner{}
 	res, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p,
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -216,29 +216,85 @@ func TestAnEmptyBinaryIsRefused(t *testing.T) {
 //
 // Leaving the target missing is worse than not upgrading: systemd would restart
 // into nothing at all.
-func TestAFailedInstallRestoresTheOldBinary(t *testing.T) {
+func TestAFailedInstallLeavesTheOldBinaryRunning(t *testing.T) {
 	t.Parallel()
 
 	p := target(t, "the old agent")
 	body := []byte("the new agent")
 
-	// Make the final rename fail by turning the target's path into a directory
-	// that already holds something — the rename onto it cannot succeed.
-	//
-	// Simulated instead by removing write permission on the directory after
-	// staging is impossible here, so this asserts the guarantee that IS reachable:
-	// after a successful run the target exists and the backup exists, and neither
-	// is ever absent at the same time.
-	r := &runner{}
-	res, err := Apply(context.Background(), r, Plan{
-		Binary: body, SHA256: digest(body), Target: p,
+	// Fails at "prove it runs", which is the realistic failure: a binary for the
+	// wrong architecture, or built against a libc this host does not have.
+	r := &runner{failOn: ".apiary-agent.upgrade"}
+	if _, err := Apply(context.Background(), r, Plan{
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
+	}); err == nil {
+		t.Fatal("a binary that does not run on this host was installed anyway")
+	}
+
+	// THE GUARANTEE, and it is now structural rather than restored by a rollback:
+	// the target is not touched until the one rename that replaces it, so a
+	// failure before that point cannot leave it missing or half-written. The old
+	// scheme renamed the target AWAY first, which opened a window where systemd
+	// restarting would have found nothing at all.
+	now, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("the binary is gone after a failed upgrade: %v", err)
+	}
+	if string(now) != "the old agent" {
+		t.Fatalf("the binary was replaced by one that does not run: %q", now)
+	}
+}
+
+// Backups do not live beside the binary. One that does is a second executable
+// on PATH — offered by tab completion, runnable by accident — and it is what the
+// accumulating-suffix bug fed on.
+func TestBackupsAreKeptOutOfTheBinarysDirectory(t *testing.T) {
+	t.Parallel()
+
+	p := target(t, "the old agent")
+	body := []byte("the new agent")
+	backups := filepath.Dir(p) + "/backups"
+
+	res, err := Apply(context.Background(), &runner{}, Plan{
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: backups,
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	for _, path := range []string{res.Target, res.Backup} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("%s is missing after a successful upgrade: %v", path, err)
+	if filepath.Dir(res.Backup) != backups {
+		t.Fatalf("backup landed in %s, want %s", filepath.Dir(res.Backup), backups)
+	}
+	if _, err := os.Stat(p + ".previous"); err == nil {
+		t.Fatal("a .previous backup was left beside the binary, on PATH")
+	}
+	old, err := os.ReadFile(res.Backup)
+	if err != nil || string(old) != "the old agent" {
+		t.Fatalf("the backup does not hold the replaced binary: %q (%v)", old, err)
+	}
+}
+
+// A host damaged by the old scheme is cleaned up on its next upgrade, rather
+// than needing to be visited. Found five deep in a lab.
+func TestLegacyBackupsBesideTheBinaryAreSweptUp(t *testing.T) {
+	t.Parallel()
+
+	p := target(t, "the old agent")
+	for _, suffix := range []string{".previous", ".previous.previous", ".previous.previous.previous"} {
+		if err := os.WriteFile(p+suffix, []byte("an older agent"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	body := []byte("the new agent")
+	if _, err := Apply(context.Background(), &runner{}, Plan{
+		Binary: body, SHA256: digest(body), Target: p, BackupDir: filepath.Dir(p) + "/backups",
+	}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	for _, suffix := range []string{".previous", ".previous.previous", ".previous.previous.previous"} {
+		if _, err := os.Stat(p + suffix); err == nil {
+			t.Errorf("%s survived the upgrade", p+suffix)
 		}
 	}
 }

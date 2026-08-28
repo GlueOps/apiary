@@ -10,6 +10,7 @@ Name | Type | Description | Notes
 **AppliedFirewallDigest** | Pointer to **string** | Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged. | [optional] 
 **AppliedFirewallRevision** | Pointer to **int64** | The firewall revision this host has actually loaded. Omit or zero if it has applied none. | [optional] 
 **Back** | Pointer to **bool** | Withdraws a standing declaration: the host has returned. | [optional] 
+**ObservedGuests** | Pointer to **int64** | VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy. | [optional] 
 **UnavailableForSeconds** | Pointer to **int64** | Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault. | [optional] 
 **UnavailableReason** | Pointer to **string** |  | [optional] 
 **WaitSeconds** | Pointer to **int64** | Hold the request open for up to this long waiting for a task. The response is the same shape either way. | [optional] 
@@ -182,6 +183,31 @@ SetBack sets Back field to given value.
 `func (o *HeartbeatRequestBody) HasBack() bool`
 
 HasBack returns a boolean if a field has been set.
+
+### GetObservedGuests
+
+`func (o *HeartbeatRequestBody) GetObservedGuests() int64`
+
+GetObservedGuests returns the ObservedGuests field if non-nil, zero value otherwise.
+
+### GetObservedGuestsOk
+
+`func (o *HeartbeatRequestBody) GetObservedGuestsOk() (*int64, bool)`
+
+GetObservedGuestsOk returns a tuple with the ObservedGuests field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedGuests
+
+`func (o *HeartbeatRequestBody) SetObservedGuests(v int64)`
+
+SetObservedGuests sets ObservedGuests field to given value.
+
+### HasObservedGuests
+
+`func (o *HeartbeatRequestBody) HasObservedGuests() bool`
+
+HasObservedGuests returns a boolean if a field has been set.
 
 ### GetUnavailableForSeconds
 

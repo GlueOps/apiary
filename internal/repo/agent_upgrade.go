@@ -57,7 +57,8 @@ func QueueAgentUpgrades(
 	// An agent whose own digest is among them is running one of them and has
 	// nothing to do, whatever any version says.
 	targetDigests map[string]bool,
-	byUser uuid.UUID,
+	// byUser is nil when an org API key queued this rather than a person.
+	byUser *uuid.UUID,
 	force bool,
 	now time.Time,
 	offlineAfter time.Duration,

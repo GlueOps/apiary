@@ -2,7 +2,9 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1006,5 +1008,338 @@ func TestSyncStillWritesCapacityWhenAddressesCannotBeRead(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("the node must still be written; wrote %d", n)
+	}
+}
+
+// THE CLOSED LOOP THIS OPENS.
+//
+// A standalone Proxmox host answers /cluster/resources with itself, so the sync
+// recorded it as the hive's only member. That one row then closed every route
+// out: bootstrap refused because the host was in a hive AND the hive was not
+// empty, while arrival was permitted because the target had a node — right up to
+// the point where `pvecm add` was pointed at a machine that is not a cluster.
+//
+// Observed on a five-node lab where nothing was clustered: two hosts recorded as
+// members of two clusters that did not exist, and no way to create either.
+func TestSyncRefusesAHiveWhoseEndpointIsAStandaloneHost(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The false membership a previous sync left behind.
+	hv := machine(hive.ID, "pve")
+	hv.Address = "192.0.2.11"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		// What a standalone host reports: a successful read, and no cluster.
+		return "", false, nil
+	}
+
+	_, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if !errors.Is(err, ErrHiveIsNotACluster) {
+		t.Fatalf("err = %v, want ErrHiveIsNotACluster", err)
+	}
+	// And it must say what to do, or an operator is told no and nothing else.
+	if !strings.Contains(err.Error(), "Create the cluster") {
+		t.Fatalf("the refusal names no way forward: %v", err)
+	}
+
+	// The false membership is gone, so the host can now be used to CREATE the
+	// cluster — which is the whole point of noticing.
+	var after tenant.Hypervisor
+	if err := db.First(&after, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.HiveID != nil {
+		t.Fatalf("the host is still recorded in a cluster that does not exist (hive %v)", *after.HiveID)
+	}
+	if after.Name != nil {
+		t.Fatalf("the node name survived, and it is a name only a cluster could have given: %q", *after.Name)
+	}
+	// The MACHINE survives — this corrects bookkeeping, it does not forget a box.
+	if after.Address != "192.0.2.11" {
+		t.Fatalf("address = %q, want the machine record left intact", after.Address)
+	}
+}
+
+// A real cluster must be entirely unaffected, including one that has lost
+// quorum: a clustered node still reports its cluster entry when it cannot vote,
+// and treating that as standalone would release every member of a cluster during
+// exactly the incident where the records matter most.
+func TestSyncLeavesARealClusterAlone(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]tenant.Hypervisor{machine(hive.ID, "hv1")}[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv1", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		return "dc1", true, nil
+	}
+
+	n, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if err != nil {
+		t.Fatalf("a real cluster was refused: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 node written, got %d", n)
+	}
+
+	var count int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("%d members after a sync of a real cluster, want 1", count)
+	}
+}
+
+// An endpoint that cannot be reached is NOT a standalone host. Mistaking the two
+// would release a whole cluster's membership on a network blip.
+func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]tenant.Hypervisor{machine(hive.ID, "hv1")}[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv1", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		return "", false, errors.New("dial tcp 192.0.2.1:8006: i/o timeout")
+	}
+
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("an unreachable check must not fail the sync on its own: %v", err)
+	}
+	var count int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("membership was released on a failed check; %d members remain, want 1", count)
+	}
+}
+
+// THE CREDENTIAL BREAK PATH. A hive's API URL names ONE node, and the credential
+// is bound to it. When that node departs, the address still points at it and it
+// now answers as standalone — while the cluster it left is running, quorate and
+// full of members.
+//
+// Releasing on that answer would mark every remaining member fleetless: a live
+// fleet erased from the control plane's records because one address went stale.
+// The standalone answer only ever proved that the machine at the API URL is in
+// no cluster; it never proved anything about the others.
+func TestSyncDoesNotReleaseALiveClusterWhenItsApiUrlPointsAtADepartedNode(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Three members: the departed node's address is what the hive still points
+	// at, and two nodes that are genuinely still in the cluster.
+	for _, n := range []string{"hv1", "hv2", "hv3"} {
+		m := machine(hive.ID, n)
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "hv2", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.ClusterIdentity = func(context.Context, uuid.UUID, uuid.UUID) (string, bool, error) {
+		// What the departed node reports: a clean read, and no cluster.
+		return "", false, nil
+	}
+
+	_, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if !errors.Is(err, ErrHiveIsNotACluster) {
+		t.Fatalf("err = %v, want ErrHiveIsNotACluster", err)
+	}
+	// It must name the actual problem — a stale address, not a vanished cluster —
+	// because the remedy is to repoint it, and the other message sends an
+	// operator to create a cluster that already exists.
+	if !strings.Contains(err.Error(), "Repoint") {
+		t.Fatalf("the refusal does not say to repoint the API URL: %v", err)
+	}
+
+	var still int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ?", hive.ID).Count(&still).Error; err != nil {
+		t.Fatal(err)
+	}
+	if still != 3 {
+		t.Fatalf("%d members survived, want all 3 — a stale API URL must never erase a live "+
+			"cluster's records", still)
+	}
+}
+
+// A RECORDED FAILURE MUST NOT OUTLIVE ITS GOAL.
+//
+// last_operation_error stores the outcome of the last attempt, and an operator
+// reads it as the state of the machine. When membership is resolved by a path
+// that records no outcome of its own — adoption, or the sync clearing a node the
+// cluster stopped reporting — the failure stands unchallenged forever. Three
+// healthy nodes carried an eight-hour-old join failure that way, and surfacing
+// last_operation_error in the UI turned a dormant inaccuracy into a visible one.
+func TestAdoptionClearsAStaleJoinFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// A fleetless machine carrying the failure of a join that later happened
+	// anyway, by a route that recorded nothing.
+	hv := tenant.Hypervisor{
+		Address:            "192.0.2.30",
+		LastOperation:      "join",
+		LastOperationError: "bootstrap: refused by a precondition: already_in_hive",
+	}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve9", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.NodeAddresses = func(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error) {
+		return map[string]string{"pve9": "192.0.2.30"}, nil
+	}
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.HiveID == nil {
+		t.Fatal("the machine was not adopted, so the rest of this test proves nothing")
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a join failure survived the join succeeding: %q", got.LastOperationError)
+	}
+}
+
+// The same in the other direction: a machine the cluster no longer reports is
+// out, which is what a departure was for, so a stored departure failure now
+// contradicts the world.
+func TestClearingMembershipClearsAStaleDepartureFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve8")
+	hv.LastOperation = "depart"
+	hv.LastOperationError = "depart: refused by a precondition: not_a_member"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// The cluster reports a different node entirely: pve8 is gone.
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve7", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.HiveID != nil {
+		t.Fatal("membership was not cleared, so the rest of this test proves nothing")
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a departure failure survived the machine leaving: %q", got.LastOperationError)
+	}
+}
+
+// The STEADY-STATE case. Adoption covers a machine arriving and the
+// clear-not-delete path covers one leaving; a node that was already a member
+// when its failure was recorded is neither, and nothing ever contradicts the
+// stored outcome. One sat in a cluster for eight hours carrying the refusal of a
+// bootstrap it had supposedly failed.
+func TestAnObservedMemberLosesAStaleJoinFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve6")
+	hv.LastOperation = "join"
+	hv.LastOperationError = "bootstrap: refused by a precondition: already_in_hive"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve6", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a join failure survived on a node observed in the cluster: %q",
+			got.LastOperationError)
+	}
+}
+
+// A failed DEPARTURE on a node that is still a member is accurate: it tried to
+// leave and did not. Clearing it would erase a true statement about a machine an
+// operator is probably still waiting on.
+func TestAnObservedMemberKeepsAFailedDeparture(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve5")
+	hv.LastOperation = "depart"
+	hv.LastOperationError = "depart: refused by a precondition: drain_unknown"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve5", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastOperationError == "" {
+		t.Fatal("a departure that genuinely failed was erased while the node is still a member")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -261,13 +262,24 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		if err != nil {
 			return nil, err
 		}
+		// Validated as a COROSYNC cluster name, because that is what it becomes
+		// on the day this cluster acquires its first node: `pvecm create` is
+		// given the hive's name. Accepting "Lab A" here only defers the refusal
+		// to a worker, after the operator has bound a credential, chosen rings
+		// and clicked the button — with the reason in a job log.
+		name := strings.TrimSpace(in.Body.Name)
+		if err := tenant.ValidateClusterName(name); err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
 		// No organization column: the database is the organization.
 		hive := tenant.Hive{
-			Name: in.Body.Name, Provider: provider, Description: in.Body.Description,
+			Name: name, Provider: provider, Description: in.Body.Description,
 		}
 		if err := db.WithContext(ctx).Create(&hive).Error; err != nil {
 			return nil, mapErr(ctx, err)
 		}
+		auditOK(ctx, db, p, tenant.AuditHiveCreate, tenant.AuditTargetHive, &hive.ID,
+			map[string]any{"name": hive.Name, "provider": hive.Provider})
 		return &CreateHiveResponse{Body: HiveView{ID: hive.ID.String(), Name: hive.Name, Provider: hive.Provider}}, nil
 	})
 
@@ -303,11 +315,15 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		// be adopted into this cluster by a capacity sync between the count and the
 		// delete, and the delete would then take the cluster out from under a live
 		// machine record.
+		// Captured outside the transaction because the audit row is written after
+		// it, by which point the cluster is gone and its id resolves to nothing.
+		var hiveName string
 		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var hive tenant.Hive
 			if err := tx.First(&hive, "id = ?", id).Error; err != nil {
 				return err
 			}
+			hiveName = hive.Name
 			var members int64
 			if err := tx.Model(&tenant.Hypervisor{}).
 				Where("hive_id = ?", id).Count(&members).Error; err != nil {
@@ -334,10 +350,20 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			}
 			var se huma.StatusError
 			if errors.As(err, &se) {
+				// A refused delete is worth a row: someone tried to remove a
+				// cluster that still holds machines, and an incident review reads
+				// the absence of that as nobody having tried.
+				auditRefused(ctx, db, p, tenant.AuditHiveDelete, tenant.AuditTargetHive, &id,
+					err.Error(), map[string]any{"name": hiveName})
 				return nil, err
 			}
 			return nil, mapErr(ctx, err)
 		}
+		// Recorded AFTER the delete, so the row describes something that happened
+		// rather than something attempted. The cluster's name is in the metadata
+		// because the id it refers to no longer resolves to anything.
+		auditOK(ctx, db, p, tenant.AuditHiveDelete, tenant.AuditTargetHive, &id,
+			map[string]any{"name": hiveName})
 		return &DeleteHiveResponse{}, nil
 	})
 
@@ -444,7 +470,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 
 		task := tenant.FleetTask{
 			BeeID: beeID, Kind: in.Body.Kind, Spec: datatypes.JSON(spec),
-			Status: tenant.FleetTaskPending, CreatedByID: *p.UserID,
+			Status: tenant.FleetTaskPending, CreatedByID: p.UserID,
 		}
 		if err := repo.NewFleetRepoGorm(db).CreateTask(ctx, &task); err != nil {
 			return nil, mapErr(ctx, err)
@@ -509,7 +535,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 			digests[b.SHA256] = true
 		}
 
-		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, *p.UserID,
+		results, err := repo.QueueAgentUpgrades(ctx, db, hiveID, target, digests, p.UserID,
 			in.Body.Force, time.Now().UTC(), 2*time.Minute)
 		if err != nil {
 			return nil, mapErr(ctx, err)
@@ -634,6 +660,9 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		if err != nil {
 			return nil, err
 		}
+		auditOK(ctx, db, p, tenant.AuditAgentRemove, tenant.AuditTargetBee, &beeID,
+			map[string]any{"hypervisor_id": hypID})
+
 		out := &DeleteBeeResponse{}
 		out.Body.HypervisorID = hypID
 		out.Body.Detail = "agent removed and its credential revoked; the machine record survives"

@@ -19,6 +19,10 @@ func (m *MockEnqueuer) EnqueueSendEmail(context.Context, *SendEmailArgs) error {
 func (m *MockEnqueuer) EnqueueDepartHypervisor(context.Context, *DepartHypervisorArgs) error {
 	return nil
 }
+func (m *MockEnqueuer) EnqueueBootstrapHive(context.Context, *BootstrapHiveArgs) error {
+	return nil
+}
+
 func (m *MockEnqueuer) EnqueueArriveHypervisor(context.Context, *ArriveHypervisorArgs) error {
 	return nil
 }

@@ -20,6 +20,7 @@ type Enqueuer interface {
 	// half-migrated one.
 	EnqueueDepartHypervisor(ctx context.Context, args *DepartHypervisorArgs) error
 	EnqueueArriveHypervisor(ctx context.Context, args *ArriveHypervisorArgs) error
+	EnqueueBootstrapHive(ctx context.Context, args *BootstrapHiveArgs) error
 	EnqueueSyncHiveCapacity(ctx context.Context, args *SyncHiveCapacityArgs) error
 }
 
@@ -174,6 +175,26 @@ type ArriveHypervisorArgs struct {
 }
 
 func (ArriveHypervisorArgs) Kind() string { return "fleet.arrive_hypervisor" }
+
+// BootstrapHiveArgs creates a Proxmox cluster on a standalone host and records
+// it as the hive's first node.
+//
+// The other half of ArriveHypervisorArgs, and the reason a hive can acquire a
+// first node at all: arrival refuses with target_hive_empty when the hive has
+// none, which is every hive on the day it is created.
+type BootstrapHiveArgs struct {
+	OrganizationID string `json:"organization_id"`
+	HypervisorID   string `json:"hypervisor_id"`
+	TargetHiveID   string `json:"target_hive_id"`
+
+	// Links are the first node's corosync rings. They matter more here than on
+	// an arrival: `pvecm create` writes the ring configuration every later node
+	// inherits, so a single-ring cluster created today is a single point of
+	// failure for quorum for as long as the cluster lives.
+	Links []tenant.CorosyncLink `json:"links"`
+}
+
+func (BootstrapHiveArgs) Kind() string { return "fleet.bootstrap_hive" }
 
 // SyncHiveCapacityArgs refreshes one hive's capacity observations on demand.
 //

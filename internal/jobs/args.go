@@ -146,6 +146,47 @@ func (ArriveHypervisorArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
+// BootstrapHiveArgs creates a Proxmox cluster on a standalone host and records
+// it as the hive's first node.
+//
+// The other half of ArriveHypervisorArgs. Arrival refuses with
+// target_hive_empty when the hive has no nodes yet, which is every hive on the
+// day it is created — so without this a new hive could never acquire its first
+// node and every arrival into it refused forever.
+type BootstrapHiveArgs struct {
+	OrganizationID string `json:"organization_id"`
+	HypervisorID   string `json:"hypervisor_id"`
+	TargetHiveID   string `json:"target_hive_id"`
+
+	// Links are the first node's corosync rings, carried for the same reason as
+	// the arrival's: network topology is an operator's decision and nothing in
+	// the database knows it. They matter MORE here — `pvecm create` writes the
+	// ring configuration every later node inherits, so a single-ring cluster
+	// created today is a single point of failure for quorum forever.
+	Links []tenant.CorosyncLink `json:"links"`
+}
+
+func (BootstrapHiveArgs) Kind() string { return "fleet.bootstrap_hive" }
+
+// Unique per machine while one is outstanding, for the arrival's reasons and
+// one of its own: `pvecm create` run twice against the same host leaves a node
+// holding a cluster configuration that no longer matches the keyring it
+// generated the first time.
+func (BootstrapHiveArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
 // SyncHiveCapacityArgs refreshes one hive's capacity observations from its
 // provider API.
 //

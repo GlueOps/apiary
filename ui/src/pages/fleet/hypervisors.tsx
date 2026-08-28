@@ -9,7 +9,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +45,7 @@ import {
   fleetHivesListOptions,
   fleetHivesSyncMutation,
   fleetHostsArriveMutation,
+  fleetHostsBootstrapMutation,
   fleetHostsFleetlessOptions,
   fleetHostsFleetlessQueryKey,
   fleetHypervisorsCordonMutation,
@@ -83,6 +84,50 @@ function refusalMessage(error: unknown, fallback: string): string {
  * failed once and will be retried" from "this has hit the cap and no further
  * tick will touch it" — and the second needs an operator, not patience.
  */
+/**
+ * What the last fleet OPERATION did to this machine, and why it failed.
+ *
+ * Distinct from ProvisioningBadge, which covers onboarding. This covers the
+ * operations that run afterwards — depart, arrive, bootstrap — and until now it
+ * covered them nowhere: the outcome was recorded on the machine row and rendered
+ * by nothing, so a failed departure showed up as a node that simply did not
+ * leave. Every diagnosis of one tonight started with a database query.
+ *
+ * The message is the worker's own. These are written to be read by whoever has
+ * to act on them — "the cluster config lists 1 node(s), so there is no node to
+ * remove without destroying the cluster" — and paraphrasing them here would lose
+ * the part that says what to do.
+ */
+export function LastOperationBadge({ hv }: { hv: HypervisorView }) {
+  if (!hv.last_operation_error) return null;
+  const label =
+    hv.last_operation === 'join'
+      ? 'last join failed'
+      : hv.last_operation === 'depart'
+        ? 'last departure failed'
+        : `last ${hv.last_operation || 'operation'} failed`;
+  return (
+    <span className="block space-y-1">
+      <Badge variant="destructive">{label}</Badge>
+      {/* WHEN, not just what. An outcome is cleared once the state it describes
+          is reached, so anything still here is current — but a reader cannot
+          know that from the message alone, and a failure with no time on it
+          reads as "now" however old it is. */}
+      {hv.last_operation_at ? (
+        <span className="block text-xs text-muted-foreground">
+          {relative(hv.last_operation_at)}
+        </span>
+      ) : null}
+      <span
+        className="block max-w-[22rem] text-xs break-words text-muted-foreground"
+        title={hv.last_operation_error}
+      >
+        {hv.last_operation_error}
+      </span>
+    </span>
+  );
+}
+
 function ProvisioningBadge({ hv }: { hv: HypervisorView }) {
   switch (hv.provisioning_state) {
     case 'pending':
@@ -126,6 +171,15 @@ export const Hypervisors = () => {
   const [departDisposition, setDepartDisposition] = useState<'' | 'rotate' | 'accept-exposure'>('');
 
   const [arriveFor, setArriveFor] = useState<FleetlessHostView | null>(null);
+  // Arriving used to be offered here AND on the agents page, as two different
+  // things wearing one name: this queues the modelled arrival — target cluster,
+  // corosync rings, the refusal checks, and the membership recorded when it
+  // lands — while that one queued a raw agent task with a hand-typed peer and
+  // never told APIary which cluster the machine had joined. The agents page now
+  // links here instead, and ?arrive=<id> is how it hands the machine over.
+  const [params, setParams] = useSearchParams();
+  const arriveParam = params.get('arrive');
+  const handedOver = useRef<string | null>(null);
   const [arriveHive, setArriveHive] = useState('');
   const [arriveLinks, setArriveLinks] = useState<
     { number: number; address: string; priority: string }[]
@@ -214,6 +268,25 @@ export const Hypervisors = () => {
     onError: (e) => toast.error(refusalMessage(e, 'This hypervisor cannot join that cluster yet')),
   });
 
+  // The other half of the same operator intent: put this machine in that
+  // cluster. Which of the two runs is decided by the fleet, not by the operator,
+  // because there is no choice to make — a cluster with no nodes has to be
+  // created before anything can join it, and one with nodes cannot be created
+  // again. Offering both as buttons would be asking someone to answer a question
+  // the node count already answers, and getting it wrong costs a round trip and
+  // a refusal that reads like a mistake they made.
+  const bootstrap = useMutation({
+    ...fleetHostsBootstrapMutation(),
+    onSuccess: () => {
+      toast.success('Cluster creation queued');
+      setArriveFor(null);
+      setArriveHive('');
+      setArriveLinks([{ number: 0, address: '', priority: '' }]);
+      invalidate();
+    },
+    onError: (e) => toast.error(refusalMessage(e, 'This hypervisor cannot create that cluster')),
+  });
+
   const nodes = hypervisors.data?.hypervisors ?? [];
 
   // Whether the fleet is mid-operation, derived from the data rather than from
@@ -276,6 +349,59 @@ export const Hypervisors = () => {
   const syncableHiveId = (hives.data?.hives ?? []).find((h) => h.configured)?.id;
   const strays = fleetless.data?.hosts ?? [];
   const hiveList = hives.data?.hives ?? [];
+
+  // An empty cluster has to be CREATED on its first node; a cluster with nodes
+  // is JOINED. Read off the chosen cluster rather than asked, because the node
+  // count already decides it and there is no second answer available.
+  const chosenHive = hiveList.find((h) => h.id === arriveHive);
+  // Radix resolves a trigger's label from the MOUNTED item with the matching
+  // value, so on the render where the value is set but the list has not arrived
+  // — or where the item is in a closed popover — the raw uuid is shown. A uuid
+  // is not a slower way of saying the name; it is a different fact, and nobody
+  // picks a cluster by it.
+  const hiveLabel = () => {
+    if (!arriveHive) return hiveList.length ? 'Choose a cluster' : 'No clusters yet';
+    if (!chosenHive) return hives.isLoading ? 'Loading…' : 'A cluster that no longer exists';
+    return chosenHive.node_count === 0
+      ? `${chosenHive.name} — no nodes yet, so it is created here`
+      : `${chosenHive.name} (${chosenHive.node_count} node${chosenHive.node_count === 1 ? '' : 's'})`;
+  };
+  const creatingTheCluster = chosenHive !== undefined && chosenHive.node_count === 0;
+  const submitting = arrive.isPending || bootstrap.isPending;
+
+  // Open the arrival for a machine handed over from the agents page.
+  //
+  // Waits for the fleetless list, because the dialog is about a row and the row
+  // arrives with the query. The ref makes it fire once: without it, closing the
+  // dialog while the parameter is still in the URL reopens it, and the operator
+  // cannot get out. Clearing the parameter is what makes a reload of this URL
+  // land on the plain page rather than a dialog they already dismissed.
+  useEffect(() => {
+    if (!arriveParam || handedOver.current === arriveParam) return;
+    if (fleetless.isLoading) return;
+
+    handedOver.current = arriveParam;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('arrive');
+        return next;
+      },
+      { replace: true },
+    );
+
+    const host = strays.find((h) => h.hypervisor_id === arriveParam);
+    if (!host) {
+      // Reached here from a row that is no longer fleetless — it joined
+      // something in between, or was removed. Saying so beats a dialog that
+      // never opens and no explanation for why.
+      toast.error('That hypervisor is no longer waiting to join a cluster.');
+      return;
+    }
+    setArriveFor(host);
+    setArriveHive('');
+    setArriveLinks([{ number: 0, address: '', priority: '' }]);
+  }, [arriveParam, fleetless.isLoading, strays, setParams]);
 
   // /fleet/hypervisors returns every MACHINE, clustered or not, since the machine
   // record outlived cluster membership. Unclustered ones are not dropped from the
@@ -426,6 +552,7 @@ export const Hypervisors = () => {
                             </span>
                           )}
                           <ProvisioningBadge hv={n} />
+                          <LastOperationBadge hv={n} />
                         </TableCell>
                         <TableCell className="space-y-2 text-right">
                           <div className="flex justify-end gap-2">
@@ -560,6 +687,11 @@ export const Hypervisors = () => {
                         variant="outline"
                         size="sm"
                         disabled={hiveList.length === 0}
+                        title={
+                          hiveList.length === 0
+                            ? 'Create a cluster on the Clusters page first — naming it is all that takes, and this is where its first node comes from.'
+                            : undefined
+                        }
                         onClick={() => {
                           setArriveFor(h);
                           setArriveHive('');
@@ -635,30 +767,42 @@ export const Hypervisors = () => {
       <Dialog open={arriveFor !== null} onOpenChange={(open) => !open && setArriveFor(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Join a cluster</DialogTitle>
+            <DialogTitle>{creatingTheCluster ? 'Create a cluster' : 'Join a cluster'}</DialogTitle>
             <DialogDescription>
-              {arriveFor?.address} will join the cluster and become one of its nodes. Its own
-              cluster state is replaced by the destination's.
+              {creatingTheCluster
+                ? `${arriveFor?.address} will become the first node of this cluster, which is created on it. Nothing on the host is replaced, and guests already running here are left alone.`
+                : `${arriveFor?.address} will join the cluster and become one of its nodes. Its own cluster state is replaced by the destination's.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="target-cluster">Destination cluster</Label>
             <Select value={arriveHive} onValueChange={(v) => setArriveHive(v ?? '')}>
               <SelectTrigger id="target-cluster">
-                <SelectValue placeholder="Choose a cluster" />
+                <SelectValue>{hiveLabel()}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {hiveList.map((h) => (
                   <SelectItem key={h.id} value={h.id}>
-                    {h.name} ({h.node_count} node{h.node_count === 1 ? '' : 's'})
+                    {h.name}{' '}
+                    {h.node_count === 0
+                      ? '— no nodes yet, so it is created here'
+                      : `(${h.node_count} node${h.node_count === 1 ? '' : 's'})`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Hint>
-              The joining hypervisor must carry no guests of its own — a cluster join refuses a node
-              with any, stopped ones included.
-            </Hint>
+            {creatingTheCluster ? (
+              <Hint>
+                This cluster has no nodes yet, so it is created here rather than joined. Not the
+                same operation: `pvecm create` replaces nothing, so unlike a join it is safe on a
+                host already running guests.
+              </Hint>
+            ) : (
+              <Hint>
+                The joining hypervisor must carry no guests of its own — a cluster join refuses a
+                node with any, stopped ones included.
+              </Hint>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Corosync links</Label>
@@ -735,35 +879,38 @@ export const Hypervisors = () => {
               Cancel
             </Button>
             <Button
-              disabled={
-                !arriveHive || arriveLinks.every((l) => !l.address.trim()) || arrive.isPending
-              }
-              onClick={() =>
-                arriveFor &&
-                arrive.mutate({
-                  path: { hypervisor_id: arriveFor.hypervisor_id },
-                  body: {
-                    target_hive_id: arriveHive,
-                    // Blank rows are dropped rather than sent: an empty address
-                    // is a row the operator added and did not fill in, and the
-                    // server refuses the whole set for one of them.
-                    links: arriveLinks
-                      .filter((l) => l.address.trim() !== '')
-                      .map((l) => ({
-                        number: l.number,
-                        address: l.address.trim(),
-                        // Omitted when blank, never sent as 0. Absent leaves
-                        // corosync's own default; an explicit 0 would silently
-                        // deprioritise a link the operator said nothing about.
-                        ...(l.priority.trim() === ''
-                          ? {}
-                          : { priority: Number(l.priority.trim()) }),
-                      })),
-                  },
-                })
-              }
+              disabled={!arriveHive || arriveLinks.every((l) => !l.address.trim()) || submitting}
+              onClick={() => {
+                if (!arriveFor) return;
+                const body = {
+                  target_hive_id: arriveHive,
+                  // Blank rows are dropped rather than sent: an empty address
+                  // is a row the operator added and did not fill in, and the
+                  // server refuses the whole set for one of them.
+                  links: arriveLinks
+                    .filter((l) => l.address.trim() !== '')
+                    .map((l) => ({
+                      number: l.number,
+                      address: l.address.trim(),
+                      // Omitted when blank, never sent as 0. Absent leaves
+                      // corosync's own default; an explicit 0 would silently
+                      // deprioritise a link the operator said nothing about.
+                      ...(l.priority.trim() === '' ? {} : { priority: Number(l.priority.trim()) }),
+                    })),
+                };
+                const path = { hypervisor_id: arriveFor.hypervisor_id };
+                if (creatingTheCluster) {
+                  bootstrap.mutate({ path, body });
+                } else {
+                  arrive.mutate({ path, body });
+                }
+              }}
             >
-              {arrive.isPending ? 'Queueing…' : 'Queue arrival'}
+              {submitting
+                ? 'Queueing…'
+                : creatingTheCluster
+                  ? 'Create the cluster'
+                  : 'Queue arrival'}
             </Button>
           </DialogFooter>
         </DialogContent>

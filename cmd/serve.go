@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/glueops/apiary/internal/agentdist"
+	"github.com/glueops/apiary/internal/buildinfo"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,6 +46,16 @@ func runServer() error {
 		return err
 	}
 	httpAddr := fmt.Sprintf("%s:%s", cfg.BindHost, cfg.BindPort)
+
+	// Said at startup, because the failure it prevents is silent and expensive.
+	//
+	// The embedded agent binaries are gitignored and built by one recipe nothing
+	// depends on, so editing agent code and running this server ships the
+	// previous build with nothing to indicate it. Diagnosing that costs the whole
+	// investigation before anyone thinks to check a build artefact.
+	agentdist.WarnIfStale(buildinfo.Version, func(msg string, args ...any) {
+		slog.Warn(msg, args...)
+	})
 
 	dbPool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {

@@ -454,6 +454,85 @@ paths:
       summary: Revoke an API key
       tags:
       - API Keys
+  /api/v1/audit/events:
+    get:
+      description: |-
+        Every action taken inside this organization's boundary, newest first: who took it, what it was done to, and whether it was allowed.
+
+        REFUSALS ARE RECORDED TOO. Someone who tried to depart a node and was told no is a different fact from someone who never tried, and only one of them appears in the result of the action.
+
+        The principal is not always a person. An organization API key authenticates a tenant rather than a human, and its actions are recorded against the key — so that 'automation did this' and 'nobody knows who did this' never look the same here.
+      operationId: audit-events-list
+      parameters:
+      - description: "Exact action, e.g. hypervisor.cordon."
+        explode: false
+        in: query
+        name: action
+        required: false
+        schema:
+          description: "Exact action, e.g. hypervisor.cordon."
+          type: string
+        style: form
+      - description: "hypervisor, hive, agent, firewall, estate or fleet."
+        explode: false
+        in: query
+        name: target_kind
+        required: false
+        schema:
+          description: "hypervisor, hive, agent, firewall, estate or fleet."
+          type: string
+        style: form
+      - description: Narrow to one resource.
+        explode: false
+        in: query
+        name: target_id
+        required: false
+        schema:
+          description: Narrow to one resource.
+          type: string
+        style: form
+      - description: Default 50.
+        explode: false
+        in: query
+        name: limit
+        required: false
+        schema:
+          description: Default 50.
+          format: int64
+          maximum: 200
+          minimum: 1
+          type: integer
+        style: form
+      - explode: false
+        in: query
+        name: offset
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: "What has been done in this organization, and by whom"
+      tags:
+      - Fleet
   /api/v1/auth/forgot-password:
     post:
       description: Sends a password reset link if the address belongs to an active
@@ -2385,6 +2464,53 @@ paths:
       summary: Add a standalone machine to a hive
       tags:
       - Fleet
+  /api/v1/fleet/fleetless/{hypervisor_id}/bootstrap:
+    post:
+      description: |-
+        Makes this host the FIRST node of a cluster that has none.
+
+        The counterpart of arrival, and the reason a new cluster can ever acquire a node: arrival refuses with target_hive_empty until a cluster has at least one member, which is every cluster on the day it is created.
+
+        Not the same operation as arriving, despite looking like it. `pvecm create` replaces nothing and is safe on a host already running guests, while `pvecm add` replaces the joining node's cluster configuration and refuses a host carrying any guest at all — so this has no guest gate and arrival does.
+
+        Refused with 409 and reason codes when the host already belongs to a cluster, when the target already has nodes (that is an arrival), or when the host has not finished onboarding.
+      operationId: fleet-hosts-bootstrap
+      parameters:
+      - explode: false
+        in: path
+        name: hypervisor_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BootstrapRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Create a cluster on a standalone machine
+      tags:
+      - Fleet
   /api/v1/fleet/hives:
     get:
       description: "Every hive in the caller's organization, with the node count and\
@@ -4273,6 +4399,59 @@ components:
       required:
       - detail
       - queued
+    AuditEventView:
+      additionalProperties: false
+      example:
+        action: action
+        actor_id: actor_id
+        created_at: 2000-01-23T04:56:07.000+00:00
+        detail: detail
+        id: id
+        metadata:
+          key: ""
+        outcome: outcome
+        principal_id: principal_id
+        principal_kind: principal_kind
+        target_id: target_id
+        target_kind: target_kind
+      properties:
+        action:
+          type: string
+        actor_id:
+          description: "The platform administrator behind an impersonated session,\
+            \ when there was one."
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        detail:
+          description: Why it was refused. Empty when it was not.
+          type: string
+        id:
+          type: string
+        metadata:
+          additionalProperties:
+            nullable: true
+        outcome:
+          description: "ok, refused or failed."
+          type: string
+        principal_id:
+          type: string
+        principal_kind:
+          description: "user, org_key, agent or system."
+          type: string
+        target_id:
+          type: string
+        target_kind:
+          type: string
+      required:
+      - action
+      - created_at
+      - id
+      - outcome
+      - principal_id
+      - principal_kind
+      - target_kind
     AuthenticatorSelection:
       additionalProperties: false
       example:
@@ -4394,6 +4573,68 @@ components:
       - priority
       - ruleset_id
       - ruleset_name
+    BootstrapRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        links:
+        - address: address
+          number: 0
+          priority: 0
+        - address: address
+          number: 0
+          priority: 0
+        - address: address
+          number: 0
+          priority: 0
+        - address: address
+          number: 0
+          priority: 0
+        - address: address
+          number: 0
+          priority: 0
+        target_hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        links:
+          description: The first node's corosync rings. Every node that joins later
+            inherits this ring configuration.
+          items:
+            $ref: "#/components/schemas/CorosyncLinkInput"
+          maxItems: 8
+          minItems: 1
+          nullable: true
+          type: array
+          default: null
+        target_hive_id:
+          format: uuid
+          type: string
+      required:
+      - links
+      - target_hive_id
+    BootstrapResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        detail: detail
+        queued: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          type: string
+        queued:
+          type: boolean
+      required:
+      - detail
+      - queued
     CapacityView:
       additionalProperties: false
       properties:
@@ -5604,9 +5845,10 @@ components:
         applied_firewall_digest: applied_firewall_digest
         applied_firewall_revision: 0
         back: true
-        unavailable_for_seconds: 52077
+        observed_guests: 60274
+        unavailable_for_seconds: 12664
         unavailable_reason: unavailable_reason
-        wait_seconds: 3
+        wait_seconds: 14
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -5633,6 +5875,14 @@ components:
         back:
           description: "Withdraws a standing declaration: the host has returned."
           type: boolean
+        observed_guests:
+          description: "VMs and containers registered to this host, stopped ones included.\
+            \ Counted from /etc/pve rather than the Proxmox API, so it survives a\
+            \ broken pveproxy."
+          format: int64
+          maximum: 100000
+          minimum: 0
+          type: integer
         unavailable_for_seconds:
           description: "Declared BEFORE acting: how long this host expects to be unreachable,\
             \ e.g. across a reboot. Until it elapses, silence from this bee is expected\
@@ -6172,6 +6422,49 @@ components:
           default: null
       required:
       - keys
+    ListAuditResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        events:
+        - action: action
+          actor_id: actor_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          detail: detail
+          id: id
+          metadata:
+            key: ""
+          outcome: outcome
+          principal_id: principal_id
+          principal_kind: principal_kind
+          target_id: target_id
+          target_kind: target_kind
+        - action: action
+          actor_id: actor_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          detail: detail
+          id: id
+          metadata:
+            key: ""
+          outcome: outcome
+          principal_id: principal_id
+          principal_kind: principal_kind
+          target_id: target_id
+          target_kind: target_kind
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        events:
+          items:
+            $ref: "#/components/schemas/AuditEventView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - events
     ListBeesResponseBody:
       additionalProperties: false
       example:
@@ -9029,6 +9322,7 @@ components:
         description: description
         insecure_skip_verify: true
         minimum_nodes: 1
+        name: name
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -9059,6 +9353,11 @@ components:
           format: int64
           minimum: 1
           type: integer
+        name:
+          description: "Also the Proxmox cluster name when this cluster is created\
+            \ on its first node, so it must be a legal one: letters, digits and hyphens,\
+            \ starting and ending alphanumeric."
+          type: string
     UpdateMeRequestBody:
       additionalProperties: false
       example:

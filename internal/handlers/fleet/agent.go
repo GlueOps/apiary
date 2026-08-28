@@ -104,6 +104,21 @@ type HeartbeatRequest struct {
 		// enforced on every host that happened to be switched off.
 		AppliedFirewallRevision int    `json:"applied_firewall_revision,omitempty" minimum:"0" doc:"The firewall revision this host has actually loaded. Omit or zero if it has applied none."`
 		AppliedFirewallDigest   string `json:"applied_firewall_digest,omitempty" maxLength:"71" doc:"Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged."`
+
+		// ObservedGuests closes a gap the capacity sync cannot reach.
+		//
+		// That sync runs per CLUSTER, so a machine in no cluster is never
+		// observed at all — and fleetless is precisely the state a machine is in
+		// when it is about to join one. observed_guests therefore read zero for
+		// every candidate, and the arrival gate's guests_present refusal, which
+		// exists because `pvecm add` discards the joining node's guest
+		// configuration, could not fire for the only case it covers. Two lab
+		// hosts sat at zero holding two containers each.
+		//
+		// Pointer so that "did not say" and "said none" stay distinct. An older
+		// agent omits the field, and reading that as zero would be inventing an
+		// observation nobody made — the same mistake, one level down.
+		ObservedGuests *int `json:"observed_guests,omitempty" minimum:"0" maximum:"100000" doc:"VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy."`
 	}
 }
 
@@ -278,6 +293,14 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 			// record is still alive, and refusing its heartbeat over bookkeeping
 			// would make it look offline — a page for a host that is fine.
 			slog.WarnContext(ctx, "could not record a bee's applied firewall revision",
+				"bee_id", sess.Bee.ID, "error", err)
+		}
+
+		// Same treatment, and for the same reason: a host whose observation
+		// failed to record is still alive, and refusing its heartbeat over
+		// bookkeeping would make it look offline.
+		if err := svc.RecordObservedGuests(ctx, sess, in.Body.ObservedGuests); err != nil {
+			slog.WarnContext(ctx, "could not record a bee's observed guest count",
 				"bee_id", sess.Bee.ID, "error", err)
 		}
 

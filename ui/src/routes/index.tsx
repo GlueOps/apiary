@@ -4,6 +4,7 @@ import { PlatformRoute } from '@/components/platform-route.tsx';
 import { ProtectedRoute } from '@/components/protected-route.tsx';
 import { RouteErrorBoundary } from '@/components/route-error-boundary.tsx';
 import { AppShell } from '@/layouts/app-shell.tsx';
+import { AuditTrail } from '@/pages/audit/audit.tsx';
 import { AcceptInvitation } from '@/pages/auth/accept-invitation.tsx';
 import { ForgotPassword } from '@/pages/auth/forgot-password.tsx';
 import { ResetPassword } from '@/pages/auth/reset-password.tsx';
@@ -88,6 +89,11 @@ export const router = createBrowserRouter([
                 path: 'fleet/hives',
                 element: <Clusters />,
                 handle: { title: 'Clusters' },
+              },
+              {
+                path: 'audit',
+                element: <AuditTrail />,
+                handle: { title: 'Audit trail' },
               },
               {
                 path: 'estates',

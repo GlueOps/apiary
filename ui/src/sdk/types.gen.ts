@@ -186,6 +186,34 @@ export type ArriveResponseBody = {
     queued: boolean;
 };
 
+export type AuditEventView = {
+    action: string;
+    /**
+     * The platform administrator behind an impersonated session, when there was one.
+     */
+    actor_id?: string;
+    created_at: string;
+    /**
+     * Why it was refused. Empty when it was not.
+     */
+    detail?: string;
+    id: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+    /**
+     * ok, refused or failed.
+     */
+    outcome: string;
+    principal_id: string;
+    /**
+     * user, org_key, agent or system.
+     */
+    principal_kind: string;
+    target_id?: string;
+    target_kind: string;
+};
+
 export type AuthenticatorSelection = {
     authenticatorAttachment?: string;
     requireResidentKey?: boolean;
@@ -237,6 +265,27 @@ export type BindingView = {
     ruleset_id: string;
     ruleset_name: string;
     swarm_id?: string;
+};
+
+export type BootstrapRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The first node's corosync rings. Every node that joins later inherits this ring configuration.
+     */
+    links: Array<CorosyncLinkInput> | null;
+    target_hive_id: string;
+};
+
+export type BootstrapResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    detail: string;
+    queued: boolean;
 };
 
 export type CapacityView = {
@@ -786,6 +835,10 @@ export type HeartbeatRequestBody = {
      */
     back?: boolean;
     /**
+     * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
+     */
+    observed_guests?: number;
+    /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
     unavailable_for_seconds?: number;
@@ -1010,6 +1063,14 @@ export type ListApiKeysResponseBody = {
      */
     readonly $schema?: string;
     keys: Array<ApiKeyView> | null;
+};
+
+export type ListAuditResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    events: Array<AuditEventView> | null;
 };
 
 export type ListBeesResponseBody = {
@@ -1966,6 +2027,10 @@ export type UpdateHiveRequestBody = {
      * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
      */
     minimum_nodes?: number;
+    /**
+     * Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
+     */
+    name?: string;
 };
 
 export type UpdateMeRequestBody = {
@@ -2204,6 +2269,19 @@ export type BindingViewWritable = {
     ruleset_id: string;
     ruleset_name: string;
     swarm_id?: string;
+};
+
+export type BootstrapRequestBodyWritable = {
+    /**
+     * The first node's corosync rings. Every node that joins later inherits this ring configuration.
+     */
+    links: Array<CorosyncLinkInput> | null;
+    target_hive_id: string;
+};
+
+export type BootstrapResponseBodyWritable = {
+    detail: string;
+    queued: boolean;
 };
 
 export type ChangePasswordRequestBodyWritable = {
@@ -2524,6 +2602,10 @@ export type HeartbeatRequestBodyWritable = {
      */
     back?: boolean;
     /**
+     * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
+     */
+    observed_guests?: number;
+    /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
     unavailable_for_seconds?: number;
@@ -2692,6 +2774,10 @@ export type KeyViewWritable = {
 
 export type ListApiKeysResponseBodyWritable = {
     keys: Array<ApiKeyView> | null;
+};
+
+export type ListAuditResponseBodyWritable = {
+    events: Array<AuditEventView> | null;
 };
 
 export type ListBeesResponseBodyWritable = {
@@ -3219,6 +3305,10 @@ export type UpdateHiveRequestBodyWritable = {
      * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
      */
     minimum_nodes?: number;
+    /**
+     * Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
+     */
+    name?: string;
 };
 
 export type UpdateMeRequestBodyWritable = {
@@ -3598,6 +3688,49 @@ export type ApiKeysRevokeResponses = {
 };
 
 export type ApiKeysRevokeResponse = ApiKeysRevokeResponses[keyof ApiKeysRevokeResponses];
+
+export type AuditEventsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Exact action, e.g. hypervisor.cordon.
+         */
+        action?: string;
+        /**
+         * hypervisor, hive, agent, firewall, estate or fleet.
+         */
+        target_kind?: string;
+        /**
+         * Narrow to one resource.
+         */
+        target_id?: string;
+        /**
+         * Default 50.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/audit/events';
+};
+
+export type AuditEventsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type AuditEventsListError = AuditEventsListErrors[keyof AuditEventsListErrors];
+
+export type AuditEventsListResponses = {
+    /**
+     * OK
+     */
+    200: ListAuditResponseBody;
+};
+
+export type AuditEventsListResponse = AuditEventsListResponses[keyof AuditEventsListResponses];
 
 export type AuthForgotPasswordData = {
     body: ForgotPasswordRequestBodyWritable;
@@ -5065,6 +5198,33 @@ export type FleetHostsArriveResponses = {
 };
 
 export type FleetHostsArriveResponse = FleetHostsArriveResponses[keyof FleetHostsArriveResponses];
+
+export type FleetHostsBootstrapData = {
+    body: BootstrapRequestBodyWritable;
+    path: {
+        hypervisor_id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/fleetless/{hypervisor_id}/bootstrap';
+};
+
+export type FleetHostsBootstrapErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetHostsBootstrapError = FleetHostsBootstrapErrors[keyof FleetHostsBootstrapErrors];
+
+export type FleetHostsBootstrapResponses = {
+    /**
+     * OK
+     */
+    200: BootstrapResponseBody;
+};
+
+export type FleetHostsBootstrapResponse = FleetHostsBootstrapResponses[keyof FleetHostsBootstrapResponses];
 
 export type FleetHivesListData = {
     body?: never;

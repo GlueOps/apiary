@@ -43,6 +43,18 @@ agent-dist version="":
         go build -trimpath -ldflags "-s -w -X main.version=$v" \
         -o "../internal/agentdist/dist/apiary-agent_linux_$arch" . )
   done
+  # RECORD WHAT WAS STAMPED, so the server can notice when it is stale.
+  #
+  # These binaries are gitignored and built by this recipe alone, which nothing
+  # else depends on — so editing agent code and running `go run . serve` ships
+  # whatever was last cross-compiled, silently. A fix committed at 18:24 was
+  # still absent from every onboarded host hours later because the dist had been
+  # built at 17:24, and nothing anywhere said so.
+  #
+  # The stamp cannot be read back out of the binaries: -X main.version is only
+  # visible by executing them, and embed.FS carries no timestamps. So it is
+  # written beside them and compared against the server's own version at startup.
+  printf '%s' "$v" > internal/agentdist/dist/stamp
   ls -lh internal/agentdist/dist/ | tail -n +2
 
 release:

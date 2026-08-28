@@ -128,9 +128,19 @@ func DepartureSnapshotFromDB(ctx context.Context, db *gorm.DB, hypervisorID uuid
 				break
 			}
 		}
+		// THE TWO CASES ARE DIFFERENT and used to share a message. No peers at all
+		// means this is the last node, which is a dismantle rather than a removal.
+		// Peers that exist but have no usable address is a genuine address
+		// problem, and only that one is worth sending someone to look at DNS for.
+		if len(peers) == 0 {
+			snap.LastNode = true
+			return nil
+		}
 		if snap.RemainingAddress == "" {
-			return fmt.Errorf("no remaining node in hive %q has a resolvable address, so the "+
-				"cluster-side removal cannot be performed", snap.Hive.Name)
+			return fmt.Errorf("hive %q has %d other node(s) but none of them has an address "+
+				"recorded, so there is nowhere to perform the cluster-side removal from; a "+
+				"capacity sync records the address the cluster knows each node by",
+				snap.Hive.Name, len(peers))
 		}
 		return nil
 	})

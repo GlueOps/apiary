@@ -245,3 +245,119 @@ func mergeEnv(path string, set map[string]string) ([]byte, error) {
 	body = strings.TrimRight(body, "\n") + "\n"
 	return []byte(body), nil
 }
+
+// RefreshUnit rewrites the service file and reloads systemd, starting nothing.
+//
+// A fleet agent upgrade replaces the BINARY and nothing else: selfupgrade.Plan's
+// Unit field is only the unit NAME to restart, and the upgrade task passes no
+// unit content at all. So a change to the unit FILE could never reach a host
+// that was already onboarded — it would apply to new hosts and quietly not to
+// the fleet, which is the worst shape for a fix.
+//
+// That mattered concretely. Three hardening directives in this unit broke
+// `apt-get dist-upgrade` on Proxmox — the agent's primary job — and correcting
+// them was undeliverable to every host already running.
+//
+// Deliberately NOT `enable --now`, and no restart: the caller is the agent being
+// replaced, and it restarts itself on its own schedule once the task's outcome
+// has been reported. Restarting here would kill the process mid-report and the
+// control plane would see the upgrade as never having finished.
+func RefreshUnit(ctx context.Context, r Runner, unit []byte, execPath string) error {
+	if len(unit) == 0 {
+		return fmt.Errorf("refresh unit: nothing to write")
+	}
+	if execPath == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("refresh unit: locate this binary: %w", err)
+		}
+		// Resolved for the same reason install resolves it: a unit pointing at a
+		// symlink breaks the moment the link is replaced.
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = resolved
+		}
+		execPath = exe
+	}
+
+	body, err := pointExecStartAt(unit, execPath)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(UnitPath, 0o644, body); err != nil {
+		return err
+	}
+	if out, err := r.Run(ctx, "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("refresh unit: systemctl daemon-reload: %w (%s)", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+// previousSuffix is what selfupgrade.Apply appends when it keeps the old binary.
+const previousSuffix = ".previous"
+
+// CanonicalExecPath strips the .previous suffixes an upgrade leaves behind.
+//
+// REPAIRS A SPECIFIC HISTORICAL FAULT. RefreshUnit used to resolve its own path
+// with os.Executable(), which on Linux reads /proc/self/exe and follows the
+// INODE — so once Apply had renamed the running binary to <path>.previous, that
+// is what the unit was rewritten to point at. The next start ran the backup, the
+// next upgrade renamed that, and the suffixes accumulated: hosts were found
+// running apiary-agent.previous.previous.previous.previous.previous, five
+// upgrades deep, each one reported as a success.
+//
+// Stripping them is what lets such a host converge on its own rather than
+// needing to be visited. A path that never had the suffix is returned unchanged.
+func CanonicalExecPath(p string) string {
+	for strings.HasSuffix(p, previousSuffix) {
+		p = strings.TrimSuffix(p, previousSuffix)
+	}
+	return p
+}
+
+// UnitExecPath reports the binary the installed unit is configured to run.
+//
+// The UNIT is the authority on what this host executes, not os.Executable():
+// systemd starts what ExecStart names, and an upgrade that replaces some other
+// file leaves the running one untouched however carefully it verifies itself.
+// They agree on a healthy host and diverge on exactly the hosts that need
+// fixing.
+func UnitExecPath() (string, error) { return unitExecPathFrom(UnitPath) }
+
+func unitExecPathFrom(path string) (string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, execMarker) {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(t, execMarker))
+		// ExecStart may carry a leading '-' or '@' modifier and arguments after
+		// the path. Only the first field is the binary.
+		rest = strings.TrimLeft(rest, "-@+!")
+		if fields := strings.Fields(rest); len(fields) > 0 {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("%s names no ExecStart", path)
+}
+
+// InstallTarget is the path an upgrade should replace on this host.
+//
+// The unit first, canonicalised; the running binary only when there is no unit
+// to read — a hand-run agent during a trial, which has nothing to converge.
+func InstallTarget() (string, error) {
+	if p, err := UnitExecPath(); err == nil && strings.TrimSpace(p) != "" {
+		return CanonicalExecPath(p), nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("locate this binary: %w", err)
+	}
+	if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+		exe = resolved
+	}
+	return CanonicalExecPath(exe), nil
+}

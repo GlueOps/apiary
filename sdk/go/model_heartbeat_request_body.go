@@ -29,6 +29,8 @@ type HeartbeatRequestBody struct {
 	AppliedFirewallRevision *int64 `json:"applied_firewall_revision,omitempty"`
 	// Withdraws a standing declaration: the host has returned.
 	Back *bool `json:"back,omitempty"`
+	// VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
+	ObservedGuests *int64 `json:"observed_guests,omitempty"`
 	// Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
 	UnavailableForSeconds *int64 `json:"unavailable_for_seconds,omitempty"`
 	UnavailableReason *string `json:"unavailable_reason,omitempty"`
@@ -245,6 +247,38 @@ func (o *HeartbeatRequestBody) SetBack(v bool) {
 	o.Back = &v
 }
 
+// GetObservedGuests returns the ObservedGuests field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedGuests() int64 {
+	if o == nil || IsNil(o.ObservedGuests) {
+		var ret int64
+		return ret
+	}
+	return *o.ObservedGuests
+}
+
+// GetObservedGuestsOk returns a tuple with the ObservedGuests field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedGuestsOk() (*int64, bool) {
+	if o == nil || IsNil(o.ObservedGuests) {
+		return nil, false
+	}
+	return o.ObservedGuests, true
+}
+
+// HasObservedGuests returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedGuests() bool {
+	if o != nil && !IsNil(o.ObservedGuests) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedGuests gets a reference to the given int64 and assigns it to the ObservedGuests field.
+func (o *HeartbeatRequestBody) SetObservedGuests(v int64) {
+	o.ObservedGuests = &v
+}
+
 // GetUnavailableForSeconds returns the UnavailableForSeconds field value if set, zero value otherwise.
 func (o *HeartbeatRequestBody) GetUnavailableForSeconds() int64 {
 	if o == nil || IsNil(o.UnavailableForSeconds) {
@@ -368,6 +402,9 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Back) {
 		toSerialize["back"] = o.Back
+	}
+	if !IsNil(o.ObservedGuests) {
+		toSerialize["observed_guests"] = o.ObservedGuests
 	}
 	if !IsNil(o.UnavailableForSeconds) {
 		toSerialize["unavailable_for_seconds"] = o.UnavailableForSeconds

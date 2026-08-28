@@ -96,3 +96,22 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 			"schedulable": false,
 		}).Error
 }
+
+// RecordObservedGuestsIfFleetless writes a host's self-reported guest count, and
+// only while it belongs to no hive.
+//
+// The hive_id IS NULL predicate is the whole point. A clustered machine's
+// observations belong to the capacity sync, which sees the whole cluster and can
+// tell this host's guests from its peers'; a fleetless one is invisible to that
+// sync entirely, because the sync runs per hive. Two writers on one column would
+// otherwise take turns.
+func RecordObservedGuestsIfFleetless(
+	ctx context.Context, db *gorm.DB, beeID uuid.UUID, guests int,
+) error {
+	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("bee_id = ? AND hive_id IS NULL", beeID).
+		Updates(map[string]any{
+			"observed_guests": guests,
+			"last_synced_at":  gorm.Expr("now()"),
+		}).Error
+}

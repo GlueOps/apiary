@@ -537,11 +537,19 @@ func TestCheckDepartureRequiresACredentialDecision(t *testing.T) {
 			t.Fatalf("%q must not be accepted as a decision", bad)
 		}
 	}
-	for _, good := range []string{CredentialsRotate, CredentialsAcceptExposure} {
-		req.CredentialDisposition = good
-		if rs := CheckDeparture(req); len(rs) != 0 {
-			t.Fatalf("%q is a decision and must be allowed; refused with %v", good, codes(rs))
-		}
+	// Accepting the exposure is a decision this control plane can carry out.
+	req.CredentialDisposition = CredentialsAcceptExposure
+	if rs := CheckDeparture(req); len(rs) != 0 {
+		t.Fatalf("accepting the exposure must be allowed; refused with %v", codes(rs))
+	}
+
+	// Rotation is a decision it CAN carry out, on the departing node: that host
+	// leaves with a fresh root keypair, sharing nothing with the cluster. It does
+	// NOT rotate the cluster's own secrets, which is a separate operator decision
+	// with a fleet-wide blast radius.
+	req.CredentialDisposition = CredentialsRotate
+	if rs := CheckDeparture(req); len(rs) != 0 {
+		t.Fatalf("rotate must be allowed; refused with %v", codes(rs))
 	}
 }
 

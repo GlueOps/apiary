@@ -11,6 +11,7 @@ Name | Type | Description | Notes
 **Description** | Pointer to **string** |  | [optional] 
 **InsecureSkipVerify** | Pointer to **bool** | Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive. | [optional] 
 **MinimumNodes** | Pointer to **int64** | Lower this only for a test fleet. Below three, a departure strands the nodes that remain. | [optional] 
+**Name** | Pointer to **string** | Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric. | [optional] 
 
 ## Methods
 
@@ -205,6 +206,31 @@ SetMinimumNodes sets MinimumNodes field to given value.
 `func (o *UpdateHiveRequestBody) HasMinimumNodes() bool`
 
 HasMinimumNodes returns a boolean if a field has been set.
+
+### GetName
+
+`func (o *UpdateHiveRequestBody) GetName() string`
+
+GetName returns the Name field if non-nil, zero value otherwise.
+
+### GetNameOk
+
+`func (o *UpdateHiveRequestBody) GetNameOk() (*string, bool)`
+
+GetNameOk returns a tuple with the Name field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetName
+
+`func (o *UpdateHiveRequestBody) SetName(v string)`
+
+SetName sets Name field to given value.
+
+### HasName
+
+`func (o *UpdateHiveRequestBody) HasName() bool`
+
+HasName returns a boolean if a field has been set.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

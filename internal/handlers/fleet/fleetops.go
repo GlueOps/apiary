@@ -264,6 +264,73 @@ type ArriveResponse struct {
 	}
 }
 
+// BootstrapRequest creates a hive's FIRST cluster on one standalone host.
+//
+// Same shape as ArriveRequest because it answers the same operator question —
+// put this machine into that cluster — and a different shape would make the two
+// look like different decisions when only the fleet's state distinguishes them.
+type BootstrapRequest struct {
+	HypervisorID string `path:"hypervisor_id" format:"uuid"`
+	Body         struct {
+		TargetHiveID string `json:"target_hive_id" required:"true" format:"uuid"`
+
+		// Required for the arrival's reasons, and with more at stake. `pvecm
+		// create` writes the ring configuration that every node joining later
+		// inherits, so a single-ring cluster created here is a single point of
+		// failure for quorum for as long as the cluster exists.
+		Links []CorosyncLinkInput `json:"links" required:"true" minItems:"1" maxItems:"8" doc:"The first node's corosync rings. Every node that joins later inherits this ring configuration."`
+	}
+}
+
+type BootstrapResponse struct {
+	Body struct {
+		Queued bool   `json:"queued"`
+		Detail string `json:"detail"`
+	}
+}
+
+func bootstrapRefusalViews(rs []tenant.BootstrapRefusal) []RefusalView {
+	out := make([]RefusalView, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, RefusalView{Code: r.Code, Detail: r.Detail})
+	}
+	return out
+}
+
+type ListAuditRequest struct {
+	Action     string `query:"action" doc:"Exact action, e.g. hypervisor.cordon."`
+	TargetKind string `query:"target_kind" doc:"hypervisor, hive, agent, firewall, estate or fleet."`
+	TargetID   string `query:"target_id" doc:"Narrow to one resource."`
+	Limit      int    `query:"limit" minimum:"1" maximum:"200" doc:"Default 50."`
+	Offset     int    `query:"offset" minimum:"0"`
+}
+
+// AuditEventView is one recorded action.
+//
+// The principal is returned as an id and a KIND rather than a resolved name.
+// Resolving it would mean a lookup per row against a different database, and a
+// name that changed since the action would misreport history — the id is what
+// was true at the time.
+type AuditEventView struct {
+	ID            string         `json:"id"`
+	PrincipalID   string         `json:"principal_id"`
+	PrincipalKind string         `json:"principal_kind" doc:"user, org_key, agent or system."`
+	ActorID       string         `json:"actor_id,omitempty" doc:"The platform administrator behind an impersonated session, when there was one."`
+	Action        string         `json:"action"`
+	TargetKind    string         `json:"target_kind"`
+	TargetID      string         `json:"target_id,omitempty"`
+	Outcome       string         `json:"outcome" doc:"ok, refused or failed."`
+	Detail        string         `json:"detail,omitempty" doc:"Why it was refused. Empty when it was not."`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	CreatedAt     string         `json:"created_at" format:"date-time"`
+}
+
+type ListAuditResponse struct {
+	Body struct {
+		Events []AuditEventView `json:"events"`
+	}
+}
+
 type SyncHiveRequest struct {
 	ID string `path:"id" format:"uuid"`
 }
@@ -308,6 +375,18 @@ type HiveDetailView struct {
 type UpdateHiveRequest struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
+		// Renaming is allowed, and validated as a COROSYNC cluster name.
+		//
+		// The name is a label everywhere except one place, and that place is
+		// creating the cluster: `pvecm create` is given the hive's name. So a
+		// hive called "Lab A" cannot become a cluster at all — a space is not
+		// legal — and until this was checked here, the operator found out from a
+		// worker, after clicking the button, with the reason in a job log.
+		//
+		// The same rule applies once a cluster exists, where it holds a
+		// different kind of value: the label keeps matching what corosync calls
+		// it, instead of drifting into a second name for the same thing.
+		Name        *string `json:"name,omitempty" doc:"Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric."`
 		Description *string `json:"description,omitempty"`
 		APIURL      *string `json:"api_url,omitempty" doc:"e.g. https://10.0.0.1:8006/api2/json"`
 		// NO format:"uuid" HERE, deliberately. The empty string is a legal value
@@ -430,6 +509,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		}
 
 		fields := map[string]any{}
+		if in.Body.Name != nil {
+			name := strings.TrimSpace(*in.Body.Name)
+			if err := tenant.ValidateClusterName(name); err != nil {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+			fields["name"] = name
+		}
 		if in.Body.Description != nil {
 			fields["description"] = *in.Body.Description
 		}
@@ -540,6 +626,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 
 		results, err := repo.DeclareHosts(ctx, db, hosts)
 		if err != nil {
+			// 422, not 500: the request is well formed and the caller is not
+			// wrong. Something has to be configured first, and the message says
+			// what — accepting the hosts and failing per-machine in a worker is
+			// what this replaces.
+			if errors.Is(err, repo.ErrNoManagementSet) {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
 			return nil, mapErr(ctx, err)
 		}
 
@@ -672,6 +765,18 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, huma.Error404NotFound("hypervisor not found")
 		}
 
+		// THE ACTION THAT PROMPTED ALL OF THIS. A node found schedulable could
+		// not be explained: an operator un-cordoning it deliberately and the
+		// control plane resetting it looked identical afterwards, and those are
+		// the difference between "fine" and "a node took placements before
+		// anything confirmed it was healthy in its new cluster".
+		action := tenant.AuditHypervisorCordon
+		if in.Body.Schedulable {
+			action = tenant.AuditHypervisorUncordon
+		}
+		auditOK(ctx, db, p, action, tenant.AuditTargetHypervisor, &id,
+			map[string]any{"schedulable": in.Body.Schedulable})
+
 		var hv tenant.Hypervisor
 		if err := db.WithContext(ctx).First(&hv, "id = ?", id).Error; err != nil {
 			return nil, mapErr(ctx, err)
@@ -798,6 +903,8 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			// an operator's click into an immediate, explained refusal instead of a
 			// job that fails somewhere they have to go and look for it. The job's
 			// own check remains authoritative, because state moves between the two.
+			auditRefused(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor,
+				&id, refusalCodes(refusalViews(refusals)), nil)
 			return nil, refusalConflict("this hypervisor cannot leave its hive yet", refusalViews(refusals))
 		}
 
@@ -811,6 +918,13 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		}); err != nil {
 			return nil, mapErr(ctx, err)
 		}
+
+		// The credential disposition is recorded because it is a decision with a
+		// security consequence: accepting exposure leaves the departed host
+		// holding credentials for the cluster it left, and six months later the
+		// only record that somebody chose that is this row.
+		auditOK(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor, &id,
+			map[string]any{"credential_disposition": in.Body.CredentialDisposition})
 
 		out := &DepartResponse{}
 		out.Body.Queued = true
@@ -966,6 +1080,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			TargetNodeCount: int(nodes),
 		})
 		if len(refusals) > 0 {
+			auditRefused(ctx, db, p, tenant.AuditHypervisorArrive, tenant.AuditTargetHypervisor,
+				&hypID, refusalCodes(arrivalRefusalViews(refusals)),
+				map[string]any{"target_hive": hive.Name})
 			return nil, refusalConflict("this host cannot join that hive yet", arrivalRefusalViews(refusals))
 		}
 
@@ -981,9 +1098,180 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, mapErr(ctx, err)
 		}
 
+		auditOK(ctx, db, p, tenant.AuditHypervisorArrive, tenant.AuditTargetHypervisor, &hypID,
+			map[string]any{"target_hive": hive.Name, "target_hive_id": hiveID.String()})
+
 		out := &ArriveResponse{}
 		out.Body.Queued = true
 		out.Body.Detail = fmt.Sprintf("arrival into %q queued", hive.Name)
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-hosts-bootstrap",
+		Method:      http.MethodPost,
+		Path:        "/fleet/fleetless/{hypervisor_id}/bootstrap",
+		Summary:     "Create a cluster on a standalone machine",
+		Description: "Makes this host the FIRST node of a cluster that has none.\n\n" +
+			"The counterpart of arrival, and the reason a new cluster can ever acquire a node: " +
+			"arrival refuses with target_hive_empty until a cluster has at least one member, which " +
+			"is every cluster on the day it is created.\n\n" +
+			"Not the same operation as arriving, despite looking like it. `pvecm create` replaces " +
+			"nothing and is safe on a host already running guests, while `pvecm add` replaces the " +
+			"joining node's cluster configuration and refuses a host carrying any guest at all — " +
+			"so this has no guest gate and arrival does.\n\n" +
+			"Refused with 409 and reason codes when the host already belongs to a cluster, when " +
+			"the target already has nodes (that is an arrival), or when the host has not finished " +
+			"onboarding.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *BootstrapRequest) (*BootstrapResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		hypID, err := uuid.Parse(in.HypervisorID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid hypervisor id")
+		}
+		hiveID, err := uuid.Parse(in.Body.TargetHiveID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid target hive id")
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		var hv tenant.Hypervisor
+		if err := db.WithContext(ctx).First(&hv, "id = ?", hypID).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		var hive tenant.Hive
+		if err := db.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		var nodes int64
+		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+			Where("hive_id = ?", hiveID).Count(&nodes).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		links := make([]tenant.CorosyncLink, 0, len(in.Body.Links))
+		for _, l := range in.Body.Links {
+			links = append(links, tenant.CorosyncLink{
+				Number: l.Number, Address: l.Address, Priority: l.Priority,
+			})
+		}
+		if err := tenant.ValidateCorosyncLinks(links); err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+
+		// Checked here so the operator is told immediately, and again in the job
+		// because state moves between the two.
+		refusals := tenant.CheckBootstrap(tenant.BootstrapRequest{
+			TargetHive:        hive,
+			CurrentHiveID:     hv.HiveID,
+			HiveNodeCount:     int(nodes),
+			ProvisioningState: hv.ProvisioningState,
+		})
+		if len(refusals) > 0 {
+			auditRefused(ctx, db, p, tenant.AuditHypervisorBootstrap, tenant.AuditTargetHypervisor,
+				&hypID, refusalCodes(bootstrapRefusalViews(refusals)),
+				map[string]any{"target_hive": hive.Name})
+			return nil, refusalConflict("this host cannot create that cluster",
+				bootstrapRefusalViews(refusals))
+		}
+
+		if deps.Jobs == nil {
+			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
+		}
+		if err := deps.Jobs.EnqueueBootstrapHive(ctx, &workflow.BootstrapHiveArgs{
+			OrganizationID: p.OrganizationID.String(),
+			HypervisorID:   hypID.String(),
+			TargetHiveID:   hiveID.String(),
+			Links:          links,
+		}); err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		auditOK(ctx, db, p, tenant.AuditHypervisorBootstrap, tenant.AuditTargetHypervisor, &hypID,
+			map[string]any{"cluster": hive.Name, "cluster_id": hiveID.String()})
+
+		out := &BootstrapResponse{}
+		out.Body.Queued = true
+		out.Body.Detail = fmt.Sprintf("creating %q on this host, queued", hive.Name)
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "audit-events-list",
+		Method:      http.MethodGet,
+		Path:        "/audit/events",
+		Summary:     "What has been done in this organization, and by whom",
+		Description: "Every action taken inside this organization's boundary, newest first: who " +
+			"took it, what it was done to, and whether it was allowed.\n\n" +
+			"REFUSALS ARE RECORDED TOO. Someone who tried to depart a node and was told no is a " +
+			"different fact from someone who never tried, and only one of them appears in the " +
+			"result of the action.\n\n" +
+			"The principal is not always a person. An organization API key authenticates a tenant " +
+			"rather than a human, and its actions are recorded against the key — so that " +
+			"'automation did this' and 'nobody knows who did this' never look the same here.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *ListAuditRequest) (*ListAuditResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		f := repo.AuditFilter{
+			Action:     strings.TrimSpace(in.Action),
+			TargetKind: strings.TrimSpace(in.TargetKind),
+			Limit:      in.Limit,
+			Offset:     in.Offset,
+		}
+		if strings.TrimSpace(in.TargetID) != "" {
+			tid, perr := uuid.Parse(in.TargetID)
+			if perr != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid target id")
+			}
+			f.TargetID = &tid
+		}
+
+		events, err := repo.ListAudit(ctx, db, f)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &ListAuditResponse{}
+		out.Body.Events = make([]AuditEventView, 0, len(events))
+		for _, e := range events {
+			v := AuditEventView{
+				ID:            e.ID.String(),
+				PrincipalID:   e.PrincipalID.String(),
+				PrincipalKind: e.PrincipalKind,
+				Action:        e.Action,
+				TargetKind:    e.TargetKind,
+				Outcome:       e.Outcome,
+				Detail:        e.Detail,
+				CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
+			}
+			if e.TargetID != nil {
+				v.TargetID = e.TargetID.String()
+			}
+			if e.ActorID != nil {
+				v.ActorID = e.ActorID.String()
+			}
+			if m := e.Metadata.Data(); len(m) > 0 {
+				v.Metadata = m
+			}
+			out.Body.Events = append(out.Body.Events, v)
+		}
 		return out, nil
 	})
 
@@ -1172,6 +1460,17 @@ func reprovisionRefusals(hv tenant.Hypervisor, now time.Time) []RefusalView {
 // 409 rather than 422: the request is well-formed and would be valid at another
 // moment. And never 500 — a refusal is the gate working, and reporting an
 // operator's own drain policy as a server error puts it on their 5xx dashboard.
+// refusalCodes joins the reason codes for the audit trail.
+//
+// Codes rather than prose: they are stable, and a trail is read by filtering.
+func refusalCodes(rs []RefusalView) string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, r.Code)
+	}
+	return strings.Join(out, ",")
+}
+
 func refusalConflict(message string, rs []RefusalView) error {
 	details := make([]error, 0, len(rs))
 	for _, r := range rs {

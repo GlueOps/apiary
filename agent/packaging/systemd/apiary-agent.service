@@ -68,19 +68,51 @@ Environment=AGENT_STATE_PATH=/var/lib/apiary-agent/state.db
 # refusing to start where nothing reads the reason.
 EnvironmentFile=-/etc/apiary-agent/agent.env
 
+# HARDENING, AND THE THREE THINGS IT MUST NOT TAKE AWAY.
+#
+# Every directive here narrows what "runs as root" means. The temptation is to
+# add more; the constraint is that this agent's PRIMARY JOB is `apt-get
+# dist-upgrade` on a Proxmox host, and a sandbox that breaks it makes the unit
+# look hardened while quietly disabling the thing it exists for.
+#
+# Three directives were removed after a dist-upgrade failed three times on a
+# live node, each failing at the NEXT step so the previous fix looked like
+# progress rather than an answer:
+#
+#   CAP_SETUID   apt drops to the _apt user (uid 42) to run its download
+#                methods. Without it: "seteuid 42 failed - Operation not
+#                permitted", then "Method http has died unexpectedly", and
+#                `apt-get update` exits 100 before a single package is read.
+#                Granted ambiently rather than by dropping the whole hardening
+#                block, so the narrowing that does not hurt is kept.
+#
+#   ProtectHome  makes /root inaccessible. The proxmox-kernel postinst writes
+#                /root/.ssh and symlinks authorized_keys onto pmxcfs, so dpkg
+#                fails to configure the kernel: "Could not create directory
+#                '/root/.ssh' (Read-only file system)".
+#
+#   RestrictNamespaces  blocks unshare(2). /etc/initramfs/post-update.d/
+#                proxmox-boot-sync uses it, so the initramfs trigger fails with
+#                "unshare: unshare failed: Operation not permitted" and
+#                initramfs-tools is left unconfigured.
+#
+# What remains is everything that costs this agent nothing.
 NoNewPrivileges=yes
-ProtectHome=yes
 ProtectHostname=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
-# NOT ProtectSystem=strict or ProtectKernelModules: the agent runs apt
-# dist-upgrade, which writes across /usr and /boot and installs kernel modules.
-# Sandboxing that away would make the unit look hardened while quietly breaking
-# the one task it exists to perform.
+
+# Granted back explicitly. NoNewPrivileges above still prevents GAINING
+# privilege via setuid binaries; this permits only the drop to _apt that apt
+# performs on itself.
+AmbientCapabilities=CAP_SETUID CAP_SETGID
+
+# NOT ProtectHome, NOT RestrictNamespaces, NOT ProtectSystem=strict, NOT
+# ProtectKernelModules: see above. Each of these was measured against a real
+# dist-upgrade, not reasoned about.
 
 [Install]
 WantedBy=multi-user.target

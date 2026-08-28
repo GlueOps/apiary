@@ -21,19 +21,54 @@ import (
 //go:embed all:webdist
 var webdist embed.FS
 
+// apiFallthrough answers a request that reached the frontend fallback but was
+// addressed to the API, and reports whether it did.
+//
+// The frontend is mounted on every unmatched path, so an API route that does not
+// exist -- a typo, a client built against a newer server, a path retired between
+// releases -- lands here rather than at the API. Neither fallback then does
+// anything an API client can read. In embed mode a browser Accept header serves
+// index.html with 200, so a missing endpoint reports success and returns HTML.
+// In proxy mode it is reverse-proxied to Vite, whose own config proxies the API
+// prefix back here, and the request rebounds between the two until something
+// gives up: the observed symptom was a 502 for a route that simply does not
+// exist.
+//
+// So the API prefix stops here, and it stops for every method and every Accept
+// header, before either fallback is consulted.
+func apiFallthrough(prefix string) func(http.ResponseWriter, *http.Request) bool {
+	if prefix == "" {
+		return func(http.ResponseWriter, *http.Request) bool { return false }
+	}
+	prefix = "/" + strings.Trim(prefix, "/")
+	return func(w http.ResponseWriter, r *http.Request) bool {
+		p := r.URL.Path
+		if p != prefix && !strings.HasPrefix(p, prefix+"/") {
+			return false
+		}
+		// Shaped like every other error this API returns, so a generated client
+		// parses it instead of failing on the content type.
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"title":"Not Found","status":404,` +
+			`"detail":"no API route matches this path"}` + "\n"))
+		return true
+	}
+}
+
 func WireFrontend(router interface {
 	Handle(pattern string, h http.Handler)
 	NotFound(h http.HandlerFunc)
-}, mode string, env string, embeddedDist fs.FS, viteDevURL string) error {
+}, mode string, env string, embeddedDist fs.FS, viteDevURL string, apiPrefix string) error {
 	canonical, err := config.NormalizeFrontendMode(mode, env)
 	if err != nil {
 		return err
 	}
 	switch canonical {
 	case config.FrontendModeProxy:
-		return wireViteProxy(router, viteDevURL)
+		return wireViteProxy(router, viteDevURL, apiPrefix)
 	case config.FrontendModeEmbed:
-		return wireEmbeddedSPA(router, embeddedDist)
+		return wireEmbeddedSPA(router, embeddedDist, apiPrefix)
 	case config.FrontendModeNone:
 		return nil
 	default:
@@ -43,7 +78,7 @@ func WireFrontend(router interface {
 
 func wireViteProxy(router interface {
 	NotFound(h http.HandlerFunc)
-}, viteDevURL string) error {
+}, viteDevURL string, apiPrefix string) error {
 	if viteDevURL == "" {
 		viteDevURL = "http://localhost:5173"
 	}
@@ -71,7 +106,12 @@ func wireViteProxy(router interface {
 		},
 	}
 
+	notAnAPIRoute := apiFallthrough(apiPrefix)
+
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if notAnAPIRoute(w, r) {
+			return
+		}
 		switch r.Method {
 		case http.MethodOptions:
 			w.WriteHeader(http.StatusNoContent)
@@ -100,7 +140,7 @@ func wireViteProxy(router interface {
 
 func wireEmbeddedSPA(router interface {
 	NotFound(h http.HandlerFunc)
-}, dist fs.FS) error {
+}, dist fs.FS, apiPrefix string) error {
 	serveFSFile := func(w http.ResponseWriter, r *http.Request, p string) bool {
 		name := strings.TrimPrefix(p, "/")
 
@@ -139,7 +179,12 @@ func wireEmbeddedSPA(router interface {
 		return true
 	}
 
+	notAnAPIRoute := apiFallthrough(apiPrefix)
+
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if notAnAPIRoute(w, r) {
+			return
+		}
 		switch r.Method {
 		case http.MethodOptions:
 			w.WriteHeader(http.StatusNoContent)

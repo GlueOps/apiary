@@ -24,7 +24,14 @@ type arriveRunner struct {
 	// blockers
 	hasConf, hasAuthKey, coroRunning bool
 	guestConfigs                     int
-	nodeDirs                         string
+	// ownGuestConfigs and guestsAreForeign let a test say WHERE the guests are,
+	// which decides the remedy: this host's own must be moved or deleted, a
+	// former peer's are cleared by a departure. The message used to assume the
+	// second whenever a foreign directory existed, and a renamed host has one of
+	// those permanently and empty.
+	ownGuestConfigs  int
+	guestsAreForeign bool
+	nodeDirs         string
 
 	joinKeyMatches int
 	revokeIsNoOp   bool
@@ -54,8 +61,17 @@ func (a *arriveRunner) Run(_ context.Context, cmd string) (string, error) {
 		if a.coroRunning {
 			coro = "active"
 		}
-		return fmt.Sprintf("APIARY_CONF=%s\nAPIARY_AKEY=%s\nAPIARY_CORO=%s\nAPIARY_GUESTS=%d\nAPIARY_DIRS=%s\n",
-			yn(a.hasConf), yn(a.hasAuthKey), coro, a.guestConfigs, a.nodeDirs), nil
+		// ownGuestConfigs defaults to the whole count, so a fake that says
+		// nothing about placement describes a host whose guests are its own —
+		// the ordinary case, and the one that must still refuse a join.
+		own := a.ownGuestConfigs
+		if own < 0 {
+			own = 0
+		} else if own == 0 && a.guestConfigs > 0 && !a.guestsAreForeign {
+			own = a.guestConfigs
+		}
+		return fmt.Sprintf("APIARY_CONF=%s\nAPIARY_AKEY=%s\nAPIARY_CORO=%s\nAPIARY_GUESTS=%d\nAPIARY_OWN=%d\nAPIARY_DIRS=%s\n",
+			yn(a.hasConf), yn(a.hasAuthKey), coro, a.guestConfigs, own, a.nodeDirs), nil
 	case strings.Contains(cmd, "APIARY_NODE="):
 		// The host answers with its own name. The fake must speak the same marker
 		// contract, and a name here is what an IP-addressed machine cannot derive
@@ -382,7 +398,8 @@ func TestArriveRefusesAHostPvecmWouldReject(t *testing.T) {
 	h := newArriveHarness()
 	h.joiner.hasConf = true
 	h.joiner.guestConfigs = 2
-	h.joiner.nodeDirs = "hv9 hv1" // hv1 is a former peer's inherited directory
+	h.joiner.guestsAreForeign = true // they live in hv1, not in this host's own dir
+	h.joiner.nodeDirs = "hv9 hv1"    // hv1 is a former peer's inherited directory
 
 	err := h.run()
 	if !errors.Is(err, ErrArrivalRefused) {
@@ -552,6 +569,7 @@ func TestArriveRefusesOnInheritedGuestConfigsAlone(t *testing.T) {
 	h.joiner.hasAuthKey = false
 	h.joiner.coroRunning = false
 	h.joiner.guestConfigs = 2
+	h.joiner.guestsAreForeign = true
 	h.joiner.nodeDirs = "hv9 hv1"
 
 	err := h.run()
@@ -913,5 +931,46 @@ func TestArrivalSucceedsWhenTheCredentialCannotBeWritten(t *testing.T) {
 	}
 	if len(h.joined) != 1 {
 		t.Fatalf("the membership was not recorded: %v", h.joined)
+	}
+}
+
+// THE MESSAGE THAT SENT AN OPERATOR THE WRONG WAY. A host renamed from pve to
+// pve2 keeps an EMPTY /etc/pve/nodes/pve directory forever. Its own two
+// containers live in pve2. The refusal used to read
+//
+//	2 guest configuration(s) are visible under /etc/pve/nodes — including in
+//	[pve], which belong to a former cluster peer rather than to this host; a
+//	departure clears those
+//
+// which is wrong on both counts: the guests are the host's own, and the named
+// directory is empty. The operator reasonably concluded it was a name collision
+// and went looking at the wrong thing.
+//
+// The presence of a foreign directory is not a blocker. Only guests in one are.
+func TestOwnGuestsAreNotBlamedOnAnEmptyForeignDirectory(t *testing.T) {
+	h := newArriveHarness()
+	h.joiner.hasConf = false
+	h.joiner.hasAuthKey = false
+	h.joiner.coroRunning = false
+	h.joiner.guestConfigs = 2
+	h.joiner.ownGuestConfigs = 2 // both are this host's own
+	h.joiner.guestsAreForeign = false
+	h.joiner.nodeDirs = "hv9 pve" // pve is the empty leftover of a rename
+
+	err := h.run()
+	if !errors.Is(err, ErrArrivalRefused) {
+		t.Fatalf("want ErrArrivalRefused, got %v", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "of its own") {
+		t.Errorf("the refusal must say the guests belong to this host; got %q", msg)
+	}
+	if !strings.Contains(msg, "move or delete") {
+		t.Errorf("the refusal must give the remedy that actually works; got %q", msg)
+	}
+	// The empty leftover must not be named as the cause, and a departure is not
+	// the remedy — this host has never been in a cluster.
+	if strings.Contains(msg, "former cluster peer") || strings.Contains(msg, "a departure clears") {
+		t.Errorf("an empty leftover directory was blamed for the host's own guests; got %q", msg)
 	}
 }

@@ -367,13 +367,67 @@ func runWorker() error {
 			EnqueueCapacitySyncAfter: enqueueCapacitySyncAfter,
 		}))
 
+		// Hive bootstrap: creating the FIRST cluster, on one standalone host.
+		//
+		// Without this registered, a hive created in the UI could never acquire a
+		// node: arrival refuses with target_hive_empty until the hive has one, and
+		// nothing else creates a cluster. The job existed and nothing enqueued it,
+		// which is the same as it not existing.
+		river.AddWorker(workers, jobs.NewBootstrapHiveWorker(jobs.BootstrapDeps{
+			FleetKey: func(ctx context.Context, orgID uuid.UUID) (string, []byte, error) {
+				k, err := sshKeys.ActiveFleetKey(ctx, orgID)
+				if err != nil {
+					return "", nil, err
+				}
+				priv, err := sshKeys.PrivateKey(ctx, orgID, k.ID)
+				if err != nil {
+					return "", nil, err
+				}
+				return k.PublicKey, priv, nil
+			},
+			Snapshot: func(ctx context.Context, orgID, hypervisorID, hiveID uuid.UUID) (jobs.BootstrapSnapshot, error) {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return jobs.BootstrapSnapshot{}, err
+				}
+				return jobs.BootstrapSnapshotFromDB(ctx, db, hypervisorID, hiveID)
+			},
+			NewRunner: func(addr, user string, priv []byte) (jobs.Runner, error) {
+				return jobs.NewSSHRunner(addr, user, priv)
+			},
+			// The SAME function the arrival uses, deliberately: a node that became
+			// a cluster's first member and one that joined an existing cluster end
+			// up in identical states, unschedulable included — nothing has observed
+			// this cluster's capacity yet.
+			MarkJoined: func(ctx context.Context, orgID, hypervisorID, hiveID uuid.UUID, nodeName string) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.MarkJoined(ctx, db, hypervisorID, hiveID, nodeName)
+			},
+			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID,
+				operation string, opErr error) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.RecordOperationOutcome(ctx, db, hvID, operation, opErr)
+			},
+			EnqueueCapacitySyncAfter: enqueueCapacitySyncAfter,
+			EnqueueCapacitySync:      enqueueCapacitySync,
+		}))
+
 		// Capacity sync. Feeds ObservedGuests, which the departure and arrival
 		// gates read — without it every observation is absent, the drain state is
 		// unknown, and every departure refuses. Safe, but not a working system.
 		syncDeps := jobs.CapacitySyncDeps{
 			Inventory:     inventory.Inventory,
 			NodeAddresses: inventory.NodeAddresses,
-			TenantDB:      fleetRepoFor,
+			// Without this a standalone host is recorded as the hive's only
+			// member, which closes every route out — see the field's own comment.
+			ClusterIdentity: inventory.ClusterIdentity,
+			TenantDB:        fleetRepoFor,
 		}
 		river.AddWorker(workers, jobs.NewSyncHiveCapacityWorker(syncDeps))
 		river.AddWorker(workers, jobs.NewSyncAllHivesWorker(controlDB, fleetRepoFor,

@@ -125,6 +125,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallSetsUpdate**](docs/FirewallAPI.md#firewallsetsupdate) | **Put** /api/v1/firewall/sets/{id} | Rename a firewall set
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
+*FleetAPI* | [**AuditEventsList**](docs/FleetAPI.md#auditeventslist) | **Get** /api/v1/audit/events | What has been done in this organization, and by whom
 *FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
@@ -142,6 +143,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHivesSync**](docs/FleetAPI.md#fleethivessync) | **Post** /api/v1/fleet/hives/{id}/sync | Refresh a hive&#39;s capacity observations now
 *FleetAPI* | [**FleetHivesUpdate**](docs/FleetAPI.md#fleethivesupdate) | **Patch** /api/v1/fleet/hives/{id} | Update a hive&#39;s configuration
 *FleetAPI* | [**FleetHostsArrive**](docs/FleetAPI.md#fleethostsarrive) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/arrive | Add a standalone machine to a hive
+*FleetAPI* | [**FleetHostsBootstrap**](docs/FleetAPI.md#fleethostsbootstrap) | **Post** /api/v1/fleet/fleetless/{hypervisor_id}/bootstrap | Create a cluster on a standalone machine
 *FleetAPI* | [**FleetHostsFleetless**](docs/FleetAPI.md#fleethostsfleetless) | **Get** /api/v1/fleet/fleetless | List machines belonging to no hive
 *FleetAPI* | [**FleetHypervisorsCordon**](docs/FleetAPI.md#fleethypervisorscordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
 *FleetAPI* | [**FleetHypervisorsDeclare**](docs/FleetAPI.md#fleethypervisorsdeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
@@ -197,10 +199,13 @@ Class | Method | HTTP request | Description
  - [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
  - [ArriveResponseBody](docs/ArriveResponseBody.md)
+ - [AuditEventView](docs/AuditEventView.md)
  - [AuthenticatorSelection](docs/AuthenticatorSelection.md)
  - [BeeView](docs/BeeView.md)
  - [BindingScopeBody](docs/BindingScopeBody.md)
  - [BindingView](docs/BindingView.md)
+ - [BootstrapRequestBody](docs/BootstrapRequestBody.md)
+ - [BootstrapResponseBody](docs/BootstrapResponseBody.md)
  - [CapacityView](docs/CapacityView.md)
  - [ChangePasswordRequestBody](docs/ChangePasswordRequestBody.md)
  - [ChangePasswordResponseBody](docs/ChangePasswordResponseBody.md)
@@ -258,6 +263,7 @@ Class | Method | HTTP request | Description
  - [Item](docs/Item.md)
  - [KeyView](docs/KeyView.md)
  - [ListAPIKeysResponseBody](docs/ListAPIKeysResponseBody.md)
+ - [ListAuditResponseBody](docs/ListAuditResponseBody.md)
  - [ListBeesResponseBody](docs/ListBeesResponseBody.md)
  - [ListBindingsResponseBody](docs/ListBindingsResponseBody.md)
  - [ListFleetlessResponseBody](docs/ListFleetlessResponseBody.md)

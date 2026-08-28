@@ -75,12 +75,21 @@ const (
 // So there is no arrangement of vote counts that keeps a departed node from
 // reading what it already has, and the only question left is an operator's.
 const (
-	// CredentialsRotate: the departed node is not trusted, so the cluster rotates
-	// what it saw. Destroying its copy is not enough — it has already read them.
+	// CredentialsRotate: the departed node is not trusted, so it leaves with a
+	// fresh identity — its own root keypair replaced, sharing nothing with the
+	// cluster it left.
+	//
+	// Acts on the DEPARTING node, not on the remaining cluster. Rotating the
+	// cluster's own secrets invalidates every session in the fleet, reissues
+	// every node certificate, and replaces the token this control plane uses to
+	// reach it: a fleet-wide disruption that one node leaving must not trigger.
+	// It remains true that the departed node has already READ the cluster's
+	// secrets and no departure can unsee that — closing it is a decision an
+	// operator makes about the cluster, at a time of their choosing.
 	CredentialsRotate = "rotate"
 
 	// CredentialsAcceptExposure: the node is trusted and is being redeployed, so
-	// its copy is destroyed and the cluster keeps its secrets. A deliberate
+	// its copy is destroyed and it keeps the identity it had. A deliberate
 	// choice, recorded as one.
 	CredentialsAcceptExposure = "accept-exposure"
 )
@@ -189,7 +198,8 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 		return out
 	}
 	switch req.CredentialDisposition {
-	case CredentialsRotate, CredentialsAcceptExposure:
+	case CredentialsAcceptExposure:
+	case CredentialsRotate:
 	default:
 		out = append(out, DepartureRefusal{
 			Code:    RefuseCredentialsUndecided,

@@ -305,7 +305,18 @@ type FleetTask struct {
 	Result datatypes.JSON `gorm:"type:jsonb" json:"result,omitempty"`
 	Error  string         `gorm:"type:text" json:"error,omitempty"`
 
-	CreatedByID uuid.UUID  `gorm:"type:uuid;not null" json:"created_by_id"`
+	// NULL when an ORG API KEY queued this rather than a person.
+	//
+	// An org-scoped key is a first-class principal on these endpoints — they are
+	// registered SecurityUserOrKey deliberately, so a CI job can drive a fleet —
+	// and it has no user behind it. Dereferencing p.UserID for one panicked the
+	// handler and returned a 500 with an empty body, which is how this was found.
+	//
+	// Nullable rather than substituted: attributing the action to whoever last
+	// logged in would put a name against something they did not do, and an audit
+	// column that is sometimes a lie is worse than one that is sometimes empty.
+	// Same reasoning as control.BeeEnrolmentToken.CreatedByID.
+	CreatedByID *uuid.UUID `gorm:"type:uuid" json:"created_by_id,omitempty"`
 	CreatedAt   time.Time  `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
 	ClaimedAt   *time.Time `gorm:"type:timestamptz" json:"claimed_at,omitempty"`
 	StartedAt   *time.Time `gorm:"type:timestamptz" json:"started_at,omitempty"`

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
 )
@@ -181,5 +182,88 @@ func TestCreateClusterPassesCorosyncLinksThrough(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the link was not passed to pvecm create, got %v", r.cmds)
+	}
+}
+
+// settleFast shortens the create settle loop for a test.
+func settleFast(t *testing.T) {
+	t.Helper()
+	ot, oi := clusterSettleTimeout, clusterSettleInterval
+	clusterSettleTimeout, clusterSettleInterval = 200*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { clusterSettleTimeout, clusterSettleInterval = ot, oi })
+}
+
+// statusRunner answers `pvecm status` differently as the cluster comes up.
+type statusRunner struct {
+	calls   int
+	quorate int // the call number from which it reports quorum
+	name    string
+}
+
+func (r *statusRunner) Upload(context.Context, string, uint32, []byte) error { return nil }
+func (r *statusRunner) Reconnect(context.Context) error                      { return nil }
+func (r *statusRunner) Run(_ context.Context, cmd string) (string, error) {
+	if !strings.Contains(cmd, "pvecm status") {
+		return "", nil
+	}
+	r.calls++
+	if r.calls < r.quorate {
+		// What a host actually prints in the seconds after `pvecm create`:
+		// corosync has not finished, so there is no Quorate line at all.
+		return "Cluster information\n-------------------\nName: " + r.name + "\n", nil
+	}
+	return "Name: " + r.name + "\nNodes: 1\nQuorate: Yes\n", nil
+}
+
+// THE BOOTSTRAP THAT BUILT A CLUSTER AND REPORTED FAILURE.
+//
+// `pvecm create` returns before corosync has finished starting, so the first
+// `pvecm status` after it reports no Quorate line. Read once, that was reported
+// as a cluster created without quorum. The job then never reached MarkJoined,
+// the control plane never recorded membership, and every retry refused because
+// the host was by then already a member of the cluster it had just built.
+func TestClusterCreationWaitsForQuorumInsteadOfSamplingOnce(t *testing.T) {
+	settleFast(t)
+	r := &statusRunner{quorate: 3, name: "lab-b"}
+
+	if err := AwaitClusterCreated(context.Background(), r, "lab-b"); err != nil {
+		t.Fatalf("a cluster that became quorate a moment later was reported as failed: %v", err)
+	}
+	if r.calls < 3 {
+		t.Fatalf("status was read %d time(s); the cluster must be given time to form", r.calls)
+	}
+}
+
+// A cluster that never reaches quorum is still a failure — bounded, and saying
+// what it saw.
+func TestClusterCreationGivesUpIfQuorumNeverArrives(t *testing.T) {
+	settleFast(t)
+	r := &statusRunner{quorate: 1 << 30, name: "lab-b"}
+
+	err := AwaitClusterCreated(context.Background(), r, "lab-b")
+	if err == nil {
+		t.Fatal("a cluster that never reached quorum was reported as created")
+	}
+	if !strings.Contains(err.Error(), "did not reach quorum") {
+		t.Fatalf("err = %v, want it to say quorum never arrived", err)
+	}
+}
+
+// The WRONG NAME is not a transient state and must not be waited on: it means
+// `pvecm create` was pointed at something other than what was asked for, and no
+// amount of waiting turns one cluster into another.
+func TestAWrongClusterNameFailsImmediately(t *testing.T) {
+	settleFast(t)
+	r := &statusRunner{quorate: 1, name: "someone-elses"}
+
+	err := AwaitClusterCreated(context.Background(), r, "lab-b")
+	if err == nil {
+		t.Fatal("a cluster with the wrong name was accepted")
+	}
+	if strings.Contains(err.Error(), "did not reach quorum") {
+		t.Fatalf("a wrong name was retried as though it were transient: %v", err)
+	}
+	if r.calls != 1 {
+		t.Fatalf("status was read %d times; a wrong name is not worth waiting on", r.calls)
 	}
 }

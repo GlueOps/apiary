@@ -1058,3 +1058,71 @@ func TestARuleNamingASetStoresNoLiteral(t *testing.T) {
 		t.Fatal("the set reference must survive the correction")
 	}
 }
+
+// An edit must be able to change what a rule matches on, in both directions.
+//
+// UpdateRule uses an explicit Select list, and src_set_id/dst_set_id were not in
+// it. A rule could be CREATED naming a set and never edited to name one, and an
+// edit switching from a literal to a set cleared the literal — which IS in the
+// list — while dropping the set reference, leaving a rule that matched
+// everything. That reached a live host as `tcp dport 22 accept` under a rule
+// called "access from management".
+func TestAnEditCanSwitchBetweenALiteralAndASet(t *testing.T) {
+	db := firewallDB(t)
+	r := NewFirewallRepoGorm(db)
+	ctx := context.Background()
+
+	set := &tenant.FirewallSet{Name: "mgmt-" + uuid.NewString()[:8], Family: tenant.FamilyIPv4}
+	if err := r.CreateSet(ctx, set); err != nil {
+		t.Fatal(err)
+	}
+	rs := &tenant.FirewallRuleset{Name: "rs-" + uuid.NewString()[:8]}
+	if err := r.CreateRuleset(ctx, rs); err != nil {
+		t.Fatal(err)
+	}
+
+	// Born with a literal.
+	rule := &tenant.FirewallRule{
+		RulesetID: rs.ID, Name: "access from management", Enabled: true,
+		Family: "ip", TableName: "filter", ChainName: "input",
+		Protocol: tenant.TCP, Action: tenant.Accept, DstPort: 22,
+		SrcCidr: "192.168.10.60/32", DstCidr: "0.0.0.0/0",
+	}
+	if err := r.CreateRule(ctx, rule); err != nil {
+		t.Fatal(err)
+	}
+
+	// Edited to name a set instead. The literal goes, the set arrives.
+	rule.SrcCidr = ""
+	rule.SrcSetID = &set.ID
+	if err := r.UpdateRule(ctx, rule); err != nil {
+		t.Fatalf("update to a set: %v", err)
+	}
+	got, err := r.GetRule(ctx, rule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SrcSetID == nil || *got.SrcSetID != set.ID {
+		t.Fatal("an edit must be able to point a rule at a set")
+	}
+	if got.SrcCidr != "" {
+		t.Fatalf("the literal must go when a set replaces it; got %q", got.SrcCidr)
+	}
+
+	// And back again, which is the direction that silently matched everything.
+	rule.SrcSetID = nil
+	rule.SrcCidr = "10.0.0.0/8"
+	if err := r.UpdateRule(ctx, rule); err != nil {
+		t.Fatalf("update back to a literal: %v", err)
+	}
+	got, err = r.GetRule(ctx, rule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SrcSetID != nil {
+		t.Fatal("the set reference must be cleared when a literal replaces it")
+	}
+	if got.SrcCidr != "10.0.0.0/8" {
+		t.Fatalf("the new literal must be written; got %q", got.SrcCidr)
+	}
+}

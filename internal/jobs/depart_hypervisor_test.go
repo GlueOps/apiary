@@ -37,6 +37,9 @@ type departRunner struct {
 	// refuses the second.
 	peer            *departRunner
 	stopCostsQuorum bool
+	// detached models a node that is already out of its cluster, which is the
+	// state a retry of a part-finished departure starts from.
+	detached bool
 }
 
 func (f *departRunner) Run(_ context.Context, cmd string) (string, error) {
@@ -60,6 +63,16 @@ func (f *departRunner) Run(_ context.Context, cmd string) (string, error) {
 			f.keyringMatches = 0
 		}
 		return "", nil
+	// The cluster this node reports itself in. Empty means standalone, which is
+	// how a retry recognises a departure that already detached — see
+	// IsStandalone. The fake answers with a cluster while `detached` is false,
+	// so an ordinary departure takes the full path.
+	case strings.Contains(cmd, "APIARY_CLUSTER="):
+		if f.detached {
+			return "APIARY_CLUSTER=\n", nil
+		}
+		return "APIARY_CLUSTER=dc1\n", nil
+
 	case strings.Contains(cmd, "APIARY_QUORATE"):
 		// The preflight's marker contract. A bare "Yes" is deliberately not
 		// accepted, so the fake speaks the same protocol as the host.
@@ -177,7 +190,10 @@ func (h *harness) run() error {
 		// credential question and move on. That the question must be answered at
 		// all is covered by the gate's own tests; leaving it unset here would make
 		// every one of them fail on the gate before reaching what it exercises.
-		CredentialDisposition: tenant.CredentialsRotate,
+		// Accept-exposure, because it is the disposition this control plane can
+		// actually carry out. Rotate refuses at the gate while it is
+		// unimplemented — see RefuseCredentialsRotateUnavailable.
+		CredentialDisposition: tenant.CredentialsAcceptExposure,
 	})
 }
 
@@ -610,5 +626,129 @@ func TestDepartTriggersNoSyncForAHiveThatCannotBeSynced(t *testing.T) {
 				t.Fatalf("no sync may be enqueued for a hive that cannot be synced, got %v", h.syncs)
 			}
 		})
+	}
+}
+
+// THE STRANDED DEPARTURE. A departure's middle step is irreversible: once
+// delnode has run the node is out, and everything after it can still fail. One
+// did — the disarm — and the job then retried from the top, hit the preflight,
+// and refused with "the cluster config lists 1 node(s)", which was true and
+// useless. Four attempts, none able to reach the one step that still needed
+// doing, and the job cancelled leaving the node detached and armed.
+//
+// A retry must resume, not restart.
+func TestARetriedDepartureResumesAfterTheDetach(t *testing.T) {
+	h := newHarness(t)
+	// The state a part-finished departure leaves: the node is already out.
+	h.departing.detached = true
+	// And the cluster is down to one node, so the preflight the first attempt
+	// passed can no longer pass.
+	h.remaining.corosyncNodes = 1
+
+	if err := h.run(); err != nil {
+		t.Fatalf("a retry of a part-finished departure must resume, not refuse: %v", err)
+	}
+
+	// delnode must NOT run again. The node is already out, and asking would be
+	// asking to remove the last member of a cluster.
+	for _, line := range h.log {
+		if strings.Contains(line, "pvecm delnode") {
+			t.Fatalf("delnode ran against an already-detached node: %q", line)
+		}
+	}
+	// The steps that still needed doing must have run.
+	var disarmed bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pmxcfs -l") {
+			disarmed = true
+		}
+	}
+	if !disarmed {
+		t.Fatal("the retry skipped the disarm, which is the work it existed to finish")
+	}
+	if len(h.fleetless) != 1 {
+		t.Fatalf("the machine must still be recorded fleetless, got %v", h.fleetless)
+	}
+}
+
+// And an ordinary departure must be unaffected: it is not a retry, so every step
+// runs including the preflight and the removal.
+func TestAnOrdinaryDepartureStillRemovesTheNode(t *testing.T) {
+	h := newHarness(t)
+	if err := h.run(); err != nil {
+		t.Fatalf("depart: %v", err)
+	}
+	var sawDelnode bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pvecm delnode") {
+			sawDelnode = true
+		}
+	}
+	if !sawDelnode {
+		t.Fatal("a first-attempt departure did not remove the node")
+	}
+}
+
+// A ONE-NODE CLUSTER WAS A DEAD END. Departing the last node was refused for
+// want of a peer to run delnode from, and deleting a cluster is refused while it
+// still holds a hypervisor — so the cluster could be neither dismantled nor
+// emptied, and the message blamed DNS: "no remaining node has a resolvable
+// address", for a cluster that simply had nobody else in it.
+//
+// Removing the last node is not a node removal. There is no delnode to run and
+// no survivor to keep quorate, only the standalone conversion on the node
+// itself — the mirror of creating a cluster on a first node.
+func TestDepartingTheLastNodeDismantlesTheCluster(t *testing.T) {
+	h := newHarness(t)
+	h.snapshot.LastNode = true
+	h.snapshot.RemainingAddress = ""
+	h.snapshot.PeerNames = nil
+	h.snapshot.HiveNodeCount = 1
+	// The operator's minimum still governs. Lowered here because dismantling a
+	// one-node cluster is only reachable on a fleet whose minimum permits it —
+	// the gate refusing at the default of 3 is correct, and is what stops this
+	// happening by accident on a production cluster.
+	h.snapshot.Hive.MinimumNodes = 1
+
+	if err := h.run(); err != nil {
+		t.Fatalf("departing the only node must dismantle the cluster, not refuse: %v", err)
+	}
+
+	// Nothing may be attempted against a peer that does not exist.
+	for _, line := range h.log {
+		for _, forbidden := range []string{"pvecm delnode", "pvecm expected"} {
+			if strings.Contains(line, forbidden) {
+				t.Errorf("%q ran with no remaining node to run it on: %q", forbidden, line)
+			}
+		}
+	}
+	// The work that IS possible must still happen: the node becomes standalone.
+	var converted bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pmxcfs -l") {
+			converted = true
+		}
+	}
+	if !converted {
+		t.Fatal("the last node was not converted to standalone, so nothing was actually done")
+	}
+	if len(h.fleetless) != 1 {
+		t.Fatalf("the machine must be recorded fleetless, got %v", h.fleetless)
+	}
+}
+
+// And peers that EXIST but have no usable address is a different fault with a
+// different remedy, so it keeps its own message rather than sharing one.
+func TestPeersWithNoAddressAreNotReportedAsAnEmptyCluster(t *testing.T) {
+	h := newHarness(t)
+	h.snapshot.LastNode = false
+	h.snapshot.RemainingAddress = ""
+
+	err := h.run()
+	if err == nil {
+		t.Fatal("a departure with no reachable peer must refuse")
+	}
+	if strings.Contains(err.Error(), "last node") {
+		t.Fatalf("an address problem was reported as an empty cluster: %v", err)
 	}
 }

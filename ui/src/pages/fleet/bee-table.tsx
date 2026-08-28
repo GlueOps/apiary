@@ -1,4 +1,4 @@
-import { IconPlugConnected, IconTrash } from '@tabler/icons-react';
+import { IconPlugConnected, IconPlugOff, IconTrash } from '@tabler/icons-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,6 +89,15 @@ export type BeeTableProps = {
   onUpgrade: (bee: BeeView) => void;
   onJoin: (bee: BeeView) => void;
   onEvict: (bee: BeeView) => void;
+  /**
+   * Remove the AGENT, not the machine.
+   *
+   * Distinct from eviction, which is about cluster membership and runs on the
+   * hypervisors. This revokes the agent's credential so the control plane stops
+   * trusting it; the hypervisor row — its machine id, address and onboarding
+   * history — survives, and the process on the host keeps running.
+   */
+  onRemove: (bee: BeeView) => void;
   busy?: boolean;
 };
 
@@ -99,6 +108,7 @@ export function BeeTable({
   onUpgrade,
   onJoin,
   onEvict,
+  onRemove,
   busy = false,
 }: BeeTableProps) {
   return (
@@ -157,6 +167,15 @@ export function BeeTable({
                     <IconTrash /> Evict a node…
                   </Button>
                 )}
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  aria-label={`Remove the agent on ${beeLabel(b)}`}
+                  onClick={() => onRemove(b)}
+                >
+                  <IconPlugOff /> Remove agent…
+                </Button>
               </div>
             </TableCell>
           </TableRow>
