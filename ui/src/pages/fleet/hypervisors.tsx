@@ -109,6 +109,15 @@ export function LastOperationBadge({ hv }: { hv: HypervisorView }) {
   return (
     <span className="block space-y-1">
       <Badge variant="destructive">{label}</Badge>
+      {/* WHEN, not just what. An outcome is cleared once the state it describes
+          is reached, so anything still here is current — but a reader cannot
+          know that from the message alone, and a failure with no time on it
+          reads as "now" however old it is. */}
+      {hv.last_operation_at ? (
+        <span className="block text-xs text-muted-foreground">
+          {relative(hv.last_operation_at)}
+        </span>
+      ) : null}
       <span
         className="block max-w-[22rem] text-xs break-words text-muted-foreground"
         title={hv.last_operation_error}

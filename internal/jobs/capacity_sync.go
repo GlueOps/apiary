@@ -249,6 +249,15 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 							"hive_id":     hiveID,
 							"name":        name,
 							"schedulable": false,
+							// A RECORDED FAILURE MUST NOT OUTLIVE ITS GOAL. The
+							// machine is in the cluster now, so a stored "the
+							// join failed" is describing an attempt, not a
+							// state, and it is the state an operator is reading
+							// it as. Three healthy nodes carried an eight-hour-old
+							// join failure because the membership that resolved
+							// it arrived down this path, which records no
+							// outcome of its own.
+							"last_operation_error": "",
 						}).Error; err != nil {
 						return fmt.Errorf("adopt machine %q into this hive: %w", name, err)
 					}
@@ -437,6 +446,12 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 					"observed_foreign_ram_gb_used":  0,
 					"observed_foreign_disk_gb_used": 0,
 					"last_synced_at":                nil,
+					// Same reasoning in the other direction: this machine is out
+					// of the cluster, which is what a departure was for, so a
+					// stored departure failure now contradicts the world. The
+					// job that failed is still in the audit trail, where an
+					// attempt belongs.
+					"last_operation_error": "",
 				}).Error; err != nil {
 				return fmt.Errorf("the cluster no longer reports node %q, but clearing its "+
 					"cluster membership failed: %w", name, err)

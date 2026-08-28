@@ -1193,3 +1193,86 @@ func TestSyncDoesNotReleaseALiveClusterWhenItsApiUrlPointsAtADepartedNode(t *tes
 			"cluster's records", still)
 	}
 }
+
+// A RECORDED FAILURE MUST NOT OUTLIVE ITS GOAL.
+//
+// last_operation_error stores the outcome of the last attempt, and an operator
+// reads it as the state of the machine. When membership is resolved by a path
+// that records no outcome of its own — adoption, or the sync clearing a node the
+// cluster stopped reporting — the failure stands unchallenged forever. Three
+// healthy nodes carried an eight-hour-old join failure that way, and surfacing
+// last_operation_error in the UI turned a dormant inaccuracy into a visible one.
+func TestAdoptionClearsAStaleJoinFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	// A fleetless machine carrying the failure of a join that later happened
+	// anyway, by a route that recorded nothing.
+	hv := tenant.Hypervisor{
+		Address:            "192.0.2.30",
+		LastOperation:      "join",
+		LastOperationError: "bootstrap: refused by a precondition: already_in_hive",
+	}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve9", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	deps.NodeAddresses = func(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error) {
+		return map[string]string{"pve9": "192.0.2.30"}, nil
+	}
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.HiveID == nil {
+		t.Fatal("the machine was not adopted, so the rest of this test proves nothing")
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a join failure survived the join succeeding: %q", got.LastOperationError)
+	}
+}
+
+// The same in the other direction: a machine the cluster no longer reports is
+// out, which is what a departure was for, so a stored departure failure now
+// contradicts the world.
+func TestClearingMembershipClearsAStaleDepartureFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve8")
+	hv.LastOperation = "depart"
+	hv.LastOperationError = "depart: refused by a precondition: not_a_member"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// The cluster reports a different node entirely: pve8 is gone.
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve7", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.HiveID != nil {
+		t.Fatal("membership was not cleared, so the rest of this test proves nothing")
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a departure failure survived the machine leaving: %q", got.LastOperationError)
+	}
+}
