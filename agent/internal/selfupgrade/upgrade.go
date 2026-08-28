@@ -261,7 +261,11 @@ func keepBackup(target, dir string) (string, error) {
 	// Staged and renamed inside BackupDir so an interrupted copy cannot leave a
 	// truncated file that looks like a usable rollback.
 	tmp := dst + ".partial"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o700)
+	// 0600, not 0700. A backup does not need to be executable where it lies —
+	// restoring one means installing it over the target, which sets the mode
+	// there — and an executable copy of the agent sitting in a backup directory
+	// is a thing that can be run by accident.
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("upgrade: stage the backup: %w", err)
 	}

@@ -51,10 +51,14 @@ type DeclaredResult struct {
 // as the 422 detail and the declare dialog puts it straight in a toast, so it
 // carries no "declare:" prefix and names the next action rather than the
 // internal condition.
+//
+// Lowercase and unterminated because it is an error value first: Go convention
+// is what lets it be wrapped into a longer sentence without reading oddly, and
+// a toast starting lowercase costs nothing.
 var ErrNoManagementSet = errors.New(
-	"No management address set has any addresses in it, so the fleet key would be " +
+	"no management address set has any addresses in it, so the fleet key would be " +
 		"installed permitting connections from nowhere. Add at least one address to a " +
-		"management set, then declare these hosts.")
+		"management set, then declare these hosts")
 
 func DeclareHosts(
 	ctx context.Context, db *gorm.DB, hosts []tenant.DeclaredHost,
