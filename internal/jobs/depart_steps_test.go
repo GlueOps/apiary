@@ -372,3 +372,53 @@ func TestKeyMatchingIgnoresOptionsAndComments(t *testing.T) {
 		t.Fatal("a comment or a blank line was read as a key")
 	}
 }
+
+// ROTATE ACTS ON THE DEPARTING NODE. The operator's answer was carried into the
+// job's arguments and never read, so rotate and accept-exposure ran the same
+// path and only one of them said so.
+//
+// What it rotates is this node's OWN identity — its root keypair, which on a
+// fleet built from one image is shared with every other node and is what keeps a
+// departed host reachable from the cluster it left. It does not rotate the
+// cluster's secrets: that invalidates every session in the fleet and replaces the
+// token this control plane uses to reach it, which one node leaving must not do.
+func TestRotateReplacesTheDepartingNodesOwnKey(t *testing.T) {
+	r := &stubRunner{}
+	err := MakeStandalone(context.Background(), r, nil, nil, DisarmCheck{RotateIdentity: true})
+	if err != nil {
+		t.Fatalf("standalone conversion: %v", err)
+	}
+
+	var keygen, removed, order int
+	for i, cmd := range r.cmds {
+		if strings.Contains(cmd, "ssh-keygen") {
+			keygen++
+			order = i
+		}
+		if strings.Contains(cmd, "rm -f /root/.ssh/id_rsa") {
+			removed++
+		}
+		if strings.Contains(cmd, "pvecm updatecerts") && order > 0 && i < order {
+			t.Fatal("updatecerts ran before the new key existed, so it rebuilt " +
+				"authorized_keys naming the key that was about to be replaced")
+		}
+	}
+	if removed != 1 || keygen != 1 {
+		t.Fatalf("rotate must remove the old root keypair and mint one; removed=%d keygen=%d",
+			removed, keygen)
+	}
+}
+
+// Accept-exposure leaves the identity alone. The node is trusted and being
+// redeployed, and replacing its key would be doing something nobody asked for.
+func TestAcceptExposureLeavesTheNodesKeyAlone(t *testing.T) {
+	r := &stubRunner{}
+	if err := MakeStandalone(context.Background(), r, nil, nil, DisarmCheck{}); err != nil {
+		t.Fatalf("standalone conversion: %v", err)
+	}
+	for _, cmd := range r.cmds {
+		if strings.Contains(cmd, "ssh-keygen") {
+			t.Fatalf("accept-exposure rotated a key it was not asked to: %q", cmd)
+		}
+	}
+}

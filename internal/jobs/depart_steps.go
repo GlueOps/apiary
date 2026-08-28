@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -680,6 +679,35 @@ func MakeStandalone(
 		"sleep 2",
 		"systemctl start pve-cluster",
 		"sleep 3",
+	)
+
+	// ROTATE acts on this node's own identity, before updatecerts, so the
+	// authorized_keys it rebuilds names the NEW key rather than the old one.
+	//
+	// The root keypair first, because it is the one that is actually shared: the
+	// rgl/proxmox-ve images ship a fixed /root/.ssh/id_rsa, so every node built
+	// from one authenticates as the same principal and a departed host stays
+	// reachable from the cluster by a key no departure step removes.
+	//
+	// Safe to replace precisely because the control plane does not use it. The
+	// fleet key lives in /etc/ssh/authorized_keys.d/apiary, which pvecm does not
+	// touch — so the repair channel into this host survives the rotation that
+	// closes the cluster's.
+	//
+	// SSH HOST keys are deliberately NOT rotated. They are the node's identity to
+	// everything that has ever connected to it, including this control plane's
+	// known_hosts, and changing them turns a departure into a host-key mismatch
+	// on the next connection — which reads as an attack rather than as an
+	// intended consequence.
+	if disarm.RotateIdentity {
+		steps = append(steps,
+			"rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub "+
+				"/root/.ssh/id_ed25519 /root/.ssh/id_ed25519.pub",
+			`ssh-keygen -q -t ed25519 -N "" -C "root@$(hostname)" -f /root/.ssh/id_ed25519`,
+		)
+	}
+
+	steps = append(steps,
 		// A node with no CA and no ticket key cannot serve its own API. This mints
 		// it a fresh identity that shares nothing with the hive it left — which is
 		// the point: standalone, not merely disconnected.
@@ -746,6 +774,18 @@ const clusterAuthorizedKeys = "/etc/pve/priv/authorized_keys"
 type DisarmCheck struct {
 	PeerKeys []string
 	OwnKeys  []string
+
+	// RotateIdentity replaces what this node holds of its OWN, so it leaves
+	// sharing nothing with the cluster.
+	//
+	// The rotate disposition acts HERE, on the departing node, and not on the
+	// remaining cluster. Rotating the cluster invalidates every session in the
+	// fleet, reissues every certificate, and replaces the token this control
+	// plane uses to reach it — a fleet-wide disruption that one node leaving
+	// should not trigger. What a departure can guarantee is that the node leaves
+	// sharing nothing; what it cannot is that the cluster forgets what the node
+	// saw, and that is an operator's decision at a time of their choosing.
+	RotateIdentity bool
 }
 
 // assertNoPeerKeysRetained checks the departed node trusts none of the keys it
@@ -804,12 +844,11 @@ func assertNoPeerKeysRetained(ctx context.Context, r Runner, disarm DisarmCheck)
 		}
 		wanted = append(wanted, m)
 	}
-	if shared > 0 {
-		slog.WarnContext(ctx, "the departing node and a node that remains share a root SSH key, "+
-			"so the cluster keeps access to the departed host and this departure cannot remove "+
-			"it; the keys are identical, which usually means every node was built from one image",
-			"shared_keys", shared)
-	}
+	// A shared key is NOT reported here. The rgl/proxmox-ve box images ship one
+	// fixed /root/.ssh/id_rsa, so every node in a lab built from them holds the
+	// same key and this would fire on every departure with nothing to act on.
+	// Replacing it is what the rotate disposition is for, on the departing node.
+	_ = shared
 	if len(wanted) == 0 {
 		return nil
 	}

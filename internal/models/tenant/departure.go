@@ -53,16 +53,6 @@ const (
 	// refusal here that is not about the cluster's state — it is about a decision
 	// only an operator can make. See CredentialDisposition.
 	RefuseCredentialsUndecided = "credentials_undecided"
-
-	// RefuseCredentialsRotateUnavailable is raised when rotation is asked for and
-	// this control plane cannot perform it.
-	//
-	// It refuses rather than proceeding because the alternative is worse than
-	// either outcome: an operator who chose rotate BECAUSE the host is untrusted
-	// would be told the departure succeeded while the cluster kept every secret
-	// that host has read. A security control that silently does nothing is the
-	// one failure mode worth refusing over.
-	RefuseCredentialsRotateUnavailable = "credentials_rotate_unavailable"
 )
 
 // What to do about the cluster secrets a departing node has seen.
@@ -85,12 +75,21 @@ const (
 // So there is no arrangement of vote counts that keeps a departed node from
 // reading what it already has, and the only question left is an operator's.
 const (
-	// CredentialsRotate: the departed node is not trusted, so the cluster rotates
-	// what it saw. Destroying its copy is not enough — it has already read them.
+	// CredentialsRotate: the departed node is not trusted, so it leaves with a
+	// fresh identity — its own root keypair replaced, sharing nothing with the
+	// cluster it left.
+	//
+	// Acts on the DEPARTING node, not on the remaining cluster. Rotating the
+	// cluster's own secrets invalidates every session in the fleet, reissues
+	// every node certificate, and replaces the token this control plane uses to
+	// reach it: a fleet-wide disruption that one node leaving must not trigger.
+	// It remains true that the departed node has already READ the cluster's
+	// secrets and no departure can unsee that — closing it is a decision an
+	// operator makes about the cluster, at a time of their choosing.
 	CredentialsRotate = "rotate"
 
 	// CredentialsAcceptExposure: the node is trusted and is being redeployed, so
-	// its copy is destroyed and the cluster keeps its secrets. A deliberate
+	// its copy is destroyed and it keeps the identity it had. A deliberate
 	// choice, recorded as one.
 	CredentialsAcceptExposure = "accept-exposure"
 )
@@ -201,29 +200,6 @@ func CheckDeparture(req DepartureRequest) []DepartureRefusal {
 	switch req.CredentialDisposition {
 	case CredentialsAcceptExposure:
 	case CredentialsRotate:
-		// NOT IMPLEMENTED, and refused rather than quietly treated as the other
-		// choice — which is what it did until 2026-08-28. The disposition was
-		// carried into the job's arguments and never read, so both answers ran
-		// the identical path: destroy the departing node's copy, leave the
-		// cluster's secrets exactly as they were.
-		//
-		// Rotating them for real is a cluster-wide, disruptive, self-affecting
-		// operation and not a step in a departure: authkey.key invalidates every
-		// active session in the fleet, the root CA requires reissuing every
-		// node's certificate and restarting pveproxy on all of them, and
-		// token.cfg includes the token this control plane uses to reach the
-		// cluster it is rotating. Done badly it locks the control plane out of
-		// the fleet it manages, mid-departure.
-		out = append(out, DepartureRefusal{
-			Code:    RefuseCredentialsRotateUnavailable,
-			Summary: "rotating this cluster's secrets is not implemented yet",
-			Detail: "choosing rotate would destroy this host's copy and leave the cluster's " +
-				"token.cfg, authkey.key and root CA unchanged — the same outcome as accepting " +
-				"the exposure, reported as though the secrets had been rotated",
-			Remedy: "Rotate the cluster's secrets by hand and then depart with 'accept " +
-				"exposure', which is an accurate description of what this will do. Do not " +
-				"depart an untrusted host expecting this to disarm the cluster.",
-		})
 	default:
 		out = append(out, DepartureRefusal{
 			Code:    RefuseCredentialsUndecided,

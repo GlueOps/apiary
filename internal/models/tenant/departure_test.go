@@ -543,16 +543,13 @@ func TestCheckDepartureRequiresACredentialDecision(t *testing.T) {
 		t.Fatalf("accepting the exposure must be allowed; refused with %v", codes(rs))
 	}
 
-	// Rotation is a decision it CANNOT carry out, and says so rather than
-	// performing the other one. Until 2026-08-28 the disposition was carried
-	// into the job and never read, so choosing rotate destroyed the departing
-	// node's copy and left the cluster's secrets untouched — the accept-exposure
-	// outcome, reported as though the secrets had been rotated. An operator who
-	// chose it BECAUSE the host was untrusted was told the opposite of the truth.
+	// Rotation is a decision it CAN carry out, on the departing node: that host
+	// leaves with a fresh root keypair, sharing nothing with the cluster. It does
+	// NOT rotate the cluster's own secrets, which is a separate operator decision
+	// with a fleet-wide blast radius.
 	req.CredentialDisposition = CredentialsRotate
-	if !hasCode(CheckDeparture(req), RefuseCredentialsRotateUnavailable) {
-		t.Fatalf("rotate must refuse while it is unimplemented; got %v",
-			codes(CheckDeparture(req)))
+	if rs := CheckDeparture(req); len(rs) != 0 {
+		t.Fatalf("rotate must be allowed; refused with %v", codes(rs))
 	}
 }
 

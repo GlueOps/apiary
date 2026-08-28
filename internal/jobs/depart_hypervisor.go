@@ -323,7 +323,14 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	}
 
 	if err := MakeStandalone(ctx, departing, snap.PeerNames, secretsBefore,
-		DisarmCheck{PeerKeys: peerKeys, OwnKeys: keys}); err != nil {
+		DisarmCheck{
+			PeerKeys: peerKeys,
+			OwnKeys:  keys,
+			// The operator's answer, finally acted on. It was carried into this
+			// job's arguments and never read, so rotate and accept-exposure did
+			// the same thing and only one of them said so.
+			RotateIdentity: in.CredentialDisposition == tenant.CredentialsRotate,
+		}); err != nil {
 		return err
 	}
 
