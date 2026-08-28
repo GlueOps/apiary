@@ -190,7 +190,10 @@ func (h *harness) run() error {
 		// credential question and move on. That the question must be answered at
 		// all is covered by the gate's own tests; leaving it unset here would make
 		// every one of them fail on the gate before reaching what it exercises.
-		CredentialDisposition: tenant.CredentialsRotate,
+		// Accept-exposure, because it is the disposition this control plane can
+		// actually carry out. Rotate refuses at the gate while it is
+		// unimplemented — see RefuseCredentialsRotateUnavailable.
+		CredentialDisposition: tenant.CredentialsAcceptExposure,
 	})
 }
 
