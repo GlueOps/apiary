@@ -37,6 +37,9 @@ type departRunner struct {
 	// refuses the second.
 	peer            *departRunner
 	stopCostsQuorum bool
+	// detached models a node that is already out of its cluster, which is the
+	// state a retry of a part-finished departure starts from.
+	detached bool
 }
 
 func (f *departRunner) Run(_ context.Context, cmd string) (string, error) {
@@ -60,6 +63,16 @@ func (f *departRunner) Run(_ context.Context, cmd string) (string, error) {
 			f.keyringMatches = 0
 		}
 		return "", nil
+	// The cluster this node reports itself in. Empty means standalone, which is
+	// how a retry recognises a departure that already detached — see
+	// IsStandalone. The fake answers with a cluster while `detached` is false,
+	// so an ordinary departure takes the full path.
+	case strings.Contains(cmd, "APIARY_CLUSTER="):
+		if f.detached {
+			return "APIARY_CLUSTER=\n", nil
+		}
+		return "APIARY_CLUSTER=dc1\n", nil
+
 	case strings.Contains(cmd, "APIARY_QUORATE"):
 		// The preflight's marker contract. A bare "Yes" is deliberately not
 		// accepted, so the fake speaks the same protocol as the host.
@@ -610,5 +623,65 @@ func TestDepartTriggersNoSyncForAHiveThatCannotBeSynced(t *testing.T) {
 				t.Fatalf("no sync may be enqueued for a hive that cannot be synced, got %v", h.syncs)
 			}
 		})
+	}
+}
+
+// THE STRANDED DEPARTURE. A departure's middle step is irreversible: once
+// delnode has run the node is out, and everything after it can still fail. One
+// did — the disarm — and the job then retried from the top, hit the preflight,
+// and refused with "the cluster config lists 1 node(s)", which was true and
+// useless. Four attempts, none able to reach the one step that still needed
+// doing, and the job cancelled leaving the node detached and armed.
+//
+// A retry must resume, not restart.
+func TestARetriedDepartureResumesAfterTheDetach(t *testing.T) {
+	h := newHarness(t)
+	// The state a part-finished departure leaves: the node is already out.
+	h.departing.detached = true
+	// And the cluster is down to one node, so the preflight the first attempt
+	// passed can no longer pass.
+	h.remaining.corosyncNodes = 1
+
+	if err := h.run(); err != nil {
+		t.Fatalf("a retry of a part-finished departure must resume, not refuse: %v", err)
+	}
+
+	// delnode must NOT run again. The node is already out, and asking would be
+	// asking to remove the last member of a cluster.
+	for _, line := range h.log {
+		if strings.Contains(line, "pvecm delnode") {
+			t.Fatalf("delnode ran against an already-detached node: %q", line)
+		}
+	}
+	// The steps that still needed doing must have run.
+	var disarmed bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pmxcfs -l") {
+			disarmed = true
+		}
+	}
+	if !disarmed {
+		t.Fatal("the retry skipped the disarm, which is the work it existed to finish")
+	}
+	if len(h.fleetless) != 1 {
+		t.Fatalf("the machine must still be recorded fleetless, got %v", h.fleetless)
+	}
+}
+
+// And an ordinary departure must be unaffected: it is not a retry, so every step
+// runs including the preflight and the removal.
+func TestAnOrdinaryDepartureStillRemovesTheNode(t *testing.T) {
+	h := newHarness(t)
+	if err := h.run(); err != nil {
+		t.Fatalf("depart: %v", err)
+	}
+	var sawDelnode bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pvecm delnode") {
+			sawDelnode = true
+		}
+	}
+	if !sawDelnode {
+		t.Fatal("a first-attempt departure did not remove the node")
 	}
 }

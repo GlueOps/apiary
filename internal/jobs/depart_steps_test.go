@@ -116,7 +116,7 @@ func TestRemoveNodeDirRefusesUnsafeNames(t *testing.T) {
 
 func TestMakeStandaloneRefusesUnsafePeerNames(t *testing.T) {
 	r := &stubRunner{}
-	if err := MakeStandalone(context.Background(), r, []string{"hv1", "../../etc"}, nil); err == nil {
+	if err := MakeStandalone(context.Background(), r, []string{"hv1", "../../etc"}, nil, DisarmCheck{}); err == nil {
 		t.Fatal("an unsafe peer name must be refused")
 	}
 	// Refused BEFORE anything runs — a partially applied standalone conversion
@@ -295,5 +295,80 @@ func TestDelNodeRestoresQuorumLostBYTheRemoval(t *testing.T) {
 	}
 	if !r.quorate {
 		t.Fatal("the cluster must be left quorate")
+	}
+}
+
+// keyLine builds an authorized_keys entry from a body, with the comment and
+// options that vary in the field without the key changing.
+func keyLine(body, comment string) string {
+	return `from="10.0.0.0/8" ssh-rsa AAAAB3NzaC1yc2E` + body + " root@" + comment
+}
+
+type keyfileRunner struct{ content string }
+
+func (k *keyfileRunner) Upload(context.Context, string, uint32, []byte) error { return nil }
+func (k *keyfileRunner) Reconnect(context.Context) error                      { return nil }
+func (k *keyfileRunner) Run(_ context.Context, cmd string) (string, error) {
+	if strings.Contains(cmd, "authorized_keys") {
+		return k.content, nil
+	}
+	return "", nil
+}
+
+// THE FALSE FAILURE. A fleet built from one image gives every node the same root
+// key, so the file `pvecm updatecerts --force` rebuilds — containing this node's
+// own key — is byte-identical to the cluster copy that was deleted. The digest
+// check called that an undestroyed secret and refused to finish a departure that
+// had already detached the node, leaving it stranded.
+//
+// The node's own key being present is correct: a standalone host trusts itself.
+func TestADepartedNodeTrustingOnlyItsOwnKeyIsDisarmed(t *testing.T) {
+	own := keyLine("AAAADAQABAAACAQC5bVyyHd2N3YSjPLZ0WA3IOWNKEY", "pve")
+	r := &keyfileRunner{content: own + "\n"}
+
+	// The peer's key IS the same key — one image, five nodes.
+	err := assertNoPeerKeysRetained(context.Background(), r, DisarmCheck{
+		PeerKeys: []string{own},
+		OwnKeys:  []string{own},
+	})
+	if err != nil {
+		t.Fatalf("a node trusting only its own key was reported as still armed: %v", err)
+	}
+}
+
+// THE MISS. On a fleet with distinct keys the digest changes whether or not a
+// peer's key survived, so the old check passed on exactly the case it existed to
+// catch.
+func TestADepartedNodeStillTrustingAPeerIsNotDisarmed(t *testing.T) {
+	own := keyLine("AAAADAQABAAACAQC5bVyyHd2N3YSjPLZ0OWNKEYAAA", "pve2")
+	peer := keyLine("AAAADAQABAAACAQC9zzzzzzzzzzzzzzzPEERKEYAAA", "pve")
+	r := &keyfileRunner{content: own + "\n" + peer + "\n"}
+
+	err := assertNoPeerKeysRetained(context.Background(), r, DisarmCheck{
+		PeerKeys: []string{peer},
+		OwnKeys:  []string{own},
+	})
+	if err == nil {
+		t.Fatal("a node still trusting the cluster it left was reported as disarmed")
+	}
+	if !strings.Contains(err.Error(), "detached but not disarmed") {
+		t.Fatalf("err = %v, want it to name the state the node is actually in", err)
+	}
+}
+
+// The same key named differently must still match: the cluster's copy carries a
+// from= restriction and a comment naming a host that may since have been
+// renamed, and neither changes which key it is.
+func TestKeyMatchingIgnoresOptionsAndComments(t *testing.T) {
+	body := "AAAADAQABAAACAQC9zzzzzzzzzzzzzzzPEERKEYAAA"
+	bare := "ssh-rsa AAAAB3NzaC1yc2E" + body
+	decorated := keyLine(body, "some-old-hostname")
+
+	if sshKeyMaterial(bare) != sshKeyMaterial(decorated) {
+		t.Fatalf("the same key read as two different keys: %q vs %q",
+			sshKeyMaterial(bare), sshKeyMaterial(decorated))
+	}
+	if sshKeyMaterial("# a comment") != "" || sshKeyMaterial("") != "" {
+		t.Fatal("a comment or a blank line was read as a key")
 	}
 }

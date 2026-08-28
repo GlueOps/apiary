@@ -143,7 +143,7 @@ func TestDepartStepsAgainstALiveCluster(t *testing.T) {
 	}
 	t.Log("ok  RemoveNodeDir")
 
-	if err := MakeStandalone(ctx, dep, []string{remName}, secretsBefore); err != nil {
+	if err := MakeStandalone(ctx, dep, []string{remName}, secretsBefore, DisarmCheck{}); err != nil {
 		t.Fatalf("MakeStandalone: %v", err)
 	}
 	t.Log("ok  MakeStandalone: standalone, /etc/pve writable, and the hive's secrets destroyed")

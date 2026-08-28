@@ -226,17 +226,45 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return err
 	}
 
-	// Preflight on the node that STAYS, before anything is stopped. A departure
-	// begun against an already-degraded cluster leaves a stopped node and an
-	// unchanged config, which is harder to reason about than either problem
-	// alone. See AssertClusterHealthy for why the obvious alternative — lowering
-	// the expected vote count up front — is not available.
-	if err := AssertClusterHealthy(ctx, remaining, snap.HiveNodeCount); err != nil {
-		return err
+	// ALREADY DETACHED? Then this is a RETRY of a departure that got part way,
+	// and the steps that remain are the ones after the detach.
+	//
+	// A departure is not one action, it is a sequence with an irreversible step
+	// in the middle: once delnode has run, the node is out and no amount of
+	// retrying puts it back. Everything after that — destroying the cluster's
+	// secrets on it, pruning its keys from the keyring, recording the outcome —
+	// can still fail, and did: a disarm failure left a node detached and armed,
+	// and every retry then re-ran from the top, hit the preflight below, and
+	// refused with "the cluster config lists 1 node(s)". Four attempts, none of
+	// which could reach the one step that still needed doing, and the job
+	// cancelled with the node in exactly the state the check exists to prevent.
+	//
+	// Asked of the HOST, not of the record, for the same reason AssertStandalone
+	// asks the host: the record says what we intended and corosync says what is.
+	alreadyDetached, adErr := IsStandalone(ctx, departing)
+	if adErr != nil {
+		return fmt.Errorf("depart: establish whether this node is still a cluster member: %w", adErr)
 	}
 
-	if err := StopClusterStack(ctx, departing); err != nil {
-		return err
+	if alreadyDetached {
+		slog.WarnContext(ctx, "this node is already detached, so this is a retry of a departure "+
+			"that got part way; the removal steps are skipped and the disarm is retried",
+			"hypervisor_id", in.HypervisorID)
+	} else {
+		// Preflight on the node that STAYS, before anything is stopped. A departure
+		// begun against an already-degraded cluster leaves a stopped node and an
+		// unchanged config, which is harder to reason about than either problem
+		// alone. See AssertClusterHealthy for why the obvious alternative — lowering
+		// the expected vote count up front — is not available.
+		if err := AssertClusterHealthy(ctx, remaining, snap.HiveNodeCount); err != nil {
+			return err
+		}
+	}
+
+	if !alreadyDetached {
+		if err := StopClusterStack(ctx, departing); err != nil {
+			return err
+		}
 	}
 
 	// The cluster's own word for this node. A clustered machine record always has
@@ -250,9 +278,13 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	}
 	nodeName := *snap.Hypervisor.Name
 
-	// One fewer node than the hive has now.
-	if err := DelNode(ctx, remaining, nodeName, snap.HiveNodeCount-1); err != nil {
-		return err
+	// One fewer node than the hive has now. Skipped on a retry: the node is
+	// already out, and DelNode would refuse with "no node to remove without
+	// destroying the cluster" — which is true, and not what is being asked.
+	if !alreadyDetached {
+		if err := DelNode(ctx, remaining, nodeName, snap.HiveNodeCount-1); err != nil {
+			return err
+		}
 	}
 
 	// The step that closes the access hole. A failure here fails the whole
@@ -275,7 +307,23 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return err
 	}
 
-	if err := MakeStandalone(ctx, departing, snap.PeerNames, secretsBefore); err != nil {
+	// The keys of a node that STAYS, so the disarm can be proved on the property
+	// that matters — that the departed host no longer trusts the cluster —
+	// rather than on whether some bytes changed.
+	//
+	// Best effort: a node whose keys cannot be read yields an empty list, and an
+	// empty list makes the check pass rather than fail. That is the right
+	// direction here only because the check is one of several, and failing a
+	// departure that has already detached the node strands it. The failure to
+	// read is logged.
+	peerKeys, pkErr := ReadNodeClientKeys(ctx, remaining)
+	if pkErr != nil {
+		slog.WarnContext(ctx, "could not read a remaining node's keys, so the departed host's "+
+			"trust in the cluster could not be verified", "error", pkErr)
+	}
+
+	if err := MakeStandalone(ctx, departing, snap.PeerNames, secretsBefore,
+		DisarmCheck{PeerKeys: peerKeys, OwnKeys: keys}); err != nil {
 		return err
 	}
 

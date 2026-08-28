@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -619,7 +620,10 @@ func RemoveNodeDir(ctx context.Context, r Runner, nodeName string) error {
 // `pmxcfs -l` is the load-bearing step: it runs the cluster filesystem in LOCAL
 // mode, which is the only way to delete the cluster config on a node that has no
 // quorum — and it has no quorum precisely because it was just removed.
-func MakeStandalone(ctx context.Context, r Runner, peerNames []string, secretsBefore map[string]string) error {
+func MakeStandalone(
+	ctx context.Context, r Runner, peerNames []string,
+	secretsBefore map[string]string, disarm DisarmCheck,
+) error {
 	for _, p := range peerNames {
 		if strings.TrimSpace(p) == "" || strings.ContainsAny(p, "/ ") {
 			return fmt.Errorf("depart: refusing to remove a peer directory for the unsafe name %q", p)
@@ -712,6 +716,12 @@ func MakeStandalone(ctx context.Context, r Runner, peerNames []string, secretsBe
 		return err
 	}
 	for _, f := range clusterSecretFiles {
+		// authorized_keys is judged on CONTENT, not on its digest — see
+		// assertNoPeerKeysRetained. `pvecm updatecerts --force` above recreates
+		// it, so an unchanged digest does not mean an undestroyed file.
+		if f == clusterAuthorizedKeys {
+			continue
+		}
 		before, had := secretsBefore[f]
 		if !had || before == "absent" {
 			continue // it never held this one; nothing to destroy
@@ -723,5 +733,143 @@ func MakeStandalone(ctx context.Context, r Runner, peerNames []string, secretsBe
 				"detached but not disarmed", f)
 		}
 	}
+	return assertNoPeerKeysRetained(ctx, r, disarm)
+}
+
+// clusterAuthorizedKeys is the one cluster secret that is legitimately recreated
+// during the standalone conversion.
+const clusterAuthorizedKeys = "/etc/pve/priv/authorized_keys"
+
+// DisarmCheck is what proving a departed node no longer trusts its old cluster
+// needs: the keys of the nodes that REMAIN, and the departing node's own, which
+// are excluded because a standalone host is supposed to trust itself.
+type DisarmCheck struct {
+	PeerKeys []string
+	OwnKeys  []string
+}
+
+// assertNoPeerKeysRetained checks the departed node trusts none of the keys it
+// inherited from the cluster.
+//
+// A DIGEST CANNOT ANSWER THIS, and believing it could stranded a real departure.
+// MakeStandalone finishes with `pvecm updatecerts --force`, which recreates
+// authorized_keys containing this node's OWN root key — so the file is
+// destroyed and then legitimately rebuilt, and comparing before and after
+// answers a question nobody asked.
+//
+// It is wrong in both directions. On a fleet whose nodes were cloned from one
+// image every root key is identical, so the rebuilt file is byte-identical to
+// the cluster's and a correct destruction reports as a failure: observed
+// 2026-08-28, where it detached a node and then refused to call the departure
+// done. And on a fleet with distinct keys the digest changes whether or not a
+// peer's key survived, so the check passes on exactly the case it exists to
+// catch.
+//
+// The security property is not "these bytes changed". It is "this node no
+// longer trusts the cluster it left".
+func assertNoPeerKeysRetained(ctx context.Context, r Runner, disarm DisarmCheck) error {
+	// The departing node's OWN keys are excluded, and that exclusion is the
+	// difference between a sound check and the digest one it replaces.
+	//
+	// `pvecm updatecerts --force` puts this node's own root key back into the
+	// file it just rebuilt, which is correct: a standalone host trusts itself.
+	// Finding that key is therefore not evidence of retained trust.
+	//
+	// It matters because a fleet built from ONE IMAGE gives every node the same
+	// root key — measured here, five nodes sharing one — so a peer's key and the
+	// departing node's own key are the same bytes. Comparing without excluding
+	// them reports every departure in such a fleet as a failure, which is what
+	// the digest check did. The residual exposure in that case is real but it
+	// belongs to the shared key, not to this departure, and it is reported
+	// rather than blamed on the wrong step.
+	own := map[string]struct{}{}
+	for _, k := range disarm.OwnKeys {
+		if m := sshKeyMaterial(k); m != "" {
+			own[m] = struct{}{}
+		}
+	}
+	wanted := make([]string, 0, len(disarm.PeerKeys))
+	shared := 0
+	for _, k := range disarm.PeerKeys {
+		// The key MATERIAL only. Comments carry the hostname and options carry
+		// from= clauses, and both differ between the cluster's copy and a
+		// regenerated one while naming the same key.
+		m := sshKeyMaterial(k)
+		if m == "" {
+			continue
+		}
+		if _, isOwn := own[m]; isOwn {
+			shared++
+			continue
+		}
+		wanted = append(wanted, m)
+	}
+	if shared > 0 {
+		slog.WarnContext(ctx, "the departing node and a node that remains share a root SSH key, "+
+			"so the cluster keeps access to the departed host and this departure cannot remove "+
+			"it; the keys are identical, which usually means every node was built from one image",
+			"shared_keys", shared)
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	out, err := r.Run(ctx, fmt.Sprintf("cat %s 2>/dev/null || true", shellQuote(clusterAuthorizedKeys)))
+	if err != nil {
+		return fmt.Errorf("depart: read the departed node's authorized_keys: %w (%s)",
+			err, strings.TrimSpace(out))
+	}
+	have := map[string]struct{}{}
+	for _, line := range strings.Split(out, "\n") {
+		if m := sshKeyMaterial(line); m != "" {
+			have[m] = struct{}{}
+		}
+	}
+	for _, w := range wanted {
+		if _, ok := have[w]; ok {
+			return fmt.Errorf("depart: the departed node still trusts a root key belonging to "+
+				"the cluster it left, so %s would still admit it — the node is detached but not "+
+				"disarmed", clusterAuthorizedKeys)
+		}
+	}
 	return nil
+}
+
+// sshKeyMaterial extracts the base64 body of an authorized_keys line.
+//
+// Everything else on the line varies without the key changing: a from=
+// restriction, a comment naming a host that has since been renamed, a different
+// algorithm spelling. Two lines name the same key when this matches.
+func sshKeyMaterial(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return ""
+	}
+	for _, f := range strings.Fields(line) {
+		// Key bodies are base64 and long; options, algorithms and comments are
+		// not. ssh-rsa bodies start AAAAB3, ed25519 AAAAC3.
+		if len(f) > 40 && strings.HasPrefix(f, "AAAA") {
+			return f
+		}
+	}
+	return ""
+}
+
+// IsStandalone reports whether a node is already out of every cluster.
+//
+// The question a RETRY has to answer first. A departure's middle step is
+// irreversible: once delnode has run the node is out, and everything after it —
+// destroying the cluster's secrets on it, pruning its keys, recording the
+// outcome — can still fail. Re-running such a job from the top makes it refuse
+// at a precondition that can no longer hold, so the remaining work becomes
+// unreachable and the node stays in whatever half-finished state it reached.
+//
+// Asked of corosync rather than of our own record, because the record says what
+// was intended and corosync says what is.
+func IsStandalone(ctx context.Context, r Runner) (bool, error) {
+	name, err := ReadClusterName(ctx, r)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(name) == "", nil
 }
