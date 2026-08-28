@@ -262,7 +262,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
+          node-version: '26'
 
       # openapi-generator-cli is a JVM tool behind an npm wrapper. This is the
       # dependency that made running generation at release time expensive, and the
@@ -312,7 +312,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
+          node-version: '26'
       - name: Enable corepack
         run: corepack enable
       - run: yarn install --immutable
@@ -332,7 +332,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
+          node-version: '26'
       - name: Enable corepack
         run: corepack enable
       - run: yarn install --immutable
