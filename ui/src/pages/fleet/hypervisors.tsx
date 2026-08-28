@@ -84,6 +84,41 @@ function refusalMessage(error: unknown, fallback: string): string {
  * failed once and will be retried" from "this has hit the cap and no further
  * tick will touch it" — and the second needs an operator, not patience.
  */
+/**
+ * What the last fleet OPERATION did to this machine, and why it failed.
+ *
+ * Distinct from ProvisioningBadge, which covers onboarding. This covers the
+ * operations that run afterwards — depart, arrive, bootstrap — and until now it
+ * covered them nowhere: the outcome was recorded on the machine row and rendered
+ * by nothing, so a failed departure showed up as a node that simply did not
+ * leave. Every diagnosis of one tonight started with a database query.
+ *
+ * The message is the worker's own. These are written to be read by whoever has
+ * to act on them — "the cluster config lists 1 node(s), so there is no node to
+ * remove without destroying the cluster" — and paraphrasing them here would lose
+ * the part that says what to do.
+ */
+export function LastOperationBadge({ hv }: { hv: HypervisorView }) {
+  if (!hv.last_operation_error) return null;
+  const label =
+    hv.last_operation === 'join'
+      ? 'last join failed'
+      : hv.last_operation === 'depart'
+        ? 'last departure failed'
+        : `last ${hv.last_operation || 'operation'} failed`;
+  return (
+    <span className="block space-y-1">
+      <Badge variant="destructive">{label}</Badge>
+      <span
+        className="block max-w-[22rem] text-xs break-words text-muted-foreground"
+        title={hv.last_operation_error}
+      >
+        {hv.last_operation_error}
+      </span>
+    </span>
+  );
+}
+
 function ProvisioningBadge({ hv }: { hv: HypervisorView }) {
   switch (hv.provisioning_state) {
     case 'pending':
@@ -508,6 +543,7 @@ export const Hypervisors = () => {
                             </span>
                           )}
                           <ProvisioningBadge hv={n} />
+                          <LastOperationBadge hv={n} />
                         </TableCell>
                         <TableCell className="space-y-2 text-right">
                           <div className="flex justify-end gap-2">
