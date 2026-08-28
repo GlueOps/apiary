@@ -688,3 +688,67 @@ func TestAnOrdinaryDepartureStillRemovesTheNode(t *testing.T) {
 		t.Fatal("a first-attempt departure did not remove the node")
 	}
 }
+
+// A ONE-NODE CLUSTER WAS A DEAD END. Departing the last node was refused for
+// want of a peer to run delnode from, and deleting a cluster is refused while it
+// still holds a hypervisor — so the cluster could be neither dismantled nor
+// emptied, and the message blamed DNS: "no remaining node has a resolvable
+// address", for a cluster that simply had nobody else in it.
+//
+// Removing the last node is not a node removal. There is no delnode to run and
+// no survivor to keep quorate, only the standalone conversion on the node
+// itself — the mirror of creating a cluster on a first node.
+func TestDepartingTheLastNodeDismantlesTheCluster(t *testing.T) {
+	h := newHarness(t)
+	h.snapshot.LastNode = true
+	h.snapshot.RemainingAddress = ""
+	h.snapshot.PeerNames = nil
+	h.snapshot.HiveNodeCount = 1
+	// The operator's minimum still governs. Lowered here because dismantling a
+	// one-node cluster is only reachable on a fleet whose minimum permits it —
+	// the gate refusing at the default of 3 is correct, and is what stops this
+	// happening by accident on a production cluster.
+	h.snapshot.Hive.MinimumNodes = 1
+
+	if err := h.run(); err != nil {
+		t.Fatalf("departing the only node must dismantle the cluster, not refuse: %v", err)
+	}
+
+	// Nothing may be attempted against a peer that does not exist.
+	for _, line := range h.log {
+		for _, forbidden := range []string{"pvecm delnode", "pvecm expected"} {
+			if strings.Contains(line, forbidden) {
+				t.Errorf("%q ran with no remaining node to run it on: %q", forbidden, line)
+			}
+		}
+	}
+	// The work that IS possible must still happen: the node becomes standalone.
+	var converted bool
+	for _, line := range h.log {
+		if strings.Contains(line, "pmxcfs -l") {
+			converted = true
+		}
+	}
+	if !converted {
+		t.Fatal("the last node was not converted to standalone, so nothing was actually done")
+	}
+	if len(h.fleetless) != 1 {
+		t.Fatalf("the machine must be recorded fleetless, got %v", h.fleetless)
+	}
+}
+
+// And peers that EXIST but have no usable address is a different fault with a
+// different remedy, so it keeps its own message rather than sharing one.
+func TestPeersWithNoAddressAreNotReportedAsAnEmptyCluster(t *testing.T) {
+	h := newHarness(t)
+	h.snapshot.LastNode = false
+	h.snapshot.RemainingAddress = ""
+
+	err := h.run()
+	if err == nil {
+		t.Fatal("a departure with no reachable peer must refuse")
+	}
+	if strings.Contains(err.Error(), "last node") {
+		t.Fatalf("an address problem was reported as an empty cluster: %v", err)
+	}
+}

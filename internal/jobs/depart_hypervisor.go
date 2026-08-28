@@ -106,6 +106,22 @@ type DepartureSnapshot struct {
 	// anywhere else.
 	RemainingAddress string
 
+	// LastNode is true when the departing machine is the hive's ONLY member, so
+	// there is no peer to perform the cluster-side removal from.
+	//
+	// Not an error, and distinguishing it from one is the point. An empty peer
+	// set and a peer set whose addresses are all missing produced the same
+	// message — "no remaining node has a resolvable address" — which sent an
+	// operator to check DNS for a cluster that simply had nobody else in it.
+	//
+	// It also closed a dead end. Departing the last node was refused for want of
+	// a peer, and deleting the cluster is refused while it holds a hypervisor, so
+	// a one-node cluster could be neither dismantled nor emptied. Removing the
+	// last node is not a node removal at all: there is no delnode to run and no
+	// survivor to keep quorate, only the standalone conversion on the node
+	// itself. That is the mirror of creating a cluster on a first node.
+	LastNode bool
+
 	// PeerNames are the other nodes' names, whose inherited guest-config
 	// directories have to be cleared off the departing node before it can join
 	// anything. Excludes the departing node's own name.
@@ -182,10 +198,13 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return fmt.Errorf("%w: %w", ErrDepartureRefused, tenant.DepartureRefusalsError(refusals))
 	}
 
-	if snap.DepartingAddress == "" || snap.RemainingAddress == "" {
-		return fmt.Errorf("depart: both the departing node's address and a remaining node's " +
-			"address are required — the cluster-side removal cannot be run from the node being " +
-			"removed, and the standalone conversion cannot be run from anywhere else")
+	if snap.DepartingAddress == "" {
+		return fmt.Errorf("depart: the departing node has no address recorded, and the " +
+			"standalone conversion cannot be run from anywhere else")
+	}
+	if !snap.LastNode && snap.RemainingAddress == "" {
+		return fmt.Errorf("depart: a remaining node's address is required — the cluster-side " +
+			"removal cannot be run from the node being removed")
 	}
 
 	_, priv, err := d.FleetKey(ctx, in.OrganizationID)
@@ -203,11 +222,17 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	}
 	defer closeDeparting()
 
-	remaining, closeRemaining, err := connect(ctx, d, snap.RemainingAddress, user, priv)
-	if err != nil {
-		return fmt.Errorf("depart: connect to a remaining node: %w", err)
+	// No peer to connect to when this is the last node: there is no cluster-side
+	// work, so there is nothing to connect for.
+	var remaining Runner
+	if !snap.LastNode {
+		r, closeRemaining, cerr := connect(ctx, d, snap.RemainingAddress, user, priv)
+		if cerr != nil {
+			return fmt.Errorf("depart: connect to a remaining node: %w", cerr)
+		}
+		defer closeRemaining()
+		remaining = r
 	}
-	defer closeRemaining()
 
 	// BEFORE the stack stops. Once the node is out of the cluster its keys are
 	// still on disk, but reading them is one more thing that can fail at a point
@@ -241,15 +266,22 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	//
 	// Asked of the HOST, not of the record, for the same reason AssertStandalone
 	// asks the host: the record says what we intended and corosync says what is.
+	// The last node has no peer, so every cluster-side step below is skipped and
+	// only the standalone conversion runs. Treated exactly like an already-
+	// detached retry, because the work that remains is the same work.
 	alreadyDetached, adErr := IsStandalone(ctx, departing)
 	if adErr != nil {
 		return fmt.Errorf("depart: establish whether this node is still a cluster member: %w", adErr)
 	}
 
-	if alreadyDetached {
-		slog.WarnContext(ctx, "this node is already detached, so this is a retry of a departure "+
-			"that got part way; the removal steps are skipped and the disarm is retried",
-			"hypervisor_id", in.HypervisorID)
+	// Both mean "there is no cluster-side removal to perform": one because it has
+	// already happened, the other because there is no peer it could happen from.
+	skipClusterSide := alreadyDetached || snap.LastNode
+
+	if skipClusterSide {
+		slog.WarnContext(ctx, "the cluster-side removal is being skipped",
+			"hypervisor_id", in.HypervisorID,
+			"already_detached", alreadyDetached, "last_node", snap.LastNode)
 	} else {
 		// Preflight on the node that STAYS, before anything is stopped. A departure
 		// begun against an already-degraded cluster leaves a stopped node and an
@@ -261,7 +293,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		}
 	}
 
-	if !alreadyDetached {
+	if !skipClusterSide {
 		if err := StopClusterStack(ctx, departing); err != nil {
 			return err
 		}
@@ -281,7 +313,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	// One fewer node than the hive has now. Skipped on a retry: the node is
 	// already out, and DelNode would refuse with "no node to remove without
 	// destroying the cluster" — which is true, and not what is being asked.
-	if !alreadyDetached {
+	if !skipClusterSide {
 		if err := DelNode(ctx, remaining, nodeName, snap.HiveNodeCount-1); err != nil {
 			return err
 		}
@@ -291,20 +323,29 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	// departure: leaving the key behind is worse than leaving the host in a
 	// half-removed state, because the half-removed state is visible in
 	// `pvecm status` and a stale credential is visible nowhere.
-	if _, err := PruneKeysFromClusterKeyring(ctx, remaining, keys); err != nil {
-		return err
+	//
+	// Skipped for the last node: there is no keyring to prune it from, because
+	// there is no cluster left to hold one.
+	if !snap.LastNode {
+		if _, err := PruneKeysFromClusterKeyring(ctx, remaining, keys); err != nil {
+			return err
+		}
 	}
 
 	// The other path to the same access. A keyring prune alone left a departed
 	// node with a root shell on the hive it left, via the ephemeral key its
 	// arrival had installed in the join file — verified on a live pair of
 	// clusters, after the keyring prune had been confirmed correct.
-	if _, err := RevokeJoinKeys(ctx, remaining, keys); err != nil {
-		return err
+	if !snap.LastNode {
+		if _, err := RevokeJoinKeys(ctx, remaining, keys); err != nil {
+			return err
+		}
 	}
 
-	if err := RemoveNodeDir(ctx, remaining, nodeName); err != nil {
-		return err
+	if !snap.LastNode {
+		if err := RemoveNodeDir(ctx, remaining, nodeName); err != nil {
+			return err
+		}
 	}
 
 	// The keys of a node that STAYS, so the disarm can be proved on the property
@@ -316,7 +357,11 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 	// direction here only because the check is one of several, and failing a
 	// departure that has already detached the node strands it. The failure to
 	// read is logged.
-	peerKeys, pkErr := ReadNodeClientKeys(ctx, remaining)
+	var peerKeys []string
+	var pkErr error
+	if !snap.LastNode {
+		peerKeys, pkErr = ReadNodeClientKeys(ctx, remaining)
+	}
 	if pkErr != nil {
 		slog.WarnContext(ctx, "could not read a remaining node's keys, so the departed host's "+
 			"trust in the cluster could not be verified", "error", pkErr)
