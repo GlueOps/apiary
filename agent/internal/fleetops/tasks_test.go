@@ -146,26 +146,25 @@ func TestDistUpgradeRefusesWhenQuorumWouldNotSurvive(t *testing.T) {
 	}
 }
 
-// A cluster whose status cannot be READ is not a cluster that is fine.
-func TestDistUpgradeRefusesWhenClusterStateIsUnknown(t *testing.T) {
+// preflightReboot itself still refuses on an unreadable status: asked directly,
+// "I could not tell" is not "it is fine", and callers that REQUIRE a local
+// decision must not read it as one.
+//
+// What changed is what DistUpgrade does with that refusal. It no longer fails
+// the task, because the control plane has already gated this upgrade on the same
+// four questions — quorum, staleness, cordon, guests — from its own observed
+// state, and refuses outright when that state is too stale to judge. So "a check
+// that cannot reach a decision must deny" is honoured where the whole fleet is
+// visible; applying it again on one host turns a safety property into an
+// availability problem. A node whose local API was unreadable refused an upgrade
+// that had already been allowed, and the reason had nothing to do with whether
+// rebooting it was safe.
+func TestPreflightRefusesWhenClusterStateIsUnknown(t *testing.T) {
 	cl := healthyCluster()
 	cl.statusErr = errors.New("connection refused")
 
-	var phases []string
-	var declared time.Duration
-	runner := &recordingRunner{}
-
 	if _, err := preflightReboot(context.Background(), cl, "hv-01", false); err == nil {
 		t.Fatal("an unreadable cluster status was treated as safe")
-	}
-	err := DistUpgrade(context.Background(),
-		Deps{Cluster: cl, Runner: runner, Node: "hv-01"},
-		testEnv(&phases, &declared, nil), "", `{}`)
-	if err == nil {
-		t.Fatal("proceeded with unknown cluster state")
-	}
-	if len(runner.cmds) != 0 {
-		t.Fatal("ran apt with unknown cluster state")
 	}
 }
 
@@ -460,5 +459,48 @@ func TestJoinSaysSoWhenTheClusterItJoinedIsNotQuorate(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "do not retry") {
 		t.Fatalf("err = %v, want it to say the join itself succeeded so retrying is wrong", err)
+	}
+}
+
+// COULD NOT ASK IS NOT WAS TOLD NO.
+//
+// The preflight is documented as best effort — the control plane gates this
+// upgrade from facts it already holds, before the task is queued, and the local
+// check is a second opinion with live data. But a failure to READ cluster status
+// went through the same return as a refusal, so a host whose local API could not
+// be reached refused an upgrade that had already been gated.
+//
+// Observed as a TLS failure against a certificate the node was serving from a CA
+// it no longer had, which says nothing about whether rebooting it is safe.
+func TestAnUnreadableLocalAPIDoesNotRefuseAnUpgrade(t *testing.T) {
+	cl := healthyCluster()
+	cl.statusErr = errors.New(
+		`Get "https://127.0.0.1:8006/api2/json/cluster/status": tls: failed to verify certificate`)
+	var phases []string
+	var declared time.Duration
+
+	err := DistUpgrade(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01", Runner: &recordingRunner{},
+			Reboot: func(context.Context) error { return nil }},
+		testEnv(&phases, &declared, nil), "", `{"reboot":"never"}`)
+	if err != nil {
+		t.Fatalf("an unreadable local API refused an upgrade the control plane had gated: %v", err)
+	}
+}
+
+// A preflight that RAN and said no still refuses. That is a live fact about this
+// host which the control plane's snapshot cannot have.
+func TestAPreflightThatRefusesStillStopsTheUpgrade(t *testing.T) {
+	cl := healthyCluster()
+	cl.quorate = false // ran fine, and the answer is no
+	var phases []string
+	var declared time.Duration
+
+	err := DistUpgrade(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01", Runner: &recordingRunner{},
+			Reboot: func(context.Context) error { return nil }},
+		testEnv(&phases, &declared, nil), "", `{"reboot":"if-needed"}`)
+	if err == nil {
+		t.Fatal("a cluster that is not quorate must still refuse a reboot")
 	}
 }

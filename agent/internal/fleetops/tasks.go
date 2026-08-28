@@ -163,13 +163,26 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 			e.Phase(phasePreflight)
 			report, err := preflightReboot(ctx, d.Cluster, d.Node, spec.AllowGuestDowntime)
 			if err != nil {
-				return err
-			}
-			for _, n := range report.Notes {
-				e.Logf("agent", "%s", n)
-			}
-			if err := report.err("dist-upgrade"); err != nil {
-				return err
+				// COULD NOT ASK is not the same as WAS TOLD NO, and treating them
+				// alike made this preflight required in fact while the comment
+				// above described it as best effort. A host whose local API could
+				// not be read refused an upgrade the control plane had already
+				// gated — observed as a TLS failure against a certificate the node
+				// was serving from a CA it no longer had, which has nothing to do
+				// with whether rebooting it is safe.
+				//
+				// The refusal below still stands: a preflight that RAN and said no
+				// is a live fact about this host that the control plane's snapshot
+				// cannot have.
+				e.Logf("agent", "the local preflight could not be run (%v); continuing on the "+
+					"control plane's gate, which was applied before this task was queued", err)
+			} else {
+				for _, n := range report.Notes {
+					e.Logf("agent", "%s", n)
+				}
+				if rerr := report.err("dist-upgrade"); rerr != nil {
+					return rerr
+				}
 			}
 		}
 	}
