@@ -112,11 +112,17 @@
       // TYPESCRIPT IS PINNED IN THE ROOT MANIFEST ON PURPOSE.
       //
       // The root project is the codegen toolchain — @hey-api/openapi-ts and
-      // openapi-generator-cli — and hey-api does not work under TypeScript 7,
-      // which is a native rewrite rather than a version bump. A TS 7 update here
-      // breaks generation of ui/src/sdk, sdk/go, sdk/ts and the Terraform
-      // provider, and it breaks it at generation time, where the failure is a
-      // wrong or missing artifact rather than a red test.
+      // openapi-generator-cli — and hey-api does not work above TypeScript 5. A
+      // TS 6 or 7 update here breaks generation of ui/src/sdk, sdk/go, sdk/ts and
+      // the Terraform provider, and it breaks it at generation time, where the
+      // failure is a wrong or missing artifact rather than a red test.
+      //
+      // HELD AT <6, NOT <7. The guard was first written as <7 on the strength of
+      // TS 7 being the native rewrite; 6 breaks it as well. hey-api's own manifest
+      // is no help here — 0.99.0 declares
+      // `typescript: ">=5.5.3 || >=6.0.0 || 6.0.1-rc"`, whose first clause permits
+      // everything above 5.5.3 including 7, so the peer range constrains nothing.
+      // It is the author's claim about compatibility, not evidence of it.
       //
       // Scoped by FILE, not by package, because ui/package.json carries the same
       // dependency and the SPA is free to move to 7: the two projects keep
@@ -129,7 +135,7 @@
       // project and the root entry already covers it.
       matchFileNames: ["package.json"],
       matchPackageNames: ["typescript"],
-      allowedVersions: "<7",
+      allowedVersions: "<6",
     },
     {
       // The generators themselves are updated deliberately, never automatically.
