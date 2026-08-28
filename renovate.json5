@@ -112,17 +112,27 @@
       // TYPESCRIPT IS PINNED IN THE ROOT MANIFEST ON PURPOSE.
       //
       // The root project is the codegen toolchain — @hey-api/openapi-ts and
-      // openapi-generator-cli — and hey-api does not work above TypeScript 5. A
-      // TS 6 or 7 update here breaks generation of ui/src/sdk, sdk/go, sdk/ts and
-      // the Terraform provider, and it breaks it at generation time, where the
-      // failure is a wrong or missing artifact rather than a red test.
+      // openapi-generator-cli — and it stays on TypeScript 5. A break here is a
+      // break at GENERATION time, where the symptom is a wrong or missing
+      // ui/src/sdk, sdk/go, sdk/ts or Terraform provider rather than a red test,
+      // so it can be committed and merged before anyone notices.
       //
-      // HELD AT <6, NOT <7. The guard was first written as <7 on the strength of
-      // TS 7 being the native rewrite; 6 breaks it as well. hey-api's own manifest
-      // is no help here — 0.99.0 declares
+      // <6 IS DELIBERATELY CONSERVATIVE, and stronger than the known breakage.
+      // What is established is that TS 7 breaks 0.99.0: hey-api/hey-api#4235 has
+      // it crashing on `ts.SyntaxKind.AnyKeyword` being undefined, because the
+      // native rewrite changed the API surface. The same issue reports 6.0.3
+      // working. So <7 would be the evidence-shaped guard and <6 is a margin held
+      // on purpose, because the cost of being wrong is asymmetric: a silently
+      // wrong generated SDK against one skipped minor.
+      //
+      // Do not "correct" this to <7 on the strength of that issue alone. The fix
+      // upstream is real but unreleased — hey-api removed the TypeScript
+      // dependency entirely on `next`, stable is still 0.99.0 — and when it ships
+      // the guard can go away rather than move up one.
+      //
+      // hey-api's manifest cannot decide this either way: 0.99.0 declares
       // `typescript: ">=5.5.3 || >=6.0.0 || 6.0.1-rc"`, whose first clause permits
-      // everything above 5.5.3 including 7, so the peer range constrains nothing.
-      // It is the author's claim about compatibility, not evidence of it.
+      // everything above 5.5.3 including the version that crashes it.
       //
       // Scoped by FILE, not by package, because ui/package.json carries the same
       // dependency and the SPA is free to move to 7: the two projects keep
