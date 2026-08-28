@@ -1276,3 +1276,70 @@ func TestClearingMembershipClearsAStaleDepartureFailure(t *testing.T) {
 		t.Fatalf("a departure failure survived the machine leaving: %q", got.LastOperationError)
 	}
 }
+
+// The STEADY-STATE case. Adoption covers a machine arriving and the
+// clear-not-delete path covers one leaving; a node that was already a member
+// when its failure was recorded is neither, and nothing ever contradicts the
+// stored outcome. One sat in a cluster for eight hours carrying the refusal of a
+// bootstrap it had supposedly failed.
+func TestAnObservedMemberLosesAStaleJoinFailure(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve6")
+	hv.LastOperation = "join"
+	hv.LastOperationError = "bootstrap: refused by a precondition: already_in_hive"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve6", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("a join failure survived on a node observed in the cluster: %q",
+			got.LastOperationError)
+	}
+}
+
+// A failed DEPARTURE on a node that is still a member is accurate: it tried to
+// leave and did not. Clearing it would erase a true statement about a machine an
+// operator is probably still waiting on.
+func TestAnObservedMemberKeepsAFailedDeparture(t *testing.T) {
+	db := capacityDB(t)
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := machine(hive.ID, "pve5")
+	hv.LastOperation = "depart"
+	hv.LastOperationError = "depart: refused by a precondition: drain_unknown"
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	deps := syncDeps(db, []tenant.ResourceRow{
+		{Type: "node", Node: "pve5", Status: "online", CPUCores: 8, MemBytes: 32 << 30},
+	})
+	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastOperationError == "" {
+		t.Fatal("a departure that genuinely failed was erased while the node is still a member")
+	}
+}

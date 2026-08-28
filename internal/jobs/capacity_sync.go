@@ -294,6 +294,21 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 				"observed_foreign_ram_gb_used":  obs.ForeignRAMGBUsed,
 				"observed_foreign_disk_gb_used": obs.ForeignDiskGBUsed,
 				"last_synced_at":                now,
+				// The STEADY-STATE half of clearing a stale outcome. Adoption
+				// covers a machine arriving and the clear-not-delete path covers
+				// one leaving, but a node that was already a member when its
+				// failure was recorded is neither: it is observed here, in this
+				// cluster, on every tick, and nothing ever contradicted the
+				// stored "the join failed". One carried an eight-hour-old
+				// bootstrap refusal while sitting healthily in the cluster it
+				// had supposedly failed to reach.
+				//
+				// Only a JOIN outcome is cleared. A failed departure on a node
+				// that is still a member is accurate — it tried to leave and did
+				// not — and clearing it would erase a true statement about a
+				// machine an operator is probably still waiting on.
+				"last_operation_error": gorm.Expr(
+					"CASE WHEN last_operation = 'join' THEN '' ELSE last_operation_error END"),
 			}
 
 			if known {
