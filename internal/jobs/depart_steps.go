@@ -713,6 +713,21 @@ func MakeStandalone(
 		// the point: standalone, not merely disconnected.
 		"pvecm updatecerts --force 2>&1 || true",
 		"sleep 2",
+		// RELOAD THE SERVICES THAT HOLD THE OLD CERTIFICATE.
+		//
+		// updatecerts writes a new CA and a new node certificate to disk;
+		// pveproxy and pvedaemon go on presenting the ones they started with. So
+		// a departed node served a certificate signed by a CA that no longer
+		// existed anywhere on it, and anything verifying properly — the agent's
+		// own client included — failed with "certificate signed by unknown
+		// authority" while the files on disk verified perfectly against each
+		// other.
+		//
+		// Measured on a departed node: cert on disk issued by CA df0f1262,
+		// pveproxy still serving one issued by 8ef1da48, a CA that had been
+		// replaced. Restarting the two of them fixed it immediately.
+		"systemctl restart pveproxy pvedaemon 2>&1 || true",
+		"sleep 3",
 	)
 
 	for _, cmd := range steps {

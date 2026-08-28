@@ -422,3 +422,41 @@ func TestAcceptExposureLeavesTheNodesKeyAlone(t *testing.T) {
 		}
 	}
 }
+
+// A NODE MUST NOT SERVE A CERTIFICATE FROM A CA IT NO LONGER HAS.
+//
+// `pvecm updatecerts --force` writes a new CA and node certificate to disk;
+// pveproxy and pvedaemon go on presenting the ones they started with. A departed
+// node therefore served a certificate signed by a CA that existed nowhere on it,
+// and anything verifying properly failed with "certificate signed by unknown
+// authority" while the files on disk verified perfectly against each other.
+//
+// Measured on a departed node: cert on disk issued by CA df0f1262, pveproxy
+// still serving one issued by 8ef1da48, which had been replaced.
+func TestStandaloneConversionReloadsTheServicesHoldingTheOldCertificate(t *testing.T) {
+	r := &stubRunner{}
+	if err := MakeStandalone(context.Background(), r, nil, nil, DisarmCheck{}); err != nil {
+		t.Fatalf("standalone conversion: %v", err)
+	}
+
+	updatecerts, restart := -1, -1
+	for i, cmd := range r.cmds {
+		if strings.Contains(cmd, "pvecm updatecerts") {
+			updatecerts = i
+		}
+		if strings.Contains(cmd, "systemctl restart pveproxy") {
+			restart = i
+		}
+	}
+	if updatecerts < 0 {
+		t.Fatal("no certificate was minted, so the rest of this test proves nothing")
+	}
+	if restart < 0 {
+		t.Fatal("pveproxy was not reloaded, so the node keeps serving a certificate signed by " +
+			"a CA it no longer has")
+	}
+	if restart < updatecerts {
+		t.Fatal("the services were reloaded BEFORE the new certificate was written, so they " +
+			"picked up the one being replaced")
+	}
+}
