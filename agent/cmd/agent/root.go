@@ -30,11 +30,7 @@ type Config struct {
 	// the agent perfectly well and simply refuses fleet tasks when handed one.
 	// An agent that would not start without a hypervisor could not be deployed
 	// ahead of one.
-	NodeName         string
-	ProxmoxURL       string
-	ProxmoxTokenID   string
-	ProxmoxSecret    string
-	JoinPasswordPath string
+	NodeName string
 }
 
 func loadConfig() (Config, error) {
@@ -54,14 +50,10 @@ func loadConfig() (Config, error) {
 		}
 	}
 	return Config{
-		BaseURL:          c.BaseURL,
-		StatePath:        c.StatePath,
-		HeartbeatWait:    25 * time.Second,
-		NodeName:         node,
-		ProxmoxURL:       c.ProxmoxURL,
-		ProxmoxTokenID:   c.ProxmoxTokenID,
-		ProxmoxSecret:    c.ProxmoxSecret,
-		JoinPasswordPath: c.JoinPasswordPath,
+		BaseURL:       c.BaseURL,
+		StatePath:     c.StatePath,
+		HeartbeatWait: 25 * time.Second,
+		NodeName:      node,
 	}, nil
 }
 

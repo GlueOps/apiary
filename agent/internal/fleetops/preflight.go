@@ -11,10 +11,9 @@ package fleetops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/glueops/apiary/pkg/proxmox"
 )
 
 // Cluster is the slice of the Proxmox client this package needs. An interface so
@@ -37,8 +36,43 @@ type Cluster interface {
 
 	GuestsOn(ctx context.Context, node string) ([]Guest, error)
 	DeleteConfigNode(ctx context.Context, node string) error
-	JoinCluster(ctx context.Context, opts *proxmox.ClusterJoinOptions) (string, error)
-	CreateCluster(ctx context.Context, opts *proxmox.ClusterCreateOptions) (string, error)
+	JoinCluster(ctx context.Context, opts *proxmoxJoinOptions) (string, error)
+	CreateCluster(ctx context.Context, opts *proxmoxCreateOptions) (string, error)
+
+	// NodeName is what pmxcfs calls this host.
+	//
+	// Read from .members rather than taken from configuration. PVE derives the
+	// node name from the hostname at install and maps it to the management
+	// address in /etc/hosts, so the two do agree — but pmxcfs is the authority
+	// that the rest of the cluster actually uses, and reading it means never
+	// having to assume the agent was configured with the right value.
+	NodeName() string
+}
+
+// proxmoxJoinOptions and proxmoxCreateOptions are what pvecm needs, declared
+// here rather than borrowed from the API client's request types.
+//
+// The agent no longer holds a Proxmox API client at all, so importing its
+// request structs would keep a dependency on the one thing this package was
+// changed to stop needing. They are also a different shape in practice: pvecm
+// takes a peer and a fingerprint, not a password, because it authenticates over
+// SSH using PVE's own root key.
+type proxmoxJoinOptions struct {
+	Hostname    string
+	Fingerprint string
+	Force       *bool
+	Link0       string
+	Link1       string
+	Link2       string
+	Link3       string
+}
+
+type proxmoxCreateOptions struct {
+	ClusterName string
+	Link0       string
+	Link1       string
+	Link2       string
+	Link3       string
 }
 
 // Guest is a VM or container, reduced to what a fleet decision needs.
@@ -143,14 +177,18 @@ func preflightReboot(ctx context.Context, cl Cluster, node string, allowGuestDow
 	return r, nil
 }
 
+// errNotClustered reports that this host is in no cluster.
+//
+// A SENTINEL, which only became possible once the cluster state stopped coming
+// from an HTTP API. This used to be decided by lowercasing the error and looking
+// for "no cluster", "not a cluster member" or "cluster not ready" — matching
+// prose from a remote service, which meant any rewording upstream silently
+// turned "this host is standalone" into "the cluster could not be read". Those
+// two lead to opposite actions.
+var errNotClustered = errors.New("this host is not a member of any cluster")
+
 // isNotClustered distinguishes "this host is standalone" from "the cluster could
 // not be read". Only the first is safe to continue past.
 func isNotClustered(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "no cluster") ||
-		strings.Contains(s, "not a cluster member") ||
-		strings.Contains(s, "cluster not ready")
+	return errors.Is(err, errNotClustered)
 }

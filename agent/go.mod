@@ -3,21 +3,15 @@ module github.com/glueops/apiary-agent
 go 1.26.6
 
 require (
-	github.com/glueops/apiary/pkg/proxmox v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	modernc.org/sqlite v1.57.0
 )
 
 require (
-	github.com/buger/goterm v1.0.4 // indirect
-	github.com/diskfs/go-diskfs v1.9.4 // indirect
-	github.com/djherbis/times v1.6.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/jinzhu/copier v0.4.0 // indirect
-	github.com/magefile/mage v1.17.2 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -47,5 +41,3 @@ require (
 )
 
 replace github.com/glueops/apiary/sdk/go => ../sdk/go
-
-replace github.com/glueops/apiary/pkg/proxmox => ../pkg/proxmox
