@@ -139,7 +139,7 @@ func TestAHypervisorWithNoAgentIsStillAMember(t *testing.T) {
 	// And it is correctly excluded as a join TARGET, because a join through a
 	// peer with no fingerprint prompts and hangs.
 	doc, _ := tenant.RenderMembership("lab", members)
-	if got := doc.JoinTargets("pve9"); len(got) != 0 {
+	if got := doc.JoinTargets(tenant.Self{Node: "pve9"}); len(got) != 0 {
 		t.Fatalf("join targets = %d, want 0 for a member with no fingerprint", len(got))
 	}
 }

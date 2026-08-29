@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/glueops/apiary/internal/models/tenant"
@@ -53,6 +54,8 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 		Name        *string
 		Address     string
 		Fingerprint string
+		RootKey     string
+		SSHHostKeys datatypes.JSONType[[]string]
 	}
 	var rows []row
 	// LEFT JOIN, so a hypervisor whose agent has never reported still appears in
@@ -61,7 +64,13 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 	// "this host's agent is not running yet" into "remove it from the cluster".
 	if err := tx.WithContext(ctx).Raw(`
 		SELECT h.id, h.name, h.address,
-		       COALESCE(b.observed_fingerprint, '') AS fingerprint
+		       -- The agent's live report wins over what onboarding captured: host
+		       -- keys survive a rebuild only by accident, and a stale pin fails a
+		       -- join with a message that names nothing. The stored column stays
+		       -- as the fallback for a host whose agent has not reported yet.
+		       COALESCE(b.observed_host_keys, h.ssh_host_keys) AS ssh_host_keys,
+		       COALESCE(b.observed_fingerprint, '') AS fingerprint,
+		       COALESCE(b.observed_root_key, '')    AS root_key
 		  FROM hypervisors h
 		  LEFT JOIN bees b ON b.id = h.bee_id
 		 WHERE h.hive_id = ?`, hiveID).Scan(&rows).Error; err != nil {
@@ -79,6 +88,8 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 			HypervisorID: r.ID.String(),
 			Address:      r.Address,
 			Fingerprint:  r.Fingerprint,
+			HostKeys:     r.SSHHostKeys.Data(),
+			RootKey:      r.RootKey,
 		})
 	}
 	return hive.Name, members, nil

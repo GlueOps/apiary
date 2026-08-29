@@ -1,6 +1,7 @@
 package fleetops
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +39,7 @@ func want(cluster, self string, nodes ...string) Desired {
 	for _, n := range nodes {
 		d.Members = append(d.Members, DesiredMember{
 			Node: n, HypervisorID: n, Address: "10.0.0." + n, Fingerprint: "AA:BB",
+			HostKeys: []string{"ssh-ed25519 K"},
 		})
 	}
 	return d
@@ -102,10 +104,10 @@ func TestDecideMatchesTheControlPlaneTable(t *testing.T) {
 			verb:   VerbNone,
 		},
 		{
-			name:   "a host in the wrong cluster is not converged automatically",
+			name:   "a host in the wrong cluster is blocked, not converged",
 			desire: want("lab-a", "pve1", "pve1"),
 			obs:    Observation{Cluster: "lab-b", Members: []string{"pve1"}, Quorate: true},
-			verb:   VerbNone,
+			verb:   VerbBlocked,
 		},
 	}
 
@@ -130,11 +132,13 @@ func TestJoinIsTriedAgainstEveryPeerBeforeCreating(t *testing.T) {
 	// otherwise poll for its full four-minute settle window. These vars exist to
 	// be shortened; the wait is the point of the real one, not of this one.
 	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
+	// The join pins each peer before trying it, and this must not write to the
+	// real /root/.ssh on whatever machine runs the suite.
+	knownHostsFixture(t, "")
 
 	cl := &fakeCluster{joinErr: errRefused{}}
 	d := Deps{
 		Cluster: cl, Node: "pve3",
-		JoinPass: func() (string, error) { return "pw", nil },
 	}
 	var phases []string
 	e := testEnv(&phases, nil, nil)
@@ -175,3 +179,68 @@ func TestPeersWithoutAFingerprintAreNotJoinTargets(t *testing.T) {
 type errRefused struct{}
 
 func (errRefused) Error() string { return "peer refused the join" }
+
+// An empty target list is two different facts, and conflating them splits a
+// cluster in half.
+//
+// "The composition names no other member" means this host is genuinely first and
+// must create. "It names others but none can be verified" means those peers may
+// already have formed the cluster, and creating produces a second one with the
+// same name that cannot be merged.
+//
+// This was live: every host in the lab predated host-key capture, so the first
+// node reassigned to a hive would have found no usable target and created a
+// duplicate of the cluster it was trying to join.
+func TestUnusablePeersRefuseRatherThanCreateADuplicateCluster(t *testing.T) {
+	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
+	knownHostsFixture(t, "")
+
+	cl := &fakeCluster{}
+	d := Deps{Cluster: cl, Node: "pve2"}
+	var phases []string
+	e := testEnv(&phases, nil, nil)
+
+	// pve is a real member with no captured host keys — exactly the lab's state.
+	w := Desired{Cluster: "lab-a", Self: "pve2", Members: []DesiredMember{
+		{Node: "pve", Address: "10.0.0.1", Fingerprint: "AA:BB"},
+		{Node: "pve2", Address: "10.0.0.2", Fingerprint: "AA:BB"},
+	}}
+
+	verb, err := joinOrCreate(t.Context(), d, e, w)
+	if cl.created != nil {
+		t.Fatalf("formed a duplicate cluster %q while a real peer existed", cl.created.ClusterName)
+	}
+	if err == nil {
+		t.Fatal("an unverifiable peer was accepted silently")
+	}
+	if verb == VerbCreate {
+		t.Fatalf("verb = %q, want a refused join rather than a create", verb)
+	}
+	if !strings.Contains(err.Error(), "pve") {
+		t.Fatalf("err = %v, want it to name the peer that could not be verified", err)
+	}
+}
+
+// The genuine first node still forms its cluster: nobody else is in the
+// composition, so there is nothing that could already have formed it.
+func TestTheOnlyMemberStillFormsTheCluster(t *testing.T) {
+	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
+	knownHostsFixture(t, "")
+
+	cl := &fakeCluster{}
+	d := Deps{Cluster: cl, Node: "pve1"}
+	var phases []string
+	e := testEnv(&phases, nil, nil)
+
+	w := Desired{Cluster: "lab-c", Self: "pve1", Members: []DesiredMember{
+		{Node: "pve1", Address: "10.0.0.1", Fingerprint: "AA:BB"},
+	}}
+
+	verb, _ := joinOrCreate(t.Context(), d, e, w)
+	if verb != VerbCreate {
+		t.Fatalf("verb = %q, want create for the only member", verb)
+	}
+	if cl.created == nil || cl.created.ClusterName != "lab-c" {
+		t.Fatalf("created = %+v, want lab-c", cl.created)
+	}
+}

@@ -113,34 +113,27 @@ func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 
 // fleetDeps wires the executors to the local hypervisor.
 //
-// A host that is not a Proxmox node still runs the agent perfectly well — it
-// just cannot perform the fleet tasks, and says so when handed one, rather than
-// refusing to start. An agent that would not boot without a hypervisor could not
-// be deployed ahead of one.
+// NO CREDENTIAL OF ANY KIND. The agent runs as root on the node, so every
+// cluster question is answered from /etc/pve and every cluster change is a
+// pvecm command — authenticating to this node's own API over TLS to ask what it
+// already knows locally bought nothing and cost a great deal. It made a host
+// unable to read its own state through a reissued CA, made a post-reboot check
+// wait for pveproxy, and made the one node that FORMS a cluster the one node
+// that could never be given a credential, because there was no cluster to take
+// one from yet.
+//
+// A host that is not a Proxmox node still runs the agent perfectly well — pmxcfs
+// is simply not mounted, Status says so, and fleet tasks refuse with that reason
+// rather than the agent refusing to start. An agent that would not boot without
+// a hypervisor could not be deployed ahead of one.
 func fleetDeps(cfg Config) fleetops.Deps {
-	d := fleetops.Deps{
-		Runner:   fleetops.NewExecRunner(),
-		Node:     cfg.NodeName,
-		Reboot:   fleetops.RebootHost,
-		JoinPass: fleetops.JoinPasswordFromFile(cfg.JoinPasswordPath),
+	runner := fleetops.NewExecRunner()
+	return fleetops.Deps{
+		Runner:  runner,
+		Node:    cfg.NodeName,
+		Reboot:  fleetops.RebootHost,
+		Cluster: fleetops.NewLocalCluster(runner),
 	}
-	client, err := fleetops.NewLocalClient(cfg.ProxmoxURL, cfg.ProxmoxTokenID, cfg.ProxmoxSecret)
-	if err != nil {
-		// KEPT, not only logged. A refused task has to say what actually went
-		// wrong, and a startup log on a hypervisor is not where anybody looks when
-		// a task fails in the control plane hours later.
-		slog.Warn("no Proxmox API client; fleet tasks will refuse rather than run", "error", err)
-		d.ClusterErr = err
-		return d
-	}
-	cl, err := fleetops.NewCluster(client)
-	if err != nil {
-		slog.Warn("could not build a cluster view; fleet tasks will refuse rather than run", "error", err)
-		d.ClusterErr = err
-		return d
-	}
-	d.Cluster = cl
-	return d
 }
 
 func init() {

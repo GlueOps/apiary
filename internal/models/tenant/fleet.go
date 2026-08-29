@@ -277,7 +277,44 @@ type Bee struct {
 	// the peer's OWN authenticated agent session and publishes it to the joiner,
 	// so the joiner checks a value that reached it over a different channel than
 	// the one it is about to open.
-	ObservedFingerprint  string     `gorm:"type:varchar(200);not null;default:''" json:"observed_fingerprint,omitempty"`
+	ObservedFingerprint string `gorm:"type:varchar(200);not null;default:''" json:"observed_fingerprint,omitempty"`
+
+	// ObservedHostKeys are this host's own SSH host public keys, as it reads them.
+	//
+	// Reported on every heartbeat rather than captured once, for a reason the
+	// certificate fingerprint beside it already establishes: a stored snapshot
+	// goes stale, and a joiner that pins a stale key fails verification with
+	// pvecm's "unable to copy ssh ID: exit code 1" — which names neither the key
+	// nor verification. Onboarding capture would also mean a host onboarded
+	// before the feature existed can never be joined through until somebody
+	// backfills it.
+	//
+	// Self-reported is sound here for the same reason it is for the fingerprint.
+	// This does not defend against a COMPROMISED peer — a joiner pinning a key
+	// reported by a hostile agent is joining a hostile node either way. It
+	// defends against an impostor on the network, and it does that by carrying
+	// the key over the peer's authenticated control-plane session, which is a
+	// different channel from the one the join is about to open. ssh-keyscan and
+	// StrictHostKeyChecking=no both fail exactly that test.
+	ObservedHostKeys datatypes.JSONType[[]string] `gorm:"type:jsonb" json:"observed_host_keys,omitzero"`
+
+	// ObservedRootKey is this host's own root SSH PUBLIC key.
+	//
+	// The cluster has to trust it before this host can join: `pvecm add
+	// --use_ssh` runs ssh-copy-id from the joining node to a peer and has to
+	// AUTHENTICATE as root, and non-interactively there is no password to fall
+	// back on. It fails with "unable to copy ssh ID" and nothing else.
+	//
+	// This is not the same key as ObservedHostKeys, and the difference is the
+	// direction of trust. Host keys prove the PEER's identity to the joiner;
+	// this proves the JOINER's identity to the peer.
+	//
+	// Reported continuously because it CHANGES: a departure with rotate replaces
+	// this keypair, which is the whole point of rotating. That left .12 holding a
+	// key lab-a had never seen while lab-a still trusted the one it had thrown
+	// away, and no join could succeed until the cluster was told about the new
+	// one.
+	ObservedRootKey      string     `gorm:"type:varchar(1024);not null;default:''" json:"observed_root_key,omitempty"`
 	ObservedMembershipAt *time.Time `gorm:"type:timestamptz" json:"observed_membership_at,omitempty"`
 
 	// AppliedMembershipRevision is the composition this agent has converged on.

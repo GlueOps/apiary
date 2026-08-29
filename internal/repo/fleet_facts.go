@@ -9,6 +9,7 @@ import (
 
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -154,12 +155,121 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 // sync entirely, because the sync runs per hive. Two writers on one column would
 // otherwise take turns.
 func RecordObservedGuestsIfFleetless(
-	ctx context.Context, db *gorm.DB, beeID uuid.UUID, guests int,
+	ctx context.Context, db *gorm.DB, beeID uuid.UUID, guests int, inACluster bool,
 ) error {
+	// ASSIGNED IS NOT THE SAME AS JOINED, and keying on hive_id alone assumed it
+	// was. Under convergence a machine is given a hive_id as an INTENTION and
+	// joins later on its own, so between those two moments it is in a hive by
+	// the record and in no cluster in fact. The capacity sync could not see it —
+	// it is not in the cluster — and this writer skipped it because hive_id was
+	// set. Neither wrote, last_synced_at froze, the drain gate read "unknown",
+	// and the host could never be departed. Observed on .12, stuck at a
+	// 16-minute-old sync that was never going to be superseded.
+	//
+	// The condition is therefore what the AGENT observes, not what the record
+	// intends: a host that reports no cluster is one the per-cluster sync
+	// structurally cannot cover, whatever its hive_id says.
+	if inACluster {
+		return nil
+	}
 	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-		Where("bee_id = ? AND hive_id IS NULL", beeID).
+		Where("bee_id = ?", beeID).
 		Updates(map[string]any{
 			"observed_guests": guests,
 			"last_synced_at":  gorm.Expr("now()"),
 		}).Error
+}
+
+// RecordHostKeys stores a machine's own SSH host public keys.
+//
+// Captured during onboarding, over the control plane's authenticated session to
+// that host, and used later by a DIFFERENT machine: a node joining a cluster
+// must pin its peer's key before `pvecm add` runs ssh-copy-id, or the join fails
+// with "unable to copy ssh ID: exit code 1" and nothing else.
+//
+// Named columns rather than a struct, so this cannot blank the rest of the row.
+func RecordHostKeys(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID, keys []string) error {
+	if len(keys) == 0 {
+		// Refused rather than stored empty. An empty list is indistinguishable
+		// from "never captured" at the point it is read, and the reader's choice
+		// between them is whether to attempt a join at all.
+		return fmt.Errorf("refusing to record an empty set of host keys for %s", hypervisorID)
+	}
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("id = ?", hypervisorID).
+		Update("ssh_host_keys", datatypes.NewJSONType(keys)).Error; err != nil {
+		return err
+	}
+	// The composition carries these to the hosts that need them, so a capture
+	// that does not republish leaves a joiner unable to pin a peer it can see.
+	var hive struct{ HiveID *uuid.UUID }
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Select("hive_id").Where("id = ?", hypervisorID).Scan(&hive).Error; err == nil {
+		publishMembership(ctx, db, hive.HiveID)
+	}
+	return nil
+}
+
+// AssignToHive records that a machine SHOULD be a member of a hive, without
+// claiming it already is.
+//
+// The difference from MarkJoined is the whole point of convergence. MarkJoined
+// records an accomplished fact and demands a node name, because a membership
+// without one leaves a row the capacity sync cannot match. This records an
+// INTENTION, and a machine that has never been in a cluster has no node name to
+// give — the name is assigned when it joins one. Requiring it here would make
+// the arrival impossible to express.
+//
+// The name is therefore left NULL and filled in when the host reports the name
+// it actually got. That is sound because ux_hypervisor_hive_name is partial on
+// `name IS NOT NULL`, so an unnamed member does not collide with anything.
+//
+// Publishing is what makes it happen: the hive's composition changes, every
+// member sees the new revision, and the machine itself derives create-or-join
+// from what corosync reports. Nothing is dispatched.
+func AssignToHive(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID) error {
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("id = ?", hypervisorID).
+		Updates(map[string]any{
+			"hive_id": hiveID,
+			// UNSCHEDULABLE until somebody looks. A node that has not joined yet
+			// certainly cannot take work, and one that just has still has not been
+			// validated in its new home — see MarkJoined for why that stays an
+			// operator's decision.
+			"schedulable": false,
+		}).Error; err != nil {
+		return fmt.Errorf("assign %s to hive %s: %w", hypervisorID, hiveID, err)
+	}
+	publishMembership(ctx, db, &hiveID)
+	return nil
+}
+
+// RecordObservedNodeName fills in the Proxmox node name a host reports for
+// itself.
+//
+// The name is not knowable before a machine is in a cluster, so an arrival
+// assigns membership without one and this closes the loop afterwards. Written
+// only when the row has none: once a machine has a name, the capacity sync and
+// the composition are both keyed on it, and letting a heartbeat rename a row out
+// from under them would strand every reference to it.
+func RecordObservedNodeName(ctx context.Context, db *gorm.DB, beeID uuid.UUID, node string) error {
+	if node == "" {
+		return nil
+	}
+	res := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("bee_id = ? AND (name IS NULL OR name = '')", beeID).
+		Update("name", node)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		// The composition identifies members by node name to their peers, so a
+		// name arriving changes what every other member should see.
+		var hive struct{ HiveID *uuid.UUID }
+		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+			Select("hive_id").Where("bee_id = ?", beeID).Scan(&hive).Error; err == nil {
+			publishMembership(ctx, db, hive.HiveID)
+		}
+	}
+	return nil
 }

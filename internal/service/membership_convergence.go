@@ -54,7 +54,8 @@ func (s *FleetService) DesiredMembershipFor(
 // older agent omits the field entirely, and reading that as "standalone" would
 // invent an observation nobody made and hand it to a loop that acts on it.
 func (s *FleetService) RecordObservedMembership(
-	ctx context.Context, sess *BeeSession, obs *tenant.Observed, fingerprint string,
+	ctx context.Context, sess *BeeSession, obs *tenant.Observed,
+	fingerprint string, hostKeys []string, rootKey string,
 ) error {
 	if sess == nil || sess.Bee == nil {
 		return repo.ErrBeeNotFound
@@ -66,7 +67,7 @@ func (s *FleetService) RecordObservedMembership(
 	if err != nil {
 		return err
 	}
-	return repo.RecordObservedMembership(ctx, db, sess.Bee.ID, *obs, fingerprint)
+	return repo.RecordObservedMembership(ctx, db, sess.Bee.ID, *obs, fingerprint, hostKeys, rootKey)
 }
 
 // RecordAppliedMembership stores the composition a bee reports it has converged
@@ -116,4 +117,26 @@ func ObservationFresh(b *tenant.Bee, now time.Time) bool {
 		return false
 	}
 	return now.Sub(*b.ObservedMembershipAt) <= staleObservation
+}
+
+// RecordObservedNodeName stores the Proxmox node name a host reports for itself.
+//
+// A machine has no node name until it is in a cluster, so an arrival records
+// membership without one and the host supplies it once it has joined. Written
+// only when the row has none — see the repo function for why a rename must not
+// come from a heartbeat.
+func (s *FleetService) RecordObservedNodeName(
+	ctx context.Context, sess *BeeSession, node string,
+) error {
+	if sess == nil || sess.Bee == nil {
+		return repo.ErrBeeNotFound
+	}
+	if node == "" {
+		return nil
+	}
+	db, err := s.dbFor(ctx, sess.OrganizationID.String())
+	if err != nil {
+		return err
+	}
+	return repo.RecordObservedNodeName(ctx, db, sess.Bee.ID, node)
 }

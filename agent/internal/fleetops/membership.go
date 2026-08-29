@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/glueops/apiary/pkg/proxmox"
 )
 
 // DesiredMember is one node the cluster should contain, as published.
@@ -14,13 +12,32 @@ type DesiredMember struct {
 	HypervisorID string
 	Address      string
 	Fingerprint  string
+
+	// HostKeys are this member's SSH host public keys. A joining host pins these
+	// before pvecm add runs ssh-copy-id.
+	HostKeys []string
+
+	// RootKey is this member's root SSH public key, which the CLUSTER must trust
+	// before that member can join. Points the other way from HostKeys: those
+	// prove a peer's identity to a joiner, this proves a joiner's identity to a
+	// peer.
+	RootKey string
 }
 
 // Desired is the composition the control plane published, plus this host's own
 // name within it.
 type Desired struct {
 	Cluster string
-	Self    string
+
+	// Self is this host's Proxmox node name as the control plane knows it, empty
+	// for a machine that has never been in a cluster.
+	Self string
+
+	// SelfID is this machine's hypervisor id, which the control plane always
+	// knows. It is what lets a NAMELESS machine recognise itself in the
+	// composition — a host with no node name would otherwise conclude it is not
+	// wanted and never join, and that is the state every arrival starts from.
+	SelfID  string
 	Members []DesiredMember
 
 	// Departing names nodes the control plane KNOWS it removed, and it is the
@@ -45,6 +62,11 @@ const (
 	VerbEvict    Verb = "evict"
 	VerbDissolve Verb = "dissolve"
 	VerbWait     Verb = "wait"
+
+	// VerbBlocked is a gap this host cannot close on its own — distinct from
+	// VerbNone, which means converged. Conflating them made a host in the wrong
+	// cluster report itself as converged.
+	VerbBlocked Verb = "blocked"
 )
 
 // Observation is what this host can see about its own cluster.
@@ -88,14 +110,14 @@ func Observe(ctx context.Context, c Cluster) (Observation, error) {
 // actually acts, and the lab test is what proves they agree.
 func (d Desired) Decide(obs Observation) (Verb, string, string) {
 	self := d.Self
-	desired := d.desires(self)
+	desired := d.desiresSelf()
 
 	switch {
 	case desired && obs.Cluster == "":
 		return VerbJoin, "", "this host should be in " + d.Cluster + " and is standalone"
 
 	case desired && !strings.EqualFold(obs.Cluster, d.Cluster):
-		return VerbNone, "", "this host is in " + obs.Cluster + " but should be in " + d.Cluster +
+		return VerbBlocked, "", "this host is in " + obs.Cluster + " but should be in " + d.Cluster +
 			"; a move between clusters is a departure followed by an arrival, not a convergence"
 
 	case !desired && obs.Cluster == "":
@@ -131,6 +153,29 @@ func (d Desired) departing(node string) bool {
 	return false
 }
 
+// isSelf reports whether a composition entry is this host.
+//
+// Each identifier is only consulted when BOTH sides carry one. Comparing two
+// empty strings as a match is how every unidentified member becomes "me".
+func (d Desired) isSelf(m DesiredMember) bool {
+	if d.SelfID != "" && m.HypervisorID != "" && m.HypervisorID == d.SelfID {
+		return true
+	}
+	return d.Self != "" && m.Node != "" && strings.EqualFold(m.Node, d.Self)
+}
+
+// desires reports whether THIS host is in the composition, by either identifier.
+func (d Desired) desiresSelf() bool {
+	for _, m := range d.Members {
+		if d.isSelf(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// desires reports whether a node NAME is in the composition, which is how a
+// member judges its peers: corosync reports names and nothing else.
 func (d Desired) desires(node string) bool {
 	if node == "" {
 		return false
@@ -185,6 +230,27 @@ func (d Desired) strayOwnedBy(self string, obs Observation) (string, bool) {
 	return stray, stray != ""
 }
 
+// otherMembers is every member of the composition that is not this host,
+// whether or not it is usable as a join target.
+//
+// The distinction from joinTargets is what keeps a create from splitting a
+// cluster: "nobody else is supposed to be here" and "somebody else is supposed
+// to be here but I cannot verify them" look identical in a filtered list and
+// call for opposite actions.
+func (d Desired) otherMembers() []string {
+	out := make([]string, 0, len(d.Members))
+	for _, m := range d.Members {
+		if !d.isSelf(m) {
+			name := m.Node
+			if name == "" {
+				name = m.Address
+			}
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // joinTargets is every member this host could join through, excluding itself and
 // any peer with no fingerprint or address.
 //
@@ -194,7 +260,17 @@ func (d Desired) strayOwnedBy(self string, obs Observation) (string, bool) {
 func (d Desired) joinTargets() []DesiredMember {
 	out := make([]DesiredMember, 0, len(d.Members))
 	for _, m := range d.Members {
-		if strings.EqualFold(m.Node, d.Self) || m.Fingerprint == "" || m.Address == "" {
+		// A member with no host keys is excluded for the same reason as one with
+		// no fingerprint: a join through it could only proceed by trusting
+		// whatever answers on its address, and this is the operation where the
+		// peer's identity matters most — the corosync auth key and the cluster
+		// configuration are what an impostor would receive.
+		// Both identifiers guarded against the empty case. An unguarded
+		// `m.HypervisorID == d.SelfID` matches when BOTH are empty, which
+		// silently treats every unidentified member as this host and empties the
+		// target list — the same shape as the bug that would have formed a
+		// duplicate cluster.
+		if d.isSelf(m) || m.Fingerprint == "" || m.Address == "" || len(m.HostKeys) == 0 {
 			continue
 		}
 		out = append(out, m)
@@ -235,13 +311,24 @@ func Converge(ctx context.Context, d Deps, e *Env, want Desired) (Verb, error) {
 		want.Self = d.Node
 	}
 
+	// ADMIT BEFORE DECIDING. A node that is desired but not yet present cannot
+	// install its own key — the cluster's authorized_keys is on the replicated
+	// store, which it has no access to until it is a member. So a node already
+	// in does it, the same way one already in owns an eviction.
+	//
+	// This is what makes a ROTATED node able to rejoin at all. Departing with
+	// rotate replaces the node's root keypair, so the cluster still trusts the
+	// key that was thrown away and `pvecm add --use_ssh` fails to authenticate
+	// with "unable to copy ssh ID" and nothing else.
+	admitAbsentMembers(ctx, d, e, want, obs)
+
 	verb, target, why := want.Decide(obs)
 	if why != "" {
 		e.Logf("agent", "%s", why)
 	}
 
 	switch verb {
-	case VerbNone, VerbWait:
+	case VerbNone, VerbWait, VerbBlocked:
 		return verb, nil
 
 	case VerbDissolve:
@@ -273,13 +360,29 @@ func Converge(ctx context.Context, d Deps, e *Env, want Desired) (Verb, error) {
 func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, error) {
 	targets := want.joinTargets()
 	if len(targets) == 0 {
-		e.Logf("agent", "no peer is published for %s yet, so this host forms it", want.Cluster)
+		// AN EMPTY TARGET LIST IS TWO DIFFERENT FACTS, and treating them alike
+		// splits a cluster in half.
+		//
+		// If the composition names no other member, this host is genuinely the
+		// first and forming the cluster is correct. If it names others but none
+		// is USABLE — no fingerprint, no address, no captured host keys — then
+		// those peers may well have formed the cluster already, and creating here
+		// produces a second cluster with the same name and no way to merge them.
+		//
+		// Found before it ran: every host in the lab predated host-key capture, so
+		// the first node reassigned to a hive would have found no usable target
+		// and created a duplicate of the cluster it was trying to join.
+		if others := want.otherMembers(); len(others) > 0 {
+			return VerbJoin, fmt.Errorf(
+				"this host should join %s, whose other member(s) are %s, but none of them can be "+
+					"joined through: a peer needs an address, a certificate fingerprint and "+
+					"captured SSH host keys before a join can verify it. Refusing to form %s "+
+					"instead, because those peers may already have done so and a second cluster "+
+					"of the same name cannot be merged",
+				want.Cluster, strings.Join(others, ", "), want.Cluster)
+		}
+		e.Logf("agent", "no other member is published for %s, so this host forms it", want.Cluster)
 		return VerbCreate, createCluster(ctx, d, e, want.Cluster)
-	}
-
-	pass, err := d.JoinPass()
-	if err != nil {
-		return VerbJoin, fmt.Errorf("no cluster join password available on this host: %w", err)
 	}
 
 	e.Phase(phasePreflight)
@@ -296,10 +399,23 @@ func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, erro
 	var last error
 	for _, t := range targets {
 		e.Logf("agent", "trying to join %s through %s (%s)", want.Cluster, t.Node, t.Address)
+
+		// PIN THE PEER FIRST. pvecm add runs ssh-copy-id at the peer as its first
+		// real step, and a host that has never seen that peer's key fails
+		// verification — reported as "unable to copy ssh ID: exit code 1", which
+		// names neither the host nor the key nor verification. These keys came
+		// from the published composition, so they reached this host over its
+		// authenticated control-plane session rather than from whatever answers
+		// on the peer's address.
+		if perr := PinPeer(ctx, []string{t.Address, t.Node}, t.HostKeys); perr != nil {
+			last = perr
+			e.Logf("agent", "cannot pin %s, so a join through it would have to trust the "+
+				"network: %v", t.Node, perr)
+			continue
+		}
 		force := false
-		status, jerr := d.Cluster.JoinCluster(ctx, &proxmox.ClusterJoinOptions{
+		status, jerr := d.Cluster.JoinCluster(ctx, &proxmoxJoinOptions{
 			Hostname:    t.Address,
-			Password:    pass,
 			Fingerprint: t.Fingerprint,
 			Force:       &force,
 		})
@@ -330,7 +446,7 @@ func createCluster(ctx context.Context, d Deps, e *Env, name string) error {
 	}
 	e.Phase(phaseJoining)
 	e.Logf("agent", "forming cluster %s with this host as its first member", name)
-	status, err := d.Cluster.CreateCluster(ctx, &proxmox.ClusterCreateOptions{ClusterName: name})
+	status, err := d.Cluster.CreateCluster(ctx, &proxmoxCreateOptions{ClusterName: name})
 	if err != nil {
 		return fmt.Errorf("create cluster %s: %w", name, err)
 	}
@@ -350,4 +466,76 @@ func createCluster(ctx context.Context, d Deps, e *Env, name string) error {
 func evictOne(ctx context.Context, d Deps, e *Env, node string) error {
 	spec := fmt.Sprintf(`{"node":%q}`, node)
 	return Evict(ctx, d, e, spec)
+}
+
+// admitAbsentMembers installs the root keys of desired members that are not yet
+// in the cluster.
+//
+// Guarded three ways, because this writes to the cluster's replicated keyring:
+//
+//   - only a node that is itself a converged member does it, since a standalone
+//     host has no cluster keyring to write and a departing one has no business
+//     changing what the cluster trusts;
+//   - only when QUORATE, because a pmxcfs write without quorum blocks rather
+//     than failing, and blocking here would stall the whole convergence loop;
+//   - only the deterministic owner, so five members do not each append the same
+//     key and race on one file.
+//
+// Never fatal. A failure to admit means a join that cannot authenticate yet, and
+// the joiner reports that clearly on its own next attempt — which is a better
+// place to see it than a peer's log.
+func admitAbsentMembers(ctx context.Context, d Deps, e *Env, want Desired, obs Observation) {
+	if obs.Cluster == "" || !strings.EqualFold(obs.Cluster, want.Cluster) || !obs.Quorate {
+		return
+	}
+	owner, ok := want.admissionOwner(obs)
+	if !ok || !strings.EqualFold(owner, want.Self) {
+		return
+	}
+
+	present := map[string]bool{}
+	for _, n := range obs.Members {
+		present[strings.ToLower(n)] = true
+	}
+	var keys []string
+	for _, m := range want.Members {
+		if m.RootKey == "" || present[strings.ToLower(m.Node)] || d.isSelfMember(want, m) {
+			continue
+		}
+		keys = append(keys, m.RootKey)
+	}
+	if len(keys) == 0 {
+		return
+	}
+
+	n, err := AdmitKeys(ctx, keys)
+	if err != nil {
+		e.Logf("agent", "could not admit %d pending member key(s): %v", len(keys), err)
+		return
+	}
+	if n > 0 {
+		e.Logf("agent", "admitted %d root key(s) so pending members can authenticate their join", n)
+	}
+}
+
+// isSelfMember is Desired.isSelf, reachable from the helper above.
+func (Deps) isSelfMember(d Desired, m DesiredMember) bool { return d.isSelf(m) }
+
+// admissionOwner names the member responsible for admitting pending keys.
+//
+// The lowest-named member that is BOTH desired and present, which is the same
+// rule the eviction owner uses and for the same reason: every member runs this
+// against the same published document, so without a deterministic choice they
+// all append the same key to one file at once.
+func (d Desired) admissionOwner(obs Observation) (string, bool) {
+	owner := ""
+	for _, n := range obs.Members {
+		if !d.desires(n) {
+			continue
+		}
+		if owner == "" || strings.ToLower(n) < strings.ToLower(owner) {
+			owner = n
+		}
+	}
+	return owner, owner != ""
 }

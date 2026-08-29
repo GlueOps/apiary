@@ -304,7 +304,7 @@ func TestAFleetlessHostsOwnGuestCountIsRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 2); err != nil {
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 2, false); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -347,7 +347,9 @@ func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 0); err != nil {
+	// The host reports that it IS in a cluster, which is what makes this the
+	// capacity sync's to observe.
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 0, true); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -357,5 +359,48 @@ func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
 	}
 	if got.ObservedGuests != 7 {
 		t.Fatalf("observed_guests = %d, want the sync's 7 left alone", got.ObservedGuests)
+	}
+}
+
+// ASSIGNED IS NOT JOINED, and this is the gap that state opened.
+//
+// Under convergence a machine is given a hive_id as an intention and joins on
+// its own afterwards. In between it is in a hive by the record and in no cluster
+// in fact: the per-cluster capacity sync cannot see it, and the old predicate
+// skipped it because hive_id was set. Nothing wrote, last_synced_at froze, the
+// drain gate read "unknown", and the host could never be departed — observed on
+// a lab node stuck behind a 16-minute-old sync that was never going to be
+// superseded.
+func TestAnAssignedButUnjoinedHostIsStillObservedByItsAgent(t *testing.T) {
+	db := factsDB(t)
+
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	// hive_id set, but the host reports no cluster: assigned, not joined.
+	hv := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Address: "192.0.2.21"}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 3, false); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.ObservedGuests != 3 {
+		t.Fatalf("observed_guests = %d, want 3 — nothing else observes this host", got.ObservedGuests)
+	}
+	if got.LastSyncedAt == nil {
+		t.Fatal("last_synced_at was not stamped, so the drain gate reads unknown and departure " +
+			"is refused forever")
 	}
 }

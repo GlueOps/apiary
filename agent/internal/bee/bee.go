@@ -276,12 +276,32 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		body.SetObservedCluster(obs.Cluster)
 		body.SetObservedMembers(obs.Members)
 		body.SetObservedQuorate(obs.Quorate)
+		// What pmxcfs calls this host. An arrival records membership before the
+		// machine has a node name, and this is what fills it in — a row left with
+		// a NULL name is one the capacity sync cannot match, so it adopts the
+		// node as new and the cluster ends up holding two rows for one machine.
+		if n := b.localNodeName(); n != "" {
+			body.SetObservedNode(n)
+		}
 	}
 	// This host's own certificate fingerprint, which is what a PEER needs to join
 	// through it. Read fresh, because updatecerts reissues it and a join and a
 	// departure both run that.
 	if fp, err := fleetops.LocalFingerprint(); err == nil {
 		body.SetObservedFingerprint(fp)
+	}
+	// This host's own SSH host keys, which a PEER pins before pvecm add runs
+	// ssh-copy-id. Sent every heartbeat rather than captured once at onboarding:
+	// a stored snapshot goes stale when a host is rebuilt, and a stale pin fails
+	// a join as loudly as a missing one. Public material only.
+	if hk, err := fleetops.LocalHostKeys(); err == nil {
+		body.SetObservedHostKeys(hk)
+	}
+	// This host's root PUBLIC key, which a cluster must trust before this host
+	// can join it. Changes when a departure rotates this node's identity, which
+	// is exactly when the cluster's copy goes stale.
+	if rk, err := fleetops.LocalRootKey(); err == nil {
+		body.SetObservedRootKey(rk)
 	}
 	if rev, digest := b.membership.get(); rev > 0 && digest != "" {
 		body.SetAppliedMembershipRevision(int64(rev))

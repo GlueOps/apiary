@@ -373,9 +373,6 @@ func TestArriveRefusalsTouchNoHost(t *testing.T) {
 		{"guests present", func(h *arriveHarness) {
 			h.snapshot.ObservedGuests = 2
 		}, tenant.RefuseArrivalGuests},
-		{"target hive empty", func(h *arriveHarness) {
-			h.snapshot.TargetNodeCount = 0
-		}, tenant.RefuseTargetHiveEmpty},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newArriveHarness()

@@ -82,7 +82,7 @@ func (s *FleetService) RecordAppliedFirewall(
 // machine that joined a cluster between the two cannot have its swept-up
 // observation land afterwards.
 func (s *FleetService) RecordObservedGuests(
-	ctx context.Context, sess *BeeSession, guests *int,
+	ctx context.Context, sess *BeeSession, guests *int, inACluster bool,
 ) error {
 	if sess == nil || sess.Bee == nil {
 		return repo.ErrBeeNotFound
@@ -97,5 +97,5 @@ func (s *FleetService) RecordObservedGuests(
 	if err != nil {
 		return err
 	}
-	return repo.RecordObservedGuestsIfFleetless(ctx, db, sess.Bee.ID, *guests)
+	return repo.RecordObservedGuestsIfFleetless(ctx, db, sess.Bee.ID, *guests, inACluster)
 }

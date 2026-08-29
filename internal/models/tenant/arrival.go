@@ -125,14 +125,22 @@ func CheckArrival(req ArrivalRequest) []ArrivalRefusal {
 		})
 	}
 
-	if req.TargetNodeCount < 1 {
-		out = append(out, ArrivalRefusal{
-			Code:    RefuseTargetHiveEmpty,
-			Summary: "the target cluster has no nodes to join to",
-			Detail:  fmt.Sprintf("hive %q has no nodes to join to", req.TargetHive.Name),
-			Remedy:  "Create the cluster on a first node before adding a second.",
-		})
-	}
+	// AN EMPTY TARGET IS NO LONGER A REFUSAL.
+	//
+	// This used to refuse with target_hive_empty — "create the cluster on a first
+	// node before adding a second" — and a whole separate bootstrap operation
+	// existed solely to create that first node. The two were the same request all
+	// along, distinguished only by the control plane having to choose a verb in
+	// advance.
+	//
+	// Under convergence nothing chooses. The host observes what corosync reports
+	// and derives it: to become a member of a cluster with no other members is
+	// create, of one that has members is join. So arriving at an empty hive is
+	// exactly how a cluster is formed, and refusing it was a precondition only
+	// another operation could satisfy.
+	//
+	// RefuseTargetHiveEmpty is kept as a constant because it appears in stored
+	// audit rows, which must stay readable.
 
 	return out
 }
