@@ -77,6 +77,32 @@ type MembershipMember struct {
 	// is not a usable join target — see JoinTargets.
 	Fingerprint string `json:"fingerprint,omitempty"`
 
+	// HostKeys are this node's SSH host public keys, captured during its
+	// onboarding over the control plane's authenticated session to it.
+	//
+	// Carried so a JOINING host can pin this one before `pvecm add` runs
+	// ssh-copy-id. Without that the join fails with "unable to copy ssh ID: exit
+	// code 1" and nothing else — no host, no key, no mention of verification.
+	//
+	// The alternative is ssh-keyscan or StrictHostKeyChecking=no, which both hand
+	// the join — corosync auth key and cluster configuration included — to
+	// whatever answers on the address. A join is the operation where the peer's
+	// identity matters most, so it is the wrong place to stop checking. Here the
+	// key reaches the joiner over its own authenticated control-plane session,
+	// which is a different channel from the one it is about to open.
+	HostKeys []string `json:"host_keys,omitempty"`
+
+	// RootKey is this node's root SSH public key, which the CLUSTER must trust
+	// before this node can join it — `pvecm add --use_ssh` authenticates as root
+	// from the joiner to a peer, and has no password to fall back on.
+	//
+	// Published to the existing members so they can admit a node that is desired
+	// but not yet present. The joiner cannot install its own key: the file lives
+	// on the cluster's replicated store, which it has no access to until it is a
+	// member. That is the same shape as an eviction — the work belongs to a node
+	// that is already in.
+	RootKey string `json:"root_key,omitempty"`
+
 	// Links are this node's corosync rings, if the operator configured any.
 	Links []CorosyncLink `json:"links,omitempty"`
 }
@@ -151,6 +177,15 @@ const (
 	// was a distinct "last node" code path.
 	VerbDissolve MembershipVerb = "dissolve"
 
+	// VerbBlocked is a gap this host cannot close on its own.
+	//
+	// DISTINCT FROM VerbNone, which means converged. Both are "do nothing now",
+	// and conflating them made a host in the WRONG cluster report itself as
+	// converged: the control plane showed .12 settled into lab-a while corosync
+	// had it in lab-b. A state nobody can reach without an operator must not read
+	// as a state already reached.
+	VerbBlocked MembershipVerb = "blocked"
+
 	// VerbWait is desired-absent with peers still present: some other node owns
 	// the eviction. Distinct from VerbNone so an agent can say why it is idle,
 	// and so a departure that nobody picks up is visible as a wait rather than
@@ -178,7 +213,7 @@ type Observed struct {
 //
 // target is the node to act on: the peer to join through for a join, the node to
 // remove for an evict, and empty otherwise.
-func (m Membership) Decide(self string, obs Observed) (verb MembershipVerb, target string, why string) {
+func (m Membership) Decide(self Self, obs Observed) (verb MembershipVerb, target string, why string) {
 	desired := m.desires(self)
 
 	switch {
@@ -190,11 +225,14 @@ func (m Membership) Decide(self string, obs Observed) (verb MembershipVerb, targ
 		return VerbJoin, "", "this host should be in " + m.Cluster + " and is standalone"
 
 	case desired && !strings.EqualFold(obs.Cluster, m.Cluster):
+		// BLOCKED, not converged. Leaving a cluster destroys guest configuration,
+		// so an operator departs it deliberately; until they do, this host cannot
+		// close the gap and must not be reported as having closed it.
 		// In the WRONG cluster. Not converged automatically: leaving a cluster
 		// destroys guest configuration and the machine may be carrying work
 		// nobody has accounted for. An operator departs it deliberately, which
 		// makes it desired-absent there and lets the loop above take over.
-		return VerbNone, "", "this host is in " + obs.Cluster + " but should be in " + m.Cluster +
+		return VerbBlocked, "", "this host is in " + obs.Cluster + " but should be in " + m.Cluster +
 			"; a move between clusters is a departure followed by an arrival, not a convergence"
 
 	case !desired && obs.Cluster == "":
@@ -240,8 +278,51 @@ func (m Membership) departing(node string) bool {
 	return false
 }
 
-// desires reports whether node is in the desired composition.
-func (m Membership) desires(node string) bool {
+// Self is how a host identifies itself within a composition.
+//
+// TWO IDENTIFIERS, because neither works alone. A machine that has never been in
+// a cluster has no Proxmox node name — the name is assigned when it joins one —
+// so a composition entry for it carries an empty Node, and matching on names
+// would make the host conclude it is not wanted and never join. That is the
+// exact state every arrival starts from.
+//
+// The hypervisor id spans that gap: it identifies the machine before, during and
+// after it has a name. The name is still matched, because the OTHER members of a
+// cluster are known to each other by node name and nothing else — corosync
+// reports names, not database ids.
+type Self struct {
+	// ID is this machine's hypervisor id. Always known.
+	ID string
+	// Node is its Proxmox node name, empty until it has been in a cluster.
+	Node string
+}
+
+// desires reports whether this host is in the desired composition.
+func (m Membership) desires(self Self) bool {
+	for _, mem := range m.Members {
+		if isSelfMember(mem, self) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSelfMember reports whether a composition entry is the host asking.
+//
+// Each identifier is consulted only when BOTH sides carry one: comparing two
+// empty strings as a match makes every unidentified member "me", which empties
+// the join-target list and looks exactly like a cluster with no peers.
+func isSelfMember(mem MembershipMember, self Self) bool {
+	if self.ID != "" && mem.HypervisorID != "" && mem.HypervisorID == self.ID {
+		return true
+	}
+	return self.Node != "" && mem.Node != "" && strings.EqualFold(mem.Node, self.Node)
+}
+
+// desiresNode reports whether a node NAME is in the composition, which is how a
+// member judges its peers: corosync reports names, and nothing it says can be
+// matched to a hypervisor id.
+func (m Membership) desiresNode(node string) bool {
 	if node == "" {
 		return false
 	}
@@ -254,10 +335,10 @@ func (m Membership) desires(node string) bool {
 }
 
 // peersPresent is every observed member other than self.
-func (m Membership) peersPresent(self string, obs Observed) []string {
+func (m Membership) peersPresent(self Self, obs Observed) []string {
 	out := make([]string, 0, len(obs.Members))
 	for _, n := range obs.Members {
-		if !strings.EqualFold(n, self) {
+		if !strings.EqualFold(n, self.Node) {
 			out = append(out, n)
 		}
 	}
@@ -276,23 +357,23 @@ func (m Membership) peersPresent(self string, obs Observed) []string {
 // Lowest name rather than, say, the oldest member: it is derivable from the
 // document alone, so every node computes the same answer without coordinating,
 // and it stays stable while the eviction is in flight.
-func (m Membership) strayOwnedBy(self string, obs Observed) (string, bool) {
+func (m Membership) strayOwnedBy(self Self, obs Observed) (string, bool) {
 	owner := ""
 	for _, n := range obs.Members {
-		if !m.desires(n) {
+		if !m.desiresNode(n) {
 			continue
 		}
 		if owner == "" || strings.ToLower(n) < strings.ToLower(owner) {
 			owner = n
 		}
 	}
-	if !strings.EqualFold(owner, self) {
+	if !strings.EqualFold(owner, self.Node) {
 		return "", false
 	}
 	// Deterministic among several strays too, so two evictions do not interleave.
 	stray := ""
 	for _, n := range obs.Members {
-		if m.desires(n) {
+		if m.desiresNode(n) {
 			continue
 		}
 		if stray == "" || strings.ToLower(n) < strings.ToLower(stray) {
@@ -314,10 +395,10 @@ func (m Membership) strayOwnedBy(self string, obs Observed) (string, bool) {
 // `pvecm add` accepts a missing fingerprint by prompting, which in a
 // non-interactive context hangs until it is killed — reported as a timeout that
 // says nothing about the cause.
-func (m Membership) JoinTargets(self string) []MembershipMember {
+func (m Membership) JoinTargets(self Self) []MembershipMember {
 	out := make([]MembershipMember, 0, len(m.Members))
 	for _, mem := range m.Members {
-		if strings.EqualFold(mem.Node, self) || mem.Fingerprint == "" || mem.Address == "" {
+		if isSelfMember(mem, self) || mem.Fingerprint == "" || mem.Address == "" {
 			continue
 		}
 		out = append(out, mem)
@@ -338,10 +419,11 @@ type MembershipDesired struct {
 	Digest     string
 	Membership Membership
 
+	// SelfID is this machine's hypervisor id, always known. It is what lets a
+	// machine with no node name recognise itself in the composition.
+	SelfID string
+
 	// Self is this host's Proxmox node name as the control plane knows it, or
-	// empty for a machine that has never been in a cluster. The agent needs it to
-	// locate itself in the composition and cannot always derive it locally — a
-	// standalone host's node name is whatever pve chose at install time, which is
-	// not necessarily its hostname.
+	// empty for a machine that has never been in a cluster.
 	Self string
 }

@@ -29,8 +29,10 @@ type AgentMembershipResponseBody struct {
 	// The complete desired composition, not a delta.
 	Members []MembershipMemberView `json:"members,omitempty"`
 	Revision *int64 `json:"revision,omitempty"`
-	// This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster.
+	// This host's node name as the control plane knows it. Empty for a machine that has never joined a cluster.
 	Self *string `json:"self,omitempty"`
+	// This machine's hypervisor id, which is how a host with no node name yet locates itself in the list — the state every arrival starts from.
+	SelfId *string `json:"self_id,omitempty"`
 }
 
 // NewAgentMembershipResponseBody instantiates a new AgentMembershipResponseBody object
@@ -276,6 +278,38 @@ func (o *AgentMembershipResponseBody) SetSelf(v string) {
 	o.Self = &v
 }
 
+// GetSelfId returns the SelfId field value if set, zero value otherwise.
+func (o *AgentMembershipResponseBody) GetSelfId() string {
+	if o == nil || IsNil(o.SelfId) {
+		var ret string
+		return ret
+	}
+	return *o.SelfId
+}
+
+// GetSelfIdOk returns a tuple with the SelfId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *AgentMembershipResponseBody) GetSelfIdOk() (*string, bool) {
+	if o == nil || IsNil(o.SelfId) {
+		return nil, false
+	}
+	return o.SelfId, true
+}
+
+// HasSelfId returns a boolean if a field has been set.
+func (o *AgentMembershipResponseBody) HasSelfId() bool {
+	if o != nil && !IsNil(o.SelfId) {
+		return true
+	}
+
+	return false
+}
+
+// SetSelfId gets a reference to the given string and assigns it to the SelfId field.
+func (o *AgentMembershipResponseBody) SetSelfId(v string) {
+	o.SelfId = &v
+}
+
 func (o AgentMembershipResponseBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -306,6 +340,9 @@ func (o AgentMembershipResponseBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Self) {
 		toSerialize["self"] = o.Self
+	}
+	if !IsNil(o.SelfId) {
+		toSerialize["self_id"] = o.SelfId
 	}
 	return toSerialize, nil
 }

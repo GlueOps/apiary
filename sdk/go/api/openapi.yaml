@@ -2454,9 +2454,12 @@ paths:
       - Fleet
   /api/v1/fleet/fleetless/{hypervisor_id}/arrive:
     post:
-      description: "Queues the arrival. Refused with 409 and reason codes when the\
-        \ host already belongs to a hive, still carries guests, or the target has\
-        \ no nodes to join to."
+      description: |-
+        Records that this machine SHOULD be a member of that hive. Its own agent converges on it — no SSH, and nothing is dispatched.
+
+        The agent derives what to do from the world rather than being told: to become a member of a cluster with no other members is create, of one that has members is join. Arrival and bootstrap are therefore the same request.
+
+        Refused with 409 and reason codes when the host already belongs to a hive or still carries guests. The gate is here, on the WRITE of desired state, so a refusal is sticky: it never becomes desired state at all.
       operationId: fleet-hosts-arrive
       parameters:
       - explode: false
@@ -4320,14 +4323,23 @@ components:
         members:
         - address: address
           fingerprint: fingerprint
+          host_keys:
+          - host_keys
+          - host_keys
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           node: node
+          root_key: root_key
         - address: address
           fingerprint: fingerprint
+          host_keys:
+          - host_keys
+          - host_keys
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           node: node
+          root_key: root_key
         revision: 0
         self: self
+        self_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -4359,9 +4371,14 @@ components:
           format: int64
           type: integer
         self:
-          description: "This host's node name as the control plane knows it, so an\
-            \ agent can locate itself in the list. Empty for a machine that has never\
-            \ joined a cluster."
+          description: This host's node name as the control plane knows it. Empty
+            for a machine that has never joined a cluster.
+          type: string
+        self_id:
+          description: "This machine's hypervisor id, which is how a host with no\
+            \ node name yet locates itself in the list — the state every arrival starts\
+            \ from."
+          format: uuid
           type: string
     AgentUpgradeRequestBody:
       additionalProperties: false
@@ -5935,13 +5952,21 @@ components:
         observed_cluster: observed_cluster
         observed_fingerprint: observed_fingerprint
         observed_guests: 14658
+        observed_host_keys:
+        - observed_host_keys
+        - observed_host_keys
+        - observed_host_keys
+        - observed_host_keys
+        - observed_host_keys
         observed_members:
         - observed_members
         - observed_members
         - observed_members
         - observed_members
         - observed_members
+        observed_node: observed_node
         observed_quorate: true
+        observed_root_key: observed_root_key
         unavailable_for_seconds: 51512
         unavailable_reason: unavailable_reason
         wait_seconds: 14
@@ -5997,6 +6022,15 @@ components:
           maximum: 100000
           minimum: 0
           type: integer
+        observed_host_keys:
+          description: "Public host keys in authorized_keys form, e.g. 'ssh-ed25519\
+            \ AAAA...'. Public material only."
+          items:
+            type: string
+          maxItems: 8
+          nullable: true
+          type: array
+          default: null
         observed_members:
           description: "Node names corosync reports, this host included."
           items:
@@ -6005,8 +6039,15 @@ components:
           nullable: true
           type: array
           default: null
+        observed_node:
+          maxLength: 255
+          type: string
         observed_quorate:
           type: boolean
+        observed_root_key:
+          description: Public material only.
+          maxLength: 1024
+          type: string
         unavailable_for_seconds:
           description: "Declared BEFORE acting: how long this host expects to be unreachable,\
             \ e.g. across a reboot. Until it elapses, silence from this bee is expected\
@@ -7536,8 +7577,12 @@ components:
       example:
         address: address
         fingerprint: fingerprint
+        host_keys:
+        - host_keys
+        - host_keys
         hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         node: node
+        root_key: root_key
       properties:
         address:
           type: string
@@ -7545,6 +7590,14 @@ components:
           description: "This node's API certificate fingerprint, as its OWN agent\
             \ reported it. A member without one is not a usable join target."
           type: string
+        host_keys:
+          description: This node's SSH host public keys. A joining host pins these
+            before pvecm add runs ssh-copy-id.
+          items:
+            type: string
+          nullable: true
+          type: array
+          default: null
         hypervisor_id:
           description: Identifies the machine across a node name it does not have
             yet.
@@ -7553,6 +7606,12 @@ components:
         node:
           description: "The Proxmox node name, absent for a machine that has never\
             \ been in a cluster."
+          type: string
+        root_key:
+          description: "This node's root SSH public key. An existing member installs\
+            \ it into the cluster's replicated authorized_keys so a desired-but-absent\
+            \ node can authenticate its join. The joiner cannot do this itself: the\
+            \ file is cluster state it has no access to until it is a member."
           type: string
       required:
       - address

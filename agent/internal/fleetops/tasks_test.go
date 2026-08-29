@@ -2,12 +2,11 @@ package fleetops
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/glueops/apiary/pkg/proxmox"
 )
 
 type fakeCluster struct {
@@ -19,10 +18,11 @@ type fakeCluster struct {
 	guestsErr    error
 	deleted      []string
 	deleteErr    error
-	joined       *proxmox.ClusterJoinOptions
+	joined       *proxmoxJoinOptions
 	joinErr      error
 	name         string
-	created      *proxmox.ClusterCreateOptions
+	self         string
+	created      *proxmoxCreateOptions
 	createErr    error
 	joinAttempts int
 
@@ -36,7 +36,9 @@ type fakeCluster struct {
 
 func (f *fakeCluster) ClusterName() string { return f.name }
 
-func (f *fakeCluster) CreateCluster(_ context.Context, o *proxmox.ClusterCreateOptions) (string, error) {
+func (f *fakeCluster) NodeName() string { return f.self }
+
+func (f *fakeCluster) CreateCluster(_ context.Context, o *proxmoxCreateOptions) (string, error) {
 	f.created = o
 	if f.createErr != nil {
 		return "", f.createErr
@@ -64,7 +66,7 @@ func (f *fakeCluster) DeleteConfigNode(_ context.Context, node string) error {
 	f.deleted = append(f.deleted, node)
 	return nil
 }
-func (f *fakeCluster) JoinCluster(_ context.Context, o *proxmox.ClusterJoinOptions) (string, error) {
+func (f *fakeCluster) JoinCluster(_ context.Context, o *proxmoxJoinOptions) (string, error) {
 	f.joined = o
 	f.joinAttempts++
 	return "ok", f.joinErr
@@ -335,7 +337,7 @@ func TestJoinRequiresAFingerprint(t *testing.T) {
 	var declared time.Duration
 
 	err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		Deps{Cluster: cl, Node: "hv-06"},
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1"}`)
 	if err == nil || !strings.Contains(err.Error(), "fingerprint") {
 		t.Fatalf("err = %v, want a refusal naming the fingerprint", err)
@@ -347,24 +349,42 @@ func TestJoinRequiresAFingerprint(t *testing.T) {
 
 // The password must come from the host, never from the task spec: specs are
 // stored as jsonb in the control database and retained after completion.
-func TestJoinTakesThePasswordFromTheHostNotTheSpec(t *testing.T) {
-	cl := healthyCluster()
+// A join carries NO credential, which is what makes the old hazard impossible
+// rather than merely defended.
+//
+// This test used to assert that the cluster root password came from a file on
+// the host and not from the task spec, because a spec is stored as jsonb in the
+// control database and retained after the task completes — a root password there
+// would be a standing credential in a table many people can read.
+//
+// pvecm add authenticates to the peer over SSH using PVE's own root key, so
+// there is no password anywhere: not in the spec, not in a file on the host, and
+// not in the control plane. A field that does not exist cannot leak.
+func TestJoinCarriesNoCredential(t *testing.T) {
+	// Already a member, so verifyJoined returns at once — this test is about
+	// what the join CARRIES, not about waiting for it to take effect.
+	cl := &fakeCluster{name: "lab", members: 1, names: []string{"hv-06"}, quorate: true}
 	var phases []string
 	var declared time.Duration
 
-	spec := `{"peer":"10.0.0.1","fingerprint":"AA:BB","password":"should-be-ignored"}`
 	err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "from-the-host", nil }},
-		testEnv(&phases, &declared, nil), spec)
+		Deps{Cluster: cl, Node: "hv-06"},
+		testEnv(&phases, &declared, nil),
+		`{"peer":"10.0.0.1","fingerprint":"AA:BB","password":"hunter2"}`)
 	if err != nil {
 		t.Fatalf("join: %v", err)
 	}
 	if cl.joined == nil {
 		t.Fatal("no join attempted")
 	}
-	if cl.joined.Password != "from-the-host" {
-		t.Fatalf("password = %q, want the one supplied by the host; a spec field must never be "+
-			"able to carry a cluster root password into the job table", cl.joined.Password)
+	if cl.joined.Hostname != "10.0.0.1" || cl.joined.Fingerprint != "AA:BB" {
+		t.Fatalf("join options = %+v, want the peer and fingerprint from the spec", cl.joined)
+	}
+	// The spec above deliberately carries a password field. Nothing may read it:
+	// the options type has no place to put one.
+	raw, _ := json.Marshal(cl.joined)
+	if strings.Contains(string(raw), "hunter2") {
+		t.Fatalf("a credential from the spec reached the join: %s", raw)
 	}
 }
 
@@ -375,7 +395,7 @@ func TestJoinRefusesWhenTheHostAlreadyHasGuests(t *testing.T) {
 	var declared time.Duration
 
 	err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		Deps{Cluster: cl, Node: "hv-06"},
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
 	if err == nil || !strings.Contains(err.Error(), "guest") {
 		t.Fatalf("err = %v, want a refusal: joining discards local guest configuration", err)
@@ -405,7 +425,7 @@ func TestJoinFailsWhenTheHostNeverBecomesAMember(t *testing.T) {
 	var declared time.Duration
 
 	err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		Deps{Cluster: cl, Node: "hv-06"},
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
 
 	if err == nil {
@@ -443,7 +463,7 @@ func TestJoinWaitsThroughTheServiceRestart(t *testing.T) {
 	var declared time.Duration
 
 	if err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		Deps{Cluster: cl, Node: "hv-06"},
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`); err != nil {
 		t.Fatalf("a join that succeeded after the services restarted was reported as failure: %v", err)
 	}
@@ -467,7 +487,7 @@ func TestJoinSaysSoWhenTheClusterItJoinedIsNotQuorate(t *testing.T) {
 	var declared time.Duration
 
 	err := Join(context.Background(),
-		Deps{Cluster: cl, Node: "hv-06", JoinPass: func() (string, error) { return "pw", nil }},
+		Deps{Cluster: cl, Node: "hv-06"},
 		testEnv(&phases, &declared, nil), `{"peer":"10.0.0.1","fingerprint":"AA:BB"}`)
 	if err == nil {
 		t.Fatal("joining a cluster with no quorum was reported as a clean success")

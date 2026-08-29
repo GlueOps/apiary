@@ -37,9 +37,14 @@ type HeartbeatRequestBody struct {
 	ObservedFingerprint *string `json:"observed_fingerprint,omitempty"`
 	// VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
 	ObservedGuests *int64 `json:"observed_guests,omitempty"`
+	// Public host keys in authorized_keys form, e.g. 'ssh-ed25519 AAAA...'. Public material only.
+	ObservedHostKeys []string `json:"observed_host_keys,omitempty"`
 	// Node names corosync reports, this host included.
 	ObservedMembers []string `json:"observed_members,omitempty"`
+	ObservedNode *string `json:"observed_node,omitempty"`
 	ObservedQuorate *bool `json:"observed_quorate,omitempty"`
+	// Public material only.
+	ObservedRootKey *string `json:"observed_root_key,omitempty"`
 	// Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
 	UnavailableForSeconds *int64 `json:"unavailable_for_seconds,omitempty"`
 	UnavailableReason *string `json:"unavailable_reason,omitempty"`
@@ -416,6 +421,39 @@ func (o *HeartbeatRequestBody) SetObservedGuests(v int64) {
 	o.ObservedGuests = &v
 }
 
+// GetObservedHostKeys returns the ObservedHostKeys field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *HeartbeatRequestBody) GetObservedHostKeys() []string {
+	if o == nil {
+		var ret []string
+		return ret
+	}
+	return o.ObservedHostKeys
+}
+
+// GetObservedHostKeysOk returns a tuple with the ObservedHostKeys field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *HeartbeatRequestBody) GetObservedHostKeysOk() ([]string, bool) {
+	if o == nil || IsNil(o.ObservedHostKeys) {
+		return nil, false
+	}
+	return o.ObservedHostKeys, true
+}
+
+// HasObservedHostKeys returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedHostKeys() bool {
+	if o != nil && !IsNil(o.ObservedHostKeys) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedHostKeys gets a reference to the given []string and assigns it to the ObservedHostKeys field.
+func (o *HeartbeatRequestBody) SetObservedHostKeys(v []string) {
+	o.ObservedHostKeys = v
+}
+
 // GetObservedMembers returns the ObservedMembers field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *HeartbeatRequestBody) GetObservedMembers() []string {
 	if o == nil {
@@ -449,6 +487,38 @@ func (o *HeartbeatRequestBody) SetObservedMembers(v []string) {
 	o.ObservedMembers = v
 }
 
+// GetObservedNode returns the ObservedNode field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedNode() string {
+	if o == nil || IsNil(o.ObservedNode) {
+		var ret string
+		return ret
+	}
+	return *o.ObservedNode
+}
+
+// GetObservedNodeOk returns a tuple with the ObservedNode field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedNodeOk() (*string, bool) {
+	if o == nil || IsNil(o.ObservedNode) {
+		return nil, false
+	}
+	return o.ObservedNode, true
+}
+
+// HasObservedNode returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedNode() bool {
+	if o != nil && !IsNil(o.ObservedNode) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedNode gets a reference to the given string and assigns it to the ObservedNode field.
+func (o *HeartbeatRequestBody) SetObservedNode(v string) {
+	o.ObservedNode = &v
+}
+
 // GetObservedQuorate returns the ObservedQuorate field value if set, zero value otherwise.
 func (o *HeartbeatRequestBody) GetObservedQuorate() bool {
 	if o == nil || IsNil(o.ObservedQuorate) {
@@ -479,6 +549,38 @@ func (o *HeartbeatRequestBody) HasObservedQuorate() bool {
 // SetObservedQuorate gets a reference to the given bool and assigns it to the ObservedQuorate field.
 func (o *HeartbeatRequestBody) SetObservedQuorate(v bool) {
 	o.ObservedQuorate = &v
+}
+
+// GetObservedRootKey returns the ObservedRootKey field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedRootKey() string {
+	if o == nil || IsNil(o.ObservedRootKey) {
+		var ret string
+		return ret
+	}
+	return *o.ObservedRootKey
+}
+
+// GetObservedRootKeyOk returns a tuple with the ObservedRootKey field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedRootKeyOk() (*string, bool) {
+	if o == nil || IsNil(o.ObservedRootKey) {
+		return nil, false
+	}
+	return o.ObservedRootKey, true
+}
+
+// HasObservedRootKey returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedRootKey() bool {
+	if o != nil && !IsNil(o.ObservedRootKey) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedRootKey gets a reference to the given string and assigns it to the ObservedRootKey field.
+func (o *HeartbeatRequestBody) SetObservedRootKey(v string) {
+	o.ObservedRootKey = &v
 }
 
 // GetUnavailableForSeconds returns the UnavailableForSeconds field value if set, zero value otherwise.
@@ -620,11 +722,20 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.ObservedGuests) {
 		toSerialize["observed_guests"] = o.ObservedGuests
 	}
+	if o.ObservedHostKeys != nil {
+		toSerialize["observed_host_keys"] = o.ObservedHostKeys
+	}
 	if o.ObservedMembers != nil {
 		toSerialize["observed_members"] = o.ObservedMembers
 	}
+	if !IsNil(o.ObservedNode) {
+		toSerialize["observed_node"] = o.ObservedNode
+	}
 	if !IsNil(o.ObservedQuorate) {
 		toSerialize["observed_quorate"] = o.ObservedQuorate
+	}
+	if !IsNil(o.ObservedRootKey) {
+		toSerialize["observed_root_key"] = o.ObservedRootKey
 	}
 	if !IsNil(o.UnavailableForSeconds) {
 		toSerialize["unavailable_for_seconds"] = o.UnavailableForSeconds

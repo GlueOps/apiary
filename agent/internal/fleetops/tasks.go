@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/glueops/apiary/pkg/proxmox"
 )
 
 // Task kinds. They are strings on the wire, so they are constants here and the
@@ -52,10 +50,12 @@ type Deps struct {
 	// cause is worse than one that names none.
 	ClusterErr error
 
-	Runner   Runner
-	Node     string // this host's Proxmox node name
-	Reboot   func(ctx context.Context) error
-	JoinPass func() (string, error)
+	Runner Runner
+
+	// Node is this host's Proxmox node name, used when pmxcfs cannot be read.
+	// Prefer Cluster.NodeName(), which is the value the cluster itself keys on.
+	Node   string
+	Reboot func(ctx context.Context) error
 }
 
 // ErrNoCluster reports that this host has no Proxmox API client, so a task that
@@ -232,7 +232,7 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 	return d.Reboot(ctx)
 }
 
-// apiSettle bounds the wait for the local Proxmox API after a reboot.
+// apiSettle bounds the wait for pmxcfs to come back after a reboot.
 //
 // Vars rather than consts so a test can shorten them.
 var (
@@ -241,11 +241,17 @@ var (
 )
 
 func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
-	// THE HOST HAS JUST BOOTED, so pveproxy is not listening yet. Reading once
-	// and failing turned "the API is not up in the second after reboot" into a
-	// failed task, and a failed task is collected again — observed as a
-	// dist-upgrade reaching attempt 39, each one dialling 127.0.0.1:8006 and
-	// getting connection refused.
+	// THE HOST HAS JUST BOOTED, so pmxcfs may not be mounted yet. Reading once
+	// and failing turned "pve-cluster has not started in the second after a
+	// reboot" into a failed task, and a failed task is collected again —
+	// observed as a dist-upgrade reaching attempt 39.
+	//
+	// The wait is much cheaper than it was. It used to be waiting for PVEPROXY,
+	// because cluster state came from this node's own HTTP API — minutes of a
+	// web server starting, for a fact that was on local disk the whole time.
+	// Now it waits for pve-cluster to mount /etc/pve, which is quick. The bound
+	// stays generous because being wrong in that direction costs a slow task and
+	// being wrong in the other costs a failed one.
 	//
 	// Waited for, bounded, and then not fatal. See below.
 	deadline := time.Now().Add(apiSettleTimeout)
@@ -333,17 +339,11 @@ func Join(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 			"configuration, so they must be moved or removed first", len(guests))
 	}
 
-	pass, err := d.JoinPass()
-	if err != nil {
-		return fmt.Errorf("no cluster join password available on this host: %w", err)
-	}
-
 	e.Phase(phaseJoining)
 	e.Logf("agent", "joining the cluster through %s", spec.Peer)
 	force := spec.Force
-	status, err := d.Cluster.JoinCluster(ctx, &proxmox.ClusterJoinOptions{
+	status, err := d.Cluster.JoinCluster(ctx, &proxmoxJoinOptions{
 		Hostname:    spec.Peer,
-		Password:    pass,
 		Fingerprint: spec.Fingerprint,
 		Force:       &force,
 	})

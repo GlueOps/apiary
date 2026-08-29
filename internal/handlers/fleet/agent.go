@@ -135,11 +135,38 @@ type HeartbeatRequest struct {
 		ObservedMembers []string `json:"observed_members,omitempty" maxItems:"64" doc:"Node names corosync reports, this host included."`
 		ObservedQuorate *bool    `json:"observed_quorate,omitempty"`
 
+		// ObservedNode is what pmxcfs calls this host.
+		//
+		// Not knowable before a machine is in a cluster, so an arrival assigns
+		// membership without one and this closes the loop. It matters: a
+		// hypervisor row with a NULL name cannot be matched by the capacity sync,
+		// which then adopts the node as if it were new and leaves the cluster
+		// holding two rows for one machine — the hazard MarkJoined's empty-name
+		// guard exists for.
+		ObservedNode string `json:"observed_node,omitempty" maxLength:"255"`
+
 		// ObservedFingerprint is this host's own API certificate fingerprint. A
 		// peer joining through this node must present it, and without one pvecm
 		// PROMPTS — which non-interactively hangs until something kills it and
 		// reports a timeout that says nothing about the cause.
 		ObservedFingerprint string `json:"observed_fingerprint,omitempty" maxLength:"200"`
+
+		// ObservedHostKeys are this host's own SSH host public keys. A PEER pins
+		// these before pvecm add runs ssh-copy-id; without them the join fails
+		// with "unable to copy ssh ID: exit code 1" and nothing else.
+		//
+		// Reported every heartbeat rather than captured once at onboarding: a
+		// stored snapshot goes stale when a host is rebuilt, and a stale pin fails
+		// verification just as loudly as a missing one.
+		ObservedHostKeys []string `json:"observed_host_keys,omitempty" maxItems:"8" doc:"Public host keys in authorized_keys form, e.g. 'ssh-ed25519 AAAA...'. Public material only."`
+
+		// ObservedRootKey is this host's root SSH PUBLIC key, which the cluster
+		// must trust before this host can join it. Distinct from the host keys
+		// above and pointing the other way: those prove a PEER's identity to a
+		// joiner, this proves the JOINER's identity to a peer. It changes when a
+		// departure rotates the node's identity, so it is reported rather than
+		// captured.
+		ObservedRootKey string `json:"observed_root_key,omitempty" maxLength:"1024" doc:"Public material only."`
 
 		AppliedMembershipRevision int    `json:"applied_membership_revision,omitempty" minimum:"0" doc:"The cluster composition this host has converged on. Omit or zero if it has converged on none."`
 		AppliedMembershipDigest   string `json:"applied_membership_digest,omitempty" maxLength:"71"`
@@ -193,10 +220,12 @@ type AgentMembershipRequest struct{}
 
 // MembershipMemberView is one node the cluster should contain.
 type MembershipMemberView struct {
-	Node         string `json:"node,omitempty" doc:"The Proxmox node name, absent for a machine that has never been in a cluster."`
-	HypervisorID string `json:"hypervisor_id" format:"uuid" doc:"Identifies the machine across a node name it does not have yet."`
-	Address      string `json:"address"`
-	Fingerprint  string `json:"fingerprint,omitempty" doc:"This node's API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target."`
+	Node         string   `json:"node,omitempty" doc:"The Proxmox node name, absent for a machine that has never been in a cluster."`
+	HypervisorID string   `json:"hypervisor_id" format:"uuid" doc:"Identifies the machine across a node name it does not have yet."`
+	Address      string   `json:"address"`
+	Fingerprint  string   `json:"fingerprint,omitempty" doc:"This node's API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target."`
+	HostKeys     []string `json:"host_keys,omitempty" doc:"This node's SSH host public keys. A joining host pins these before pvecm add runs ssh-copy-id."`
+	RootKey      string   `json:"root_key,omitempty" doc:"This node's root SSH public key. An existing member installs it into the cluster's replicated authorized_keys so a desired-but-absent node can authenticate its join. The joiner cannot do this itself: the file is cluster state it has no access to until it is a member."`
 }
 
 type AgentMembershipResponse struct {
@@ -206,7 +235,8 @@ type AgentMembershipResponse struct {
 		Revision int                    `json:"revision,omitempty"`
 		Digest   string                 `json:"digest,omitempty"`
 		Cluster  string                 `json:"cluster,omitempty" doc:"The corosync cluster name this hive should form."`
-		Self     string                 `json:"self,omitempty" doc:"This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster."`
+		Self     string                 `json:"self,omitempty" doc:"This host's node name as the control plane knows it. Empty for a machine that has never joined a cluster."`
+		SelfID   string                 `json:"self_id,omitempty" format:"uuid" doc:"This machine's hypervisor id, which is how a host with no node name yet locates itself in the list — the state every arrival starts from."`
 		Members  []MembershipMemberView `json:"members,omitempty" doc:"The complete desired composition, not a delta."`
 
 		// Departing is the ONLY authority for an eviction. Absence from members is
@@ -373,7 +403,11 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		// Same treatment, and for the same reason: a host whose observation
 		// failed to record is still alive, and refusing its heartbeat over
 		// bookkeeping would make it look offline.
-		if err := svc.RecordObservedGuests(ctx, sess, in.Body.ObservedGuests); err != nil {
+		// Whether this host is in a cluster is what the HOST says, not what the
+		// record intends. A machine assigned to a hive but not yet joined is in no
+		// cluster in fact, and the per-cluster sync cannot cover it.
+		inACluster := in.Body.ObservedCluster != nil && *in.Body.ObservedCluster != ""
+		if err := svc.RecordObservedGuests(ctx, sess, in.Body.ObservedGuests, inACluster); err != nil {
 			slog.WarnContext(ctx, "could not record a bee's observed guest count",
 				"bee_id", sess.Bee.ID, "error", err)
 		}
@@ -389,10 +423,16 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 			if in.Body.ObservedQuorate != nil {
 				obs.Quorate = *in.Body.ObservedQuorate
 			}
-			if err := svc.RecordObservedMembership(ctx, sess, &obs, in.Body.ObservedFingerprint); err != nil {
+			if err := svc.RecordObservedMembership(ctx, sess, &obs,
+				in.Body.ObservedFingerprint, in.Body.ObservedHostKeys,
+				in.Body.ObservedRootKey); err != nil {
 				slog.WarnContext(ctx, "could not record a bee's observed cluster membership",
 					"bee_id", sess.Bee.ID, "error", err)
 			}
+		}
+		if err := svc.RecordObservedNodeName(ctx, sess, in.Body.ObservedNode); err != nil {
+			slog.WarnContext(ctx, "could not record a bee's observed node name",
+				"bee_id", sess.Bee.ID, "error", err)
 		}
 		if err := svc.RecordAppliedMembership(ctx, sess,
 			in.Body.AppliedMembershipRevision, in.Body.AppliedMembershipDigest); err != nil {
@@ -508,12 +548,14 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		out.Body.Digest = snap.Digest
 		out.Body.Cluster = snap.Membership.Cluster
 		out.Body.Self = snap.Self
+		out.Body.SelfID = snap.SelfID
 		out.Body.Departing = snap.Membership.Departing
 		out.Body.Members = make([]MembershipMemberView, 0, len(snap.Membership.Members))
 		for _, m := range snap.Membership.Members {
 			out.Body.Members = append(out.Body.Members, MembershipMemberView{
 				Node: m.Node, HypervisorID: m.HypervisorID,
 				Address: m.Address, Fingerprint: m.Fingerprint,
+				HostKeys: m.HostKeys, RootKey: m.RootKey,
 			})
 		}
 		return out, nil

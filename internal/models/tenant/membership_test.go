@@ -32,7 +32,7 @@ func TestAnUnrecordedNodeIsReportedNotEvicted(t *testing.T) {
 	m := labA("pve1", "pve2")
 	obs := Observed{Cluster: "lab-a", Members: []string{"pve1", "pve2", "pve9"}, Quorate: true}
 
-	verb, target, why := m.Decide("pve1", obs)
+	verb, target, why := m.Decide(Self{Node: "pve1"}, obs)
 	if verb != VerbNone {
 		t.Fatalf("verb = %q (target %q), want none for an unrecorded node", verb, target)
 	}
@@ -45,7 +45,7 @@ func TestDecide(t *testing.T) {
 	cases := []struct {
 		name   string
 		desire Membership
-		self   string
+		self   Self
 		obs    Observed
 		verb   MembershipVerb
 		target string
@@ -53,14 +53,14 @@ func TestDecide(t *testing.T) {
 		{
 			name:   "desired in and standalone joins",
 			desire: labA("pve1", "pve2"),
-			self:   "pve2",
+			self:   Self{Node: "pve2"},
 			obs:    Observed{},
 			verb:   VerbJoin,
 		},
 		{
 			name:   "converged does nothing",
 			desire: labA("pve1", "pve2"),
-			self:   "pve2",
+			self:   Self{Node: "pve2"},
 			obs:    Observed{Cluster: "lab-a", Members: []string{"pve1", "pve2"}, Quorate: true},
 			verb:   VerbNone,
 		},
@@ -69,7 +69,7 @@ func TestDecide(t *testing.T) {
 			// the lowest-named remaining member owns the removal.
 			name:   "lowest remaining member evicts a recorded departure",
 			desire: departing(labA("pve1", "pve2"), "pve3"),
-			self:   "pve1",
+			self:   Self{Node: "pve1"},
 			obs:    Observed{Cluster: "lab-a", Members: []string{"pve1", "pve2", "pve3"}, Quorate: true},
 			verb:   VerbEvict,
 			target: "pve3",
@@ -80,14 +80,14 @@ func TestDecide(t *testing.T) {
 			// node that is already gone.
 			name:   "a non-owner stays out of the way",
 			desire: departing(labA("pve1", "pve2"), "pve3"),
-			self:   "pve2",
+			self:   Self{Node: "pve2"},
 			obs:    Observed{Cluster: "lab-a", Members: []string{"pve1", "pve2", "pve3"}, Quorate: true},
 			verb:   VerbNone,
 		},
 		{
 			name:   "the departing node waits for a peer to remove it",
 			desire: labA("pve1"),
-			self:   "pve2",
+			self:   Self{Node: "pve2"},
 			obs:    Observed{Cluster: "lab-a", Members: []string{"pve1", "pve2"}, Quorate: true},
 			verb:   VerbWait,
 		},
@@ -95,25 +95,28 @@ func TestDecide(t *testing.T) {
 			// 1 -> 0. Nobody remains to run delnode, so the node dissolves itself.
 			name:   "the last node dissolves its own cluster",
 			desire: Membership{Cluster: "lab-a"},
-			self:   "pve1",
+			self:   Self{Node: "pve1"},
 			obs:    Observed{Cluster: "lab-a", Members: []string{"pve1"}, Quorate: true},
 			verb:   VerbDissolve,
 		},
 		{
 			name:   "departed and standalone is converged",
 			desire: Membership{Cluster: "lab-a"},
-			self:   "pve1",
+			self:   Self{Node: "pve1"},
 			obs:    Observed{},
 			verb:   VerbNone,
 		},
 		{
 			// Moving between clusters destroys guest configuration, so it is an
 			// operator's deliberate departure, never a convergence.
-			name:   "a host in the wrong cluster is not converged automatically",
+			// BLOCKED, not converged. A move between clusters destroys guest
+			// configuration, so it needs an operator's departure — and until
+			// then this host must not report the gap as closed.
+			name:   "a host in the wrong cluster is blocked, not converged",
 			desire: labA("pve1"),
-			self:   "pve1",
+			self:   Self{Node: "pve1"},
 			obs:    Observed{Cluster: "lab-b", Members: []string{"pve1"}, Quorate: true},
-			verb:   VerbNone,
+			verb:   VerbBlocked,
 		},
 	}
 
@@ -162,12 +165,35 @@ func TestJoinTargetsExcludesSelfAndUnusablePeers(t *testing.T) {
 		MembershipMember{Node: "pve5", HypervisorID: "e", Fingerprint: "AA:BB"}, // no address
 	)
 
-	got := m.JoinTargets("pve1")
+	got := m.JoinTargets(Self{Node: "pve1"})
 	if len(got) != 1 || got[0].Node != "pve2" {
 		names := make([]string, 0, len(got))
 		for _, g := range got {
 			names = append(names, g.Node)
 		}
 		t.Fatalf("join targets = %v, want [pve2]", names)
+	}
+}
+
+// A machine that has never been in a cluster has no node name, so its entry in
+// the composition carries an empty Node. Matching on names alone would make it
+// conclude it is not wanted and never join — which is the state EVERY arrival
+// starts from, so the join path would never have run at all.
+func TestAMachineWithNoNodeNameStillRecognisesItself(t *testing.T) {
+	m := Membership{Cluster: "lab-b", Members: []MembershipMember{
+		{Node: "pve3", HypervisorID: "h3", Address: "10.0.0.3", Fingerprint: "AA"},
+		{Node: "", HypervisorID: "h9", Address: "10.0.0.9"}, // never been in a cluster
+	}}
+
+	verb, _, why := m.Decide(Self{ID: "h9"}, Observed{})
+	if verb != VerbJoin {
+		t.Fatalf("verb = %q, want join (why: %s)", verb, why)
+	}
+
+	// And it must not offer itself as a peer to join through.
+	for _, tgt := range m.JoinTargets(Self{ID: "h9"}) {
+		if tgt.HypervisorID == "h9" {
+			t.Fatal("the joining host was offered as its own join target")
+		}
 	}
 }

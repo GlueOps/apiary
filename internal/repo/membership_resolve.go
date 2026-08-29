@@ -22,6 +22,7 @@ import (
 func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) (*tenant.MembershipDesired, error) {
 	var row struct {
 		HiveID   *uuid.UUID
+		ID       uuid.UUID
 		Node     *string
 		Revision int
 		Digest   string
@@ -31,6 +32,7 @@ func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) 
 	// name; the hive is what publishes.
 	if err := db.WithContext(ctx).Raw(`
 		SELECT h.hive_id            AS hive_id,
+		       h.id                 AS id,
 		       h.name               AS node,
 		       COALESCE(v.membership_revision, 0) AS revision,
 		       COALESCE(v.membership_digest, '')  AS digest
@@ -83,13 +85,15 @@ func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) 
 		self = *row.Node
 	}
 	return &tenant.MembershipDesired{
-		Revision: row.Revision, Digest: row.Digest, Membership: doc, Self: self,
+		Revision: row.Revision, Digest: row.Digest, Membership: doc,
+		Self: self, SelfID: row.ID.String(),
 	}, nil
 }
 
 // RecordObservedMembership stores a host's own report of the cluster it sees.
 func RecordObservedMembership(
-	ctx context.Context, db *gorm.DB, beeID uuid.UUID, obs tenant.Observed, fingerprint string,
+	ctx context.Context, db *gorm.DB, beeID uuid.UUID, obs tenant.Observed,
+	fingerprint string, hostKeys []string, rootKey string,
 ) error {
 	// Named columns, never a struct: an Updates over a Bee struct would write
 	// every zero-valued field on the model and blank the agent version, the
@@ -105,6 +109,16 @@ func RecordObservedMembership(
 	// joins through.
 	if fingerprint != "" {
 		fields["observed_fingerprint"] = fingerprint
+	}
+	// Same treatment: an agent that could not read its own host keys must not
+	// blank the ones every other node pins in order to join through it.
+	if len(hostKeys) > 0 {
+		fields["observed_host_keys"] = datatypes.NewJSONType(hostKeys)
+	}
+	// Same treatment: an agent that could not read its own root key must not
+	// blank the value a cluster needs in order to admit it.
+	if rootKey != "" {
+		fields["observed_root_key"] = rootKey
 	}
 	return db.WithContext(ctx).Model(&tenant.Bee{}).Where("id = ?", beeID).
 		Updates(fields).Error

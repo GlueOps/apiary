@@ -258,6 +258,18 @@ func runWorker() error {
 				}
 				return jobs.ProxmoxCredential{TokenID: tokenID, Secret: secret, APIURL: apiURL}, nil
 			},
+			// This machine's own SSH host keys, captured while onboarding holds an
+			// authenticated session to it. They are for OTHER machines: a host
+			// joining a cluster must pin its PEER before pvecm add runs
+			// ssh-copy-id, and under agent-polled convergence there is no longer a
+			// moment where the control plane holds SSH to both at once.
+			RecordHostKeys: func(ctx context.Context, orgID, hvID uuid.UUID, keys []string) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.RecordHostKeys(ctx, db, hvID, keys)
+			},
 			RecordOutcome: func(ctx context.Context, orgID, hvID uuid.UUID, onboardErr error) (bool, error) {
 				db, err := fleetRepoFor(ctx, orgID)
 				if err != nil {

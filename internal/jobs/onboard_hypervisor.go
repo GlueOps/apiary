@@ -53,6 +53,11 @@ type OnboardDeps struct {
 	// joining node had. See WriteAgentCredential.
 	ProxmoxCredential func(ctx context.Context, orgID, hypervisorID uuid.UUID) (ProxmoxCredential, error)
 
+	// RecordHostKeys stores this machine's own SSH host public keys, so that a
+	// host joining a cluster THROUGH it can pin them without trusting the
+	// network. See the call site for why they are captured here.
+	RecordHostKeys func(ctx context.Context, orgID, hypervisorID uuid.UUID, keys []string) error
+
 	// BaseURL is the address the agent should enrol against and dial afterwards.
 	//
 	// Passed explicitly rather than left to the agent's default of
@@ -201,6 +206,31 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 				"hypervisor_id", in.HypervisorID, "error", cerr)
 		} else if err := WriteAgentCredential(ctx, runner, d.BaseURL, cred); err != nil {
 			return err
+		}
+	}
+
+	// Capture this host's own SSH host keys while we hold an authenticated
+	// session to it, which is the only moment they can be obtained without
+	// trusting the network.
+	//
+	// They are for OTHER hosts, not this one: a node joining a cluster needs its
+	// PEER's key in known_hosts before pvecm add runs ssh-copy-id, and under
+	// agent-polled convergence there is no longer a moment where the control
+	// plane holds SSH to both machines at once. Stored now, published in the
+	// cluster's composition, and seeded by the joiner from a channel it already
+	// trusts.
+	//
+	// Not fatal. A host whose keys could not be read still onboards, heartbeats
+	// and converges its firewall; only a future join through it is affected, and
+	// that failure is legible where this one would not be.
+	if keys, herr := ReadHostKeys(ctx, runner); herr != nil {
+		slog.WarnContext(ctx, "could not read this host's SSH host keys; a later join THROUGH "+
+			"this node will fail host key verification until they are captured",
+			"hypervisor_id", in.HypervisorID, "error", herr)
+	} else if d.RecordHostKeys != nil {
+		if rerr := d.RecordHostKeys(ctx, in.OrganizationID, in.HypervisorID, keys); rerr != nil {
+			slog.WarnContext(ctx, "could not record this host's SSH host keys",
+				"hypervisor_id", in.HypervisorID, "error", rerr)
 		}
 	}
 

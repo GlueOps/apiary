@@ -1437,7 +1437,11 @@ export const fleetHostsFleetlessOptions = (options?: Options<FleetHostsFleetless
 /**
  * Add a standalone machine to a hive
  *
- * Queues the arrival. Refused with 409 and reason codes when the host already belongs to a hive, still carries guests, or the target has no nodes to join to.
+ * Records that this machine SHOULD be a member of that hive. Its own agent converges on it — no SSH, and nothing is dispatched.
+ *
+ * The agent derives what to do from the world rather than being told: to become a member of a cluster with no other members is create, of one that has members is join. Arrival and bootstrap are therefore the same request.
+ *
+ * Refused with 409 and reason codes when the host already belongs to a hive or still carries guests. The gate is here, on the WRITE of desired state, so a refusal is sticky: it never becomes desired state at all.
  */
 export const fleetHostsArriveMutation = (options?: Partial<Options<FleetHostsArriveData>>): UseMutationOptions<FleetHostsArriveResponse, FleetHostsArriveError, Options<FleetHostsArriveData>> => {
     const mutationOptions: UseMutationOptions<FleetHostsArriveResponse, FleetHostsArriveError, Options<FleetHostsArriveData>> = {

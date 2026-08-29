@@ -82,3 +82,44 @@ func TestFingerprintRefusesSomethingThatIsNotACertificate(t *testing.T) {
 		t.Fatal("a PEM private key was accepted as a certificate")
 	}
 }
+
+// Host keys are reported in the two-field form known_hosts expects, with the
+// trailing comment dropped.
+//
+// "<type> <base64> root@pve3" carries an identity ssh does not read and that
+// changes when a hostname does — a pin that includes it still works, but the
+// stored value then differs from the same key on a renamed host, which reads as
+// a key change to anyone comparing them.
+func TestLocalHostKeysDropTheComment(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "ssh_host_ed25519_key.pub")
+	if err := os.WriteFile(p, []byte("ssh-ed25519 AAAAC3NzaC1lZDI1 root@pve3\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	old := HostKeyPaths
+	HostKeyPaths = []string{p, filepath.Join(dir, "absent.pub")}
+	t.Cleanup(func() { HostKeyPaths = old })
+
+	got, err := LocalHostKeys()
+	if err != nil {
+		t.Fatalf("host keys: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("keys = %v, want 1 (a missing key type is not an error)", got)
+	}
+	if got[0] != "ssh-ed25519 AAAAC3NzaC1lZDI1" {
+		t.Fatalf("key = %q, want the comment dropped", got[0])
+	}
+}
+
+// A host with no readable host keys says so, rather than reporting an empty set
+// that would blank what peers pin to reach it.
+func TestLocalHostKeysRefusesWhenThereAreNone(t *testing.T) {
+	old := HostKeyPaths
+	HostKeyPaths = []string{filepath.Join(t.TempDir(), "absent.pub")}
+	t.Cleanup(func() { HostKeyPaths = old })
+
+	if _, err := LocalHostKeys(); err == nil {
+		t.Fatal("a host with no keys reported success")
+	}
+}

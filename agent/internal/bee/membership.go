@@ -64,6 +64,18 @@ func (b *Bee) observeCluster(ctx context.Context) *fleetops.Observation {
 	return &obs
 }
 
+// localNodeName is what pmxcfs calls this host, for the heartbeat.
+//
+// Empty when this host is in no cluster, which is correct: there is no such name
+// until a machine joins one, and reporting a guess would give the control plane
+// a name the cluster does not use.
+func (b *Bee) localNodeName() string {
+	if b.opts.Fleet.Cluster == nil {
+		return ""
+	}
+	return b.opts.Fleet.Cluster.NodeName()
+}
+
 // convergeMembership brings this host's cluster membership to the published
 // composition.
 //
@@ -119,6 +131,7 @@ func (b *Bee) convergeMembership(ctx context.Context, desiredRev int, desiredDig
 	want := fleetops.Desired{
 		Cluster:   res.GetCluster(),
 		Self:      res.GetSelf(),
+		SelfID:    res.GetSelfId(),
 		Departing: res.GetDeparting(),
 	}
 	for _, m := range res.GetMembers() {
@@ -127,6 +140,8 @@ func (b *Bee) convergeMembership(ctx context.Context, desiredRev int, desiredDig
 			HypervisorID: m.GetHypervisorId(),
 			Address:      m.GetAddress(),
 			Fingerprint:  m.GetFingerprint(),
+			HostKeys:     m.GetHostKeys(),
+			RootKey:      m.GetRootKey(),
 		})
 	}
 
@@ -150,6 +165,10 @@ func (b *Bee) convergeMembership(ctx context.Context, desiredRev int, desiredDig
 			"revision", res.GetRevision(), "error", oerr)
 		return
 	}
+	// ONLY VerbNone counts as converged. VerbWait and VerbBlocked are also "do
+	// nothing now", and treating them alike reported a host in the WRONG cluster
+	// as settled — the control plane showed it in lab-a while corosync had it in
+	// lab-b. Leaving applied unset keeps it visibly diverged, which is true.
 	if again, _, why := want.Decide(obs); again != fleetops.VerbNone {
 		slog.InfoContext(ctx, "this host is not converged yet", "verb", again, "why", why)
 		return

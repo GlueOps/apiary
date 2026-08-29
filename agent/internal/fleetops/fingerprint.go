@@ -50,3 +50,44 @@ func LocalFingerprint() (string, error) {
 	}
 	return strings.Join(parts, ":"), nil
 }
+
+// HostKeyPaths are this node's own SSH host public keys. A var so tests can
+// point them at a fixture.
+var HostKeyPaths = []string{
+	"/etc/ssh/ssh_host_ed25519_key.pub",
+	"/etc/ssh/ssh_host_rsa_key.pub",
+}
+
+// LocalHostKeys are this host's own SSH host public keys, in the two-field form
+// known_hosts expects.
+//
+// Read fresh on every heartbeat rather than captured once. A host key survives a
+// rebuild only by accident, and a PEER that pins a stale one fails its join with
+// pvecm's "unable to copy ssh ID: exit code 1" — a message naming neither the
+// key nor verification. Reporting them continuously means a rebuilt host
+// re-publishes its own identity without anyone backfilling anything.
+//
+// The comment and any trailing identity are dropped: known_hosts takes
+// "<type> <base64>", and carrying "root@pve3" into it adds a field ssh does not
+// read and that changes when a hostname does.
+func LocalHostKeys() ([]string, error) {
+	var out []string
+	for _, p := range HostKeyPaths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			// A host legitimately may not have every key type.
+			continue
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			f := strings.Fields(strings.TrimSpace(line))
+			if len(f) < 2 || strings.HasPrefix(f[0], "#") {
+				continue
+			}
+			out = append(out, f[0]+" "+f[1])
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("this host presented no SSH host keys, so no peer could pin it")
+	}
+	return out, nil
+}

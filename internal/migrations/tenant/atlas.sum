@@ -1,4 +1,4 @@
-h1:km3klIc50MtJI9l4Bncl5Ovrg/QZ3bWuWAsXeAp5KxM=
+h1:A3lqKCx1gY7o85v/noxLncVrfi2jNI4AMCyQWRZA0Qk=
 20260822172006_estates.sql h1:rTEElJsZJUdH3HKZ/+FQNTqE2iaNNyPsqo80T9sYe5A=
 20260823142715_ssh_keys.sql h1:c8wCjoqQekqeAjs9tp2snKXwVCFrx5PBRwnRW0p3AkA=
 20260823162038_fleet_and_firewall.sql h1:HlVO2kq7UciseX2dyBbRg01zIK6HCsg942S0zY3m0Qw=
@@ -16,3 +16,6 @@ h1:km3klIc50MtJI9l4Bncl5Ovrg/QZ3bWuWAsXeAp5KxM=
 20260827045123_fleet_task_created_by_nullable.sql h1:4Yfi7Qi/Ci/2vrGYtOfDJ4jIgDed6Ry5fYIxVq3KKJA=
 20260827193723_add_tenant_audit_events.sql h1:WNZqSDZteEuTDN9gRj4Tde//xSsv2UB2osnwAeuHoQw=
 20260829085821_add_membership_convergence.sql h1:rU+aVXLzQiwBu5AhZix8hypUyYGRBdPY206rbGNpaho=
+20260829154054_add_hypervisor_ssh_host_keys.sql h1:QtWHfTyYBmiEsK4lEKk+vqk2luG5Rljt4tbccYi3kNY=
+20260829165516_add_bee_observed_host_keys.sql h1:2WPLdOxmdSL4gzLlXyHEnwJMzxGGi8tyxTpjJ/WUnZ0=
+20260829194404_add_bee_observed_root_key.sql h1:6aF8S5Bu/0wLZ7YWGUj0dp5tdd1IlTmkI4v6cufdLTs=

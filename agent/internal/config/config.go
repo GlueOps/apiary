@@ -19,7 +19,18 @@ type Config struct {
 	CommandTimeout time.Duration `mapstructure:"command_timeout"`
 
 	// The local hypervisor. Read from AGENT_* environment or the config file.
-	NodeName         string `mapstructure:"node_name"`
+	NodeName string `mapstructure:"node_name"`
+	// UNUSED, and kept only so an existing agent.env does not fail to parse.
+	//
+	// The agent holds no Proxmox credential: it runs as root on the node, reads
+	// cluster state from /etc/pve and changes it with pvecm. These were a real
+	// cost, not merely redundant — a host could not read its own state through a
+	// reissued CA, a post-reboot check waited on pveproxy, and the node that
+	// FORMS a cluster could never be given a credential because there was no
+	// cluster to take one from. Two lab nodes sat permanently unable to run any
+	// fleet task for exactly that reason.
+	//
+	// Removable once no deployed agent.env still names them.
 	ProxmoxURL       string `mapstructure:"proxmox_url"`
 	ProxmoxTokenID   string `mapstructure:"proxmox_token_id"`
 	ProxmoxSecret    string `mapstructure:"proxmox_secret"`

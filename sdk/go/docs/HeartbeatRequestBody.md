@@ -15,8 +15,11 @@ Name | Type | Description | Notes
 **ObservedCluster** | Pointer to **string** | The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look. | [optional] 
 **ObservedFingerprint** | Pointer to **string** |  | [optional] 
 **ObservedGuests** | Pointer to **int64** | VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy. | [optional] 
+**ObservedHostKeys** | Pointer to **[]string** | Public host keys in authorized_keys form, e.g. &#39;ssh-ed25519 AAAA...&#39;. Public material only. | [optional] 
 **ObservedMembers** | Pointer to **[]string** | Node names corosync reports, this host included. | [optional] 
+**ObservedNode** | Pointer to **string** |  | [optional] 
 **ObservedQuorate** | Pointer to **bool** |  | [optional] 
+**ObservedRootKey** | Pointer to **string** | Public material only. | [optional] 
 **UnavailableForSeconds** | Pointer to **int64** | Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault. | [optional] 
 **UnavailableReason** | Pointer to **string** |  | [optional] 
 **WaitSeconds** | Pointer to **int64** | Hold the request open for up to this long waiting for a task. The response is the same shape either way. | [optional] 
@@ -315,6 +318,41 @@ SetObservedGuests sets ObservedGuests field to given value.
 
 HasObservedGuests returns a boolean if a field has been set.
 
+### GetObservedHostKeys
+
+`func (o *HeartbeatRequestBody) GetObservedHostKeys() []string`
+
+GetObservedHostKeys returns the ObservedHostKeys field if non-nil, zero value otherwise.
+
+### GetObservedHostKeysOk
+
+`func (o *HeartbeatRequestBody) GetObservedHostKeysOk() (*[]string, bool)`
+
+GetObservedHostKeysOk returns a tuple with the ObservedHostKeys field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedHostKeys
+
+`func (o *HeartbeatRequestBody) SetObservedHostKeys(v []string)`
+
+SetObservedHostKeys sets ObservedHostKeys field to given value.
+
+### HasObservedHostKeys
+
+`func (o *HeartbeatRequestBody) HasObservedHostKeys() bool`
+
+HasObservedHostKeys returns a boolean if a field has been set.
+
+### SetObservedHostKeysNil
+
+`func (o *HeartbeatRequestBody) SetObservedHostKeysNil(b bool)`
+
+ SetObservedHostKeysNil sets the value for ObservedHostKeys to be an explicit nil
+
+### UnsetObservedHostKeys
+`func (o *HeartbeatRequestBody) UnsetObservedHostKeys()`
+
+UnsetObservedHostKeys ensures that no value is present for ObservedHostKeys, not even an explicit nil
 ### GetObservedMembers
 
 `func (o *HeartbeatRequestBody) GetObservedMembers() []string`
@@ -350,6 +388,31 @@ HasObservedMembers returns a boolean if a field has been set.
 `func (o *HeartbeatRequestBody) UnsetObservedMembers()`
 
 UnsetObservedMembers ensures that no value is present for ObservedMembers, not even an explicit nil
+### GetObservedNode
+
+`func (o *HeartbeatRequestBody) GetObservedNode() string`
+
+GetObservedNode returns the ObservedNode field if non-nil, zero value otherwise.
+
+### GetObservedNodeOk
+
+`func (o *HeartbeatRequestBody) GetObservedNodeOk() (*string, bool)`
+
+GetObservedNodeOk returns a tuple with the ObservedNode field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedNode
+
+`func (o *HeartbeatRequestBody) SetObservedNode(v string)`
+
+SetObservedNode sets ObservedNode field to given value.
+
+### HasObservedNode
+
+`func (o *HeartbeatRequestBody) HasObservedNode() bool`
+
+HasObservedNode returns a boolean if a field has been set.
+
 ### GetObservedQuorate
 
 `func (o *HeartbeatRequestBody) GetObservedQuorate() bool`
@@ -374,6 +437,31 @@ SetObservedQuorate sets ObservedQuorate field to given value.
 `func (o *HeartbeatRequestBody) HasObservedQuorate() bool`
 
 HasObservedQuorate returns a boolean if a field has been set.
+
+### GetObservedRootKey
+
+`func (o *HeartbeatRequestBody) GetObservedRootKey() string`
+
+GetObservedRootKey returns the ObservedRootKey field if non-nil, zero value otherwise.
+
+### GetObservedRootKeyOk
+
+`func (o *HeartbeatRequestBody) GetObservedRootKeyOk() (*string, bool)`
+
+GetObservedRootKeyOk returns a tuple with the ObservedRootKey field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedRootKey
+
+`func (o *HeartbeatRequestBody) SetObservedRootKey(v string)`
+
+SetObservedRootKey sets ObservedRootKey field to given value.
+
+### HasObservedRootKey
+
+`func (o *HeartbeatRequestBody) HasObservedRootKey() bool`
+
+HasObservedRootKey returns a boolean if a field has been set.
 
 ### GetUnavailableForSeconds
 

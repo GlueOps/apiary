@@ -1019,8 +1019,14 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		Method:      http.MethodPost,
 		Path:        "/fleet/fleetless/{hypervisor_id}/arrive",
 		Summary:     "Add a standalone machine to a hive",
-		Description: "Queues the arrival. Refused with 409 and reason codes when the host already " +
-			"belongs to a hive, still carries guests, or the target has no nodes to join to.",
+		Description: "Records that this machine SHOULD be a member of that hive. Its own agent " +
+			"converges on it — no SSH, and nothing is dispatched.\n\n" +
+			"The agent derives what to do from the world rather than being told: to become a " +
+			"member of a cluster with no other members is create, of one that has members is " +
+			"join. Arrival and bootstrap are therefore the same request.\n\n" +
+			"Refused with 409 and reason codes when the host already belongs to a hive or still " +
+			"carries guests. The gate is here, on the WRITE of desired state, so a refusal is " +
+			"sticky: it never becomes desired state at all.",
 		Tags:     []string{"Fleet"},
 		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *ArriveRequest) (*ArriveResponse, error) {
@@ -1086,15 +1092,23 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, refusalConflict("this host cannot join that hive yet", arrivalRefusalViews(refusals))
 		}
 
-		if deps.Jobs == nil {
-			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
-		}
-		if err := deps.Jobs.EnqueueArriveHypervisor(ctx, &workflow.ArriveHypervisorArgs{
-			OrganizationID: p.OrganizationID.String(),
-			HypervisorID:   hypID.String(),
-			TargetHiveID:   hiveID.String(),
-			Links:          links,
-		}); err != nil {
+		// DESIRED STATE, NOT A DISPATCH. The arrival is recorded as an intention
+		// and the host's own agent converges on it: it sees itself in the hive's
+		// published composition, observes that it is standalone, and derives the
+		// verb from the world — create when no other member is there, join when
+		// one is. Nothing here decides which, which is why arrival and bootstrap
+		// are no longer different requests.
+		//
+		// The gates above still run, and this is where they belong: a destructive
+		// convergence is made safe by never letting the desired state say
+		// something unsafe, rather than by a reconciler that evaluates policy and
+		// has to remember it refused. By the time an agent sees this, it is vetted
+		// — and the refusal is sticky for free, because it never became desired
+		// state at all.
+		//
+		// The SSH job still exists for a host whose agent is dead, which is the
+		// one case the agent cannot cover. It is no longer the ordinary path.
+		if err := repo.AssignToHive(ctx, db, hypID, hiveID); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 

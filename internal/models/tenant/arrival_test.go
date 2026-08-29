@@ -98,11 +98,19 @@ func TestCheckArrivalRefusals(t *testing.T) {
 		}
 	})
 
-	t.Run("an empty target hive is refused", func(t *testing.T) {
+	t.Run("an empty target hive is ALLOWED: that is how a cluster is formed", func(t *testing.T) {
+		// This used to refuse with target_hive_empty, and a separate bootstrap
+		// operation existed solely to create the first node. They were the same
+		// request all along, distinguished only by the control plane choosing a
+		// verb in advance.
+		//
+		// Under convergence the host derives it: no other member is present, so
+		// it creates. Refusing here made arrival depend on a precondition only
+		// another operation could satisfy.
 		req := base()
 		req.TargetNodeCount = 0
-		if !hasArrivalCode(CheckArrival(req), RefuseTargetHiveEmpty) {
-			t.Fatal("there must be something to join to")
+		if rs := CheckArrival(req); len(rs) != 0 {
+			t.Fatalf("arriving at an empty hive must be allowed; refused with %v", arrivalCodes(rs))
 		}
 	})
 
@@ -124,8 +132,8 @@ func TestCheckArrivalRefusals(t *testing.T) {
 		req.ObservedGuests = 3
 		req.TargetNodeCount = 0
 		rs := CheckArrival(req)
-		if len(rs) != 3 {
-			t.Fatalf("want all three refusals, got %v", arrivalCodes(rs))
+		if len(rs) != 2 {
+			t.Fatalf("want both remaining refusals, got %v", arrivalCodes(rs))
 		}
 	})
 }
