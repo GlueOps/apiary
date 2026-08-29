@@ -137,6 +137,31 @@ export type AgentFirewallResponseBody = {
     revision?: number;
 };
 
+export type AgentMembershipResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The corosync cluster name this hive should form.
+     */
+    cluster?: string;
+    /**
+     * Nodes the control plane records as removed. A member may evict one of these and nothing else; anything present and unrecorded is reported as a discrepancy instead.
+     */
+    departing?: Array<string> | null;
+    digest?: string;
+    /**
+     * The complete desired composition, not a delta.
+     */
+    members?: Array<MembershipMemberView> | null;
+    revision?: number;
+    /**
+     * This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster.
+     */
+    self?: string;
+};
+
 export type AgentUpgradeRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -830,14 +855,29 @@ export type HeartbeatRequestBody = {
      * The firewall revision this host has actually loaded. Omit or zero if it has applied none.
      */
     applied_firewall_revision?: number;
+    applied_membership_digest?: string;
+    /**
+     * The cluster composition this host has converged on. Omit or zero if it has converged on none.
+     */
+    applied_membership_revision?: number;
     /**
      * Withdraws a standing declaration: the host has returned.
      */
     back?: boolean;
     /**
+     * The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
+     */
+    observed_cluster?: string;
+    observed_fingerprint?: string;
+    /**
      * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
      */
     observed_guests?: number;
+    /**
+     * Node names corosync reports, this host included.
+     */
+    observed_members?: Array<string> | null;
+    observed_quorate?: boolean;
     /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
@@ -855,6 +895,7 @@ export type HeartbeatResponseBody = {
      */
     readonly $schema?: string;
     firewall?: FirewallDesiredView;
+    membership?: MembershipDesiredView;
     /**
      * This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
      */
@@ -1287,6 +1328,33 @@ export type MemberView = {
      */
     support_enabled: boolean;
     user_id: string;
+};
+
+export type MembershipDesiredView = {
+    /**
+     * Of the rendered composition. A revision bumped by an edit that changed no member leaves this identical, and no host touches corosync.
+     */
+    digest: string;
+    /**
+     * Only ever increases, including when a node is added back after being removed. An agent comparing revisions can use != or < and behave identically.
+     */
+    revision: number;
+};
+
+export type MembershipMemberView = {
+    address: string;
+    /**
+     * This node's API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target.
+     */
+    fingerprint?: string;
+    /**
+     * Identifies the machine across a node name it does not have yet.
+     */
+    hypervisor_id: string;
+    /**
+     * The Proxmox node name, absent for a machine that has never been in a cluster.
+     */
+    node?: string;
 };
 
 export type MintApiKeyRequestBody = {
@@ -2225,6 +2293,27 @@ export type AgentFirewallResponseBodyWritable = {
     revision?: number;
 };
 
+export type AgentMembershipResponseBodyWritable = {
+    /**
+     * The corosync cluster name this hive should form.
+     */
+    cluster?: string;
+    /**
+     * Nodes the control plane records as removed. A member may evict one of these and nothing else; anything present and unrecorded is reported as a discrepancy instead.
+     */
+    departing?: Array<string> | null;
+    digest?: string;
+    /**
+     * The complete desired composition, not a delta.
+     */
+    members?: Array<MembershipMemberView> | null;
+    revision?: number;
+    /**
+     * This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster.
+     */
+    self?: string;
+};
+
 export type AgentUpgradeRequestBodyWritable = {
     /**
      * Queue agents that already report the target version. For repairing a damaged binary, not for routine use: it restarts every agent in scope.
@@ -2597,14 +2686,29 @@ export type HeartbeatRequestBodyWritable = {
      * The firewall revision this host has actually loaded. Omit or zero if it has applied none.
      */
     applied_firewall_revision?: number;
+    applied_membership_digest?: string;
+    /**
+     * The cluster composition this host has converged on. Omit or zero if it has converged on none.
+     */
+    applied_membership_revision?: number;
     /**
      * Withdraws a standing declaration: the host has returned.
      */
     back?: boolean;
     /**
+     * The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
+     */
+    observed_cluster?: string;
+    observed_fingerprint?: string;
+    /**
      * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
      */
     observed_guests?: number;
+    /**
+     * Node names corosync reports, this host included.
+     */
+    observed_members?: Array<string> | null;
+    observed_quorate?: boolean;
     /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
@@ -2618,6 +2722,7 @@ export type HeartbeatRequestBodyWritable = {
 
 export type HeartbeatResponseBodyWritable = {
     firewall?: FirewallDesiredView;
+    membership?: MembershipDesiredView;
     /**
      * This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
      */
@@ -3557,6 +3662,31 @@ export type FleetBeeHeartbeatResponses = {
 };
 
 export type FleetBeeHeartbeatResponse = FleetBeeHeartbeatResponses[keyof FleetBeeHeartbeatResponses];
+
+export type FleetBeeMembershipData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/membership';
+};
+
+export type FleetBeeMembershipErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetBeeMembershipError = FleetBeeMembershipErrors[keyof FleetBeeMembershipErrors];
+
+export type FleetBeeMembershipResponses = {
+    /**
+     * OK
+     */
+    200: AgentMembershipResponseBody;
+};
+
+export type FleetBeeMembershipResponse = FleetBeeMembershipResponses[keyof FleetBeeMembershipResponses];
 
 export type FleetBeeAppendLogsData = {
     body: LogsRequestBodyWritable;

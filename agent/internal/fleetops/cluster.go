@@ -207,3 +207,25 @@ func localAPIClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsCfg}}
 }
+
+// ClusterName is the cluster this host is in, or empty when it is standalone.
+//
+// Read from the status already fetched rather than re-asked, so it describes the
+// same moment as Quorate and NodeNames. A caller that reads them from different
+// reads can see a node that is in a cluster, has no members and is quorate —
+// three facts that were each true and never true together.
+func (p *pveCluster) ClusterName() string {
+	if p.cluster == nil {
+		return ""
+	}
+	return p.cluster.Name
+}
+
+// CreateCluster forms a new cluster with this host as its first member.
+func (p *pveCluster) CreateCluster(ctx context.Context, opts *proxmox.ClusterCreateOptions) (string, error) {
+	cl, err := p.client.Cluster(ctx)
+	if err != nil {
+		return "", err
+	}
+	return cl.CreateCluster(ctx, opts)
+}

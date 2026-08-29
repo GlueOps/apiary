@@ -1228,6 +1228,147 @@ func (a *FleetAPIService) FleetBeeHeartbeatExecute(r ApiFleetBeeHeartbeatRequest
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type ApiFleetBeeMembershipRequest struct {
+	ctx context.Context
+	ApiService *FleetAPIService
+}
+
+func (r ApiFleetBeeMembershipRequest) Execute() (*AgentMembershipResponseBody, *http.Response, error) {
+	return r.ApiService.FleetBeeMembershipExecute(r)
+}
+
+/*
+FleetBeeMembership Fetch the cluster composition this host's hive should have
+
+The COMPLETE desired composition, not a delta. A node present in the cluster and absent from this list is desired-absent, which is what a departure looks like from the outside.
+
+Published per CLUSTER rather than per host, because a departure is executed by a node that REMAINS: the node being removed cannot run delnode against itself. An agent that only knew its own membership could never own that, so every member is told the whole composition and reconciles its own view of it.
+
+The agent derives the verb from this against what corosync reports — to become a member of a cluster with no other members is create, of one with members is join, and of nothing is delnode. Nothing here decides which.
+
+An EMPTY response means hold what you have. It is returned for a machine in no hive and for a hive that has published nothing, and neither is an instruction to leave a cluster.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return ApiFleetBeeMembershipRequest
+*/
+func (a *FleetAPIService) FleetBeeMembership(ctx context.Context) ApiFleetBeeMembershipRequest {
+	return ApiFleetBeeMembershipRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+//  @return AgentMembershipResponseBody
+func (a *FleetAPIService) FleetBeeMembershipExecute(r ApiFleetBeeMembershipRequest) (*AgentMembershipResponseBody, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *AgentMembershipResponseBody
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "FleetAPIService.FleetBeeMembership")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/api/v1/agent/membership"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json", "application/problem+json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["AgentKeySecret"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-AGENT-Secret"] = key
+			}
+		}
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["AgentKeyAuth"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-AGENT-Key"] = key
+			}
+		}
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+			var v ErrorModel
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiFleetBeeReportTaskRequest struct {
 	ctx context.Context
 	ApiService *FleetAPIService

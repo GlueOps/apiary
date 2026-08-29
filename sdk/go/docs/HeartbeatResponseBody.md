@@ -6,6 +6,7 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
 **Firewall** | Pointer to [**FirewallDesiredView**](FirewallDesiredView.md) |  | [optional] 
+**Membership** | Pointer to [**MembershipDesiredView**](MembershipDesiredView.md) |  | [optional] 
 **Task** | Pointer to [**TaskView**](TaskView.md) | This bee&#39;s one outstanding task, or absent. A bee that already holds a task is handed the SAME one back. | [optional] 
 
 ## Methods
@@ -76,6 +77,31 @@ SetFirewall sets Firewall field to given value.
 `func (o *HeartbeatResponseBody) HasFirewall() bool`
 
 HasFirewall returns a boolean if a field has been set.
+
+### GetMembership
+
+`func (o *HeartbeatResponseBody) GetMembership() MembershipDesiredView`
+
+GetMembership returns the Membership field if non-nil, zero value otherwise.
+
+### GetMembershipOk
+
+`func (o *HeartbeatResponseBody) GetMembershipOk() (*MembershipDesiredView, bool)`
+
+GetMembershipOk returns a tuple with the Membership field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMembership
+
+`func (o *HeartbeatResponseBody) SetMembership(v MembershipDesiredView)`
+
+SetMembership sets Membership field to given value.
+
+### HasMembership
+
+`func (o *HeartbeatResponseBody) HasMembership() bool`
+
+HasMembership returns a boolean if a field has been set.
 
 ### GetTask
 

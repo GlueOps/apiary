@@ -11,16 +11,20 @@ import (
 )
 
 type fakeCluster struct {
-	statusErr error
-	quorate   bool
-	members   int
-	names     []string
-	guests    map[string][]Guest
-	guestsErr error
-	deleted   []string
-	deleteErr error
-	joined    *proxmox.ClusterJoinOptions
-	joinErr   error
+	statusErr    error
+	quorate      bool
+	members      int
+	names        []string
+	guests       map[string][]Guest
+	guestsErr    error
+	deleted      []string
+	deleteErr    error
+	joined       *proxmox.ClusterJoinOptions
+	joinErr      error
+	name         string
+	created      *proxmox.ClusterCreateOptions
+	createErr    error
+	joinAttempts int
 
 	// statusHook runs at the top of each Status call, with the number of calls
 	// made so far including this one. It lets a test model a host whose API goes
@@ -28,6 +32,16 @@ type fakeCluster struct {
 	// whole of what a join looks like from here.
 	statusHook  func(call int, f *fakeCluster)
 	statusCalls int
+}
+
+func (f *fakeCluster) ClusterName() string { return f.name }
+
+func (f *fakeCluster) CreateCluster(_ context.Context, o *proxmox.ClusterCreateOptions) (string, error) {
+	f.created = o
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	return "UPID:created", nil
 }
 
 func (f *fakeCluster) Status(context.Context) error {
@@ -52,6 +66,7 @@ func (f *fakeCluster) DeleteConfigNode(_ context.Context, node string) error {
 }
 func (f *fakeCluster) JoinCluster(_ context.Context, o *proxmox.ClusterJoinOptions) (string, error) {
 	f.joined = o
+	f.joinAttempts++
 	return "ok", f.joinErr
 }
 

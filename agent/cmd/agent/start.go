@@ -43,12 +43,19 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
+		// Built ONCE and shared between the task executors and the convergence
+		// loop, so the two cannot end up talking to the hypervisor through
+		// differently-configured clients — which is the sort of difference that
+		// only shows up as one of them mysteriously failing to authenticate.
+		fd := fleetDeps(cfg)
+
 		b := bee.New(bee.Options{
 			Store:         st,
 			Client:        client,
 			AgentVersion:  Version,
 			HeartbeatWait: cfg.HeartbeatWait,
-		}, executors(fleetDeps(cfg), cfg))
+			Fleet:         fd,
+		}, executors(fd, cfg))
 
 		// Withdraw any standing unavailability BEFORE the loops start. This
 		// process may be the one that came back from the reboot it declared, and

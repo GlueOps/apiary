@@ -27,6 +27,7 @@ docs/AdminAPI.md
 docs/AgentBuildView.md
 docs/AgentDistResponseBody.md
 docs/AgentFirewallResponseBody.md
+docs/AgentMembershipResponseBody.md
 docs/AgentUpgradeRequestBody.md
 docs/AgentUpgradeResponseBody.md
 docs/ArriveRequestBody.md
@@ -126,6 +127,8 @@ docs/MFAVerifyRequestBody.md
 docs/MFAVerifyResponseBody.md
 docs/MeAPI.md
 docs/MemberView.md
+docs/MembershipDesiredView.md
+docs/MembershipMemberView.md
 docs/MintAPIKeyRequestBody.md
 docs/MintAPIKeyResponseBody.md
 docs/MintRequestBody.md
@@ -216,6 +219,7 @@ model_add_set_element_request_body.go
 model_agent_build_view.go
 model_agent_dist_response_body.go
 model_agent_firewall_response_body.go
+model_agent_membership_response_body.go
 model_agent_upgrade_request_body.go
 model_agent_upgrade_response_body.go
 model_api_key_view.go
@@ -307,6 +311,8 @@ model_logout_response_body.go
 model_logs_request_body.go
 model_logs_response_body.go
 model_member_view.go
+model_membership_desired_view.go
+model_membership_member_view.go
 model_mfa_struct.go
 model_mfa_verify_request_body.go
 model_mfa_verify_response_body.go

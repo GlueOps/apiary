@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/glueops/apiary-agent/internal/firewall"
+	"github.com/glueops/apiary-agent/internal/fleetops"
 	"github.com/glueops/apiary-agent/internal/selfupgrade"
 	"github.com/glueops/apiary-agent/internal/store"
 	apiary "github.com/glueops/apiary/sdk/go"
@@ -69,6 +70,13 @@ type Options struct {
 	// anywhere else in this agent, because the failure mode is an unreachable
 	// host rather than a failed task.
 	FirewallRunner firewall.Runner
+
+	// Fleet is what cluster convergence acts through. Zero-valued on a host that
+	// is not a Proxmox node, which is deliberate: such a host runs the agent
+	// perfectly well and simply cannot converge cluster membership, and an agent
+	// that would not start without a hypervisor could not be deployed ahead of
+	// one.
+	Fleet fleetops.Deps
 }
 
 type Bee struct {
@@ -78,6 +86,17 @@ type Bee struct {
 
 	// firewall is what this host is enforcing, as established by this process.
 	firewall appliedFirewall
+
+	// membership is the cluster composition this host has converged on, and
+	// desiredMembership what the last heartbeat said it should be. The same pair
+	// as the firewall's above, acted on in the same place in the loop.
+	membership        appliedMembership
+	desiredMembership atomic.Value
+
+	// warnedNoClient is the last revision this agent complained it could not
+	// converge, so a host with no Proxmox token says so once per change rather
+	// than on every heartbeat forever.
+	warnedNoClient atomic.Int64
 
 	// desiredFirewall is what the last heartbeat said it should be. Nil means
 	// hold.
@@ -163,6 +182,19 @@ func (b *Bee) reportLoop(ctx context.Context) {
 			b.converge(ctx, d.revision, d.digest)
 		}
 
+		// Cluster membership, in the same place and for the same reason: it can
+		// take minutes and it confirms itself by re-reading the cluster, neither
+		// of which belongs inside the heartbeat that delivered it.
+		//
+		// AFTER the firewall on purpose. A host converging into a cluster it has
+		// not yet been given rules for should get the rules first — the join
+		// restarts pve-cluster and corosync, and doing that on a host whose
+		// management access is not yet established is how one becomes unreachable
+		// at the moment it most needs not to be.
+		if d, _ := b.desiredMembership.Load().(*desiredMembership); d != nil {
+			b.convergeMembership(ctx, d.revision, d.digest)
+		}
+
 		// ALWAYS pause, whether or not a task came back.
 		//
 		// The obvious version — loop immediately when a task arrives — spins at
@@ -230,6 +262,32 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		body.SetObservedGuests(int64(n))
 	}
 
+	// What this host can SEE of its own cluster. The control plane cannot learn
+	// this soundly any other way for the states that matter: its capacity sync
+	// reads per CLUSTER, so a machine in no cluster is never observed by it, and
+	// fleetless is exactly the state a machine is in when it is about to join
+	// one.
+	//
+	// A FAILED read sends nothing rather than sending empty. Empty means
+	// standalone, which is an observation the control plane's gates act on, and
+	// inventing it because pveproxy was restarting is how a gate reasons from a
+	// fact nobody established.
+	if obs := b.observeCluster(ctx); obs != nil {
+		body.SetObservedCluster(obs.Cluster)
+		body.SetObservedMembers(obs.Members)
+		body.SetObservedQuorate(obs.Quorate)
+	}
+	// This host's own certificate fingerprint, which is what a PEER needs to join
+	// through it. Read fresh, because updatecerts reissues it and a join and a
+	// departure both run that.
+	if fp, err := fleetops.LocalFingerprint(); err == nil {
+		body.SetObservedFingerprint(fp)
+	}
+	if rev, digest := b.membership.get(); rev > 0 && digest != "" {
+		body.SetAppliedMembershipRevision(int64(rev))
+		body.SetAppliedMembershipDigest(digest)
+	}
+
 	if o.back {
 		body.SetBack(true)
 	} else if o.unavailableFor > 0 {
@@ -272,6 +330,11 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		// Absent means HOLD. Cleared rather than left standing, so a machine that
 		// leaves its fleet stops being told to converge on that fleet's policy.
 		b.desiredFirewall.Store((*desiredFirewall)(nil))
+	}
+	if m, ok := res.GetMembershipOk(); ok && m != nil {
+		b.desiredMembership.Store(&desiredMembership{
+			revision: int(m.GetRevision()), digest: m.GetDigest(),
+		})
 	}
 
 	task, ok := res.GetTaskOk()

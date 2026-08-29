@@ -102,6 +102,29 @@ type Hive struct {
 	FirewallDigest      string     `gorm:"type:varchar(71);not null;default:''" json:"firewall_digest,omitempty"`
 	FirewallPublishedAt *time.Time `gorm:"type:timestamptz" json:"firewall_published_at,omitempty"`
 
+	// The cluster composition this hive's bees should converge on, published the
+	// same way the firewall is and for the same reasons — see FirewallRevision
+	// above, which this deliberately mirrors rather than inventing a second
+	// convergence protocol beside it.
+	//
+	// MembershipRevision only ever INCREASES, including when a node is added back
+	// after being removed. An agent decides whether to act by comparing what it
+	// applied against this number, and a revision that moved backwards would let
+	// two agents hold different opinions about the same value.
+	//
+	// The digest is over the RENDERED composition, so a revision bumped by an
+	// edit that changed nothing about the members leaves it identical and no host
+	// touches corosync. That matters more here than for the firewall: reloading
+	// an identical ruleset is cheap, and re-running a cluster operation is not.
+	//
+	// Zero means nothing has been published, which is NOT "the cluster should be
+	// empty". An agent reads absent as HOLD, exactly as it does for the firewall,
+	// because the alternative is that a hive whose publication failed dissolves
+	// itself node by node.
+	MembershipRevision    int        `gorm:"not null;default:0" json:"membership_revision"`
+	MembershipDigest      string     `gorm:"type:varchar(71);not null;default:''" json:"membership_digest,omitempty"`
+	MembershipPublishedAt *time.Time `gorm:"type:timestamptz" json:"membership_published_at,omitempty"`
+
 	CreatedAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
 	UpdatedAt time.Time `gorm:"type:timestamptz;autoUpdateTime;not null;default:now()" json:"updated_at"`
 }
@@ -218,6 +241,52 @@ type Bee struct {
 	AppliedFirewallRevision int        `gorm:"not null;default:0" json:"applied_firewall_revision"`
 	AppliedFirewallDigest   string     `gorm:"type:varchar(71);not null;default:''" json:"applied_firewall_digest,omitempty"`
 	AppliedFirewallAt       *time.Time `gorm:"type:timestamptz" json:"applied_firewall_at,omitempty"`
+
+	// What this agent last reported about the cluster it can actually SEE.
+	//
+	// The host is the better observer and this is where that becomes true. The
+	// capacity sync reads the Proxmox API per CLUSTER, so a machine in no cluster
+	// is never observed at all — and fleetless is exactly the state a machine is
+	// in when it is about to join one. It is also unreachable in the cases that
+	// matter: a node that has left a cluster holds no credential the API would
+	// accept, and .13 served a broken pveproxy for hours while its agent
+	// heartbeated normally throughout.
+	//
+	// ObservedCluster EMPTY means standalone, and it is an observation rather
+	// than a missing one: a standalone node's /cluster/status returns a node
+	// entry with nodeid 0 and no cluster entry, so a successful read yielding no
+	// name IS the standalone signal. ObservedMembershipAt distinguishes that from
+	// "this agent has never said" — without it, an agent that has reported
+	// nothing is indistinguishable from one reporting a standalone host, and the
+	// two lead to opposite decisions.
+	ObservedCluster string                       `gorm:"type:varchar(100);not null;default:''" json:"observed_cluster,omitempty"`
+	ObservedMembers datatypes.JSONType[[]string] `gorm:"type:jsonb" json:"observed_members,omitzero"`
+	ObservedQuorate bool                         `gorm:"not null;default:false" json:"observed_quorate"`
+
+	// ObservedFingerprint is this host's own API certificate fingerprint, as the
+	// host reads it.
+	//
+	// Needed because a join through the Proxmox API must present the target's
+	// fingerprint, and without one `pvecm add` PROMPTS — which in a
+	// non-interactive context hangs until something kills it and reports a
+	// timeout that says nothing about the cause.
+	//
+	// Self-reported on purpose, and it is not a trust decision. The alternative
+	// is the joining node reading the fingerprint off the peer it is about to
+	// trust, which verifies nothing at all. Here the control plane learns it from
+	// the peer's OWN authenticated agent session and publishes it to the joiner,
+	// so the joiner checks a value that reached it over a different channel than
+	// the one it is about to open.
+	ObservedFingerprint  string     `gorm:"type:varchar(200);not null;default:''" json:"observed_fingerprint,omitempty"`
+	ObservedMembershipAt *time.Time `gorm:"type:timestamptz" json:"observed_membership_at,omitempty"`
+
+	// AppliedMembershipRevision is the composition this agent has converged on.
+	// Reported rather than assumed, for the same reason the firewall is: marking
+	// a hive converged when an operator clicked Publish would report every
+	// switched-off host as compliant.
+	AppliedMembershipRevision int        `gorm:"not null;default:0" json:"applied_membership_revision"`
+	AppliedMembershipDigest   string     `gorm:"type:varchar(71);not null;default:''" json:"applied_membership_digest,omitempty"`
+	AppliedMembershipAt       *time.Time `gorm:"type:timestamptz" json:"applied_membership_at,omitempty"`
 
 	EnrolledAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"enrolled_at"`
 	CreatedAt  time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`

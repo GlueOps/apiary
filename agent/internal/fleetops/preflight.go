@@ -25,9 +25,20 @@ type Cluster interface {
 	Quorate() bool
 	MemberCount() int
 	NodeNames() []string
+
+	// ClusterName is the cluster this host is in, EMPTY when it is standalone.
+	//
+	// Empty is an observation rather than a missing one: a standalone node's
+	// /cluster/status carries a node entry with nodeid 0 and no cluster entry at
+	// all, so a SUCCESSFUL read that yields no name is how standalone is
+	// detected. Distinguishing that from a failed read is the caller's job, and
+	// Status returning an error is what says the read failed.
+	ClusterName() string
+
 	GuestsOn(ctx context.Context, node string) ([]Guest, error)
 	DeleteConfigNode(ctx context.Context, node string) error
 	JoinCluster(ctx context.Context, opts *proxmox.ClusterJoinOptions) (string, error)
+	CreateCluster(ctx context.Context, opts *proxmox.ClusterCreateOptions) (string, error)
 }
 
 // Guest is a VM or container, reduced to what a fleet decision needs.
