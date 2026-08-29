@@ -10,7 +10,8 @@ Name | Type | Description | Notes
 **Digest** | Pointer to **string** |  | [optional] 
 **Members** | Pointer to [**[]MembershipMemberView**](MembershipMemberView.md) | The complete desired composition, not a delta. | [optional] 
 **Revision** | Pointer to **int64** |  | [optional] 
-**Self** | Pointer to **string** | This host&#39;s node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster. | [optional] 
+**Self** | Pointer to **string** | This host&#39;s node name as the control plane knows it. Empty for a machine that has never joined a cluster. | [optional] 
+**SelfId** | Pointer to **string** | This machine&#39;s hypervisor id, which is how a host with no node name yet locates itself in the list — the state every arrival starts from. | [optional] 
 
 ## Methods
 
@@ -225,6 +226,31 @@ SetSelf sets Self field to given value.
 `func (o *AgentMembershipResponseBody) HasSelf() bool`
 
 HasSelf returns a boolean if a field has been set.
+
+### GetSelfId
+
+`func (o *AgentMembershipResponseBody) GetSelfId() string`
+
+GetSelfId returns the SelfId field if non-nil, zero value otherwise.
+
+### GetSelfIdOk
+
+`func (o *AgentMembershipResponseBody) GetSelfIdOk() (*string, bool)`
+
+GetSelfIdOk returns a tuple with the SelfId field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSelfId
+
+`func (o *AgentMembershipResponseBody) SetSelfId(v string)`
+
+SetSelfId sets SelfId field to given value.
+
+### HasSelfId
+
+`func (o *AgentMembershipResponseBody) HasSelfId() bool`
+
+HasSelfId returns a boolean if a field has been set.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

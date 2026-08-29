@@ -6,8 +6,10 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Address** | **string** |  | 
 **Fingerprint** | Pointer to **string** | This node&#39;s API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target. | [optional] 
+**HostKeys** | Pointer to **[]string** | This node&#39;s SSH host public keys. A joining host pins these before pvecm add runs ssh-copy-id. | [optional] 
 **HypervisorId** | **string** | Identifies the machine across a node name it does not have yet. | 
 **Node** | Pointer to **string** | The Proxmox node name, absent for a machine that has never been in a cluster. | [optional] 
+**RootKey** | Pointer to **string** | This node&#39;s root SSH public key. An existing member installs it into the cluster&#39;s replicated authorized_keys so a desired-but-absent node can authenticate its join. The joiner cannot do this itself: the file is cluster state it has no access to until it is a member. | [optional] 
 
 ## Methods
 
@@ -73,6 +75,41 @@ SetFingerprint sets Fingerprint field to given value.
 
 HasFingerprint returns a boolean if a field has been set.
 
+### GetHostKeys
+
+`func (o *MembershipMemberView) GetHostKeys() []string`
+
+GetHostKeys returns the HostKeys field if non-nil, zero value otherwise.
+
+### GetHostKeysOk
+
+`func (o *MembershipMemberView) GetHostKeysOk() (*[]string, bool)`
+
+GetHostKeysOk returns a tuple with the HostKeys field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetHostKeys
+
+`func (o *MembershipMemberView) SetHostKeys(v []string)`
+
+SetHostKeys sets HostKeys field to given value.
+
+### HasHostKeys
+
+`func (o *MembershipMemberView) HasHostKeys() bool`
+
+HasHostKeys returns a boolean if a field has been set.
+
+### SetHostKeysNil
+
+`func (o *MembershipMemberView) SetHostKeysNil(b bool)`
+
+ SetHostKeysNil sets the value for HostKeys to be an explicit nil
+
+### UnsetHostKeys
+`func (o *MembershipMemberView) UnsetHostKeys()`
+
+UnsetHostKeys ensures that no value is present for HostKeys, not even an explicit nil
 ### GetHypervisorId
 
 `func (o *MembershipMemberView) GetHypervisorId() string`
@@ -117,6 +154,31 @@ SetNode sets Node field to given value.
 `func (o *MembershipMemberView) HasNode() bool`
 
 HasNode returns a boolean if a field has been set.
+
+### GetRootKey
+
+`func (o *MembershipMemberView) GetRootKey() string`
+
+GetRootKey returns the RootKey field if non-nil, zero value otherwise.
+
+### GetRootKeyOk
+
+`func (o *MembershipMemberView) GetRootKeyOk() (*string, bool)`
+
+GetRootKeyOk returns a tuple with the RootKey field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetRootKey
+
+`func (o *MembershipMemberView) SetRootKey(v string)`
+
+SetRootKey sets RootKey field to given value.
+
+### HasRootKey
+
+`func (o *MembershipMemberView) HasRootKey() bool`
+
+HasRootKey returns a boolean if a field has been set.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

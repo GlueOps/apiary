@@ -24,10 +24,14 @@ type MembershipMemberView struct {
 	Address string `json:"address"`
 	// This node's API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target.
 	Fingerprint *string `json:"fingerprint,omitempty"`
+	// This node's SSH host public keys. A joining host pins these before pvecm add runs ssh-copy-id.
+	HostKeys []string `json:"host_keys,omitempty"`
 	// Identifies the machine across a node name it does not have yet.
 	HypervisorId string `json:"hypervisor_id"`
 	// The Proxmox node name, absent for a machine that has never been in a cluster.
 	Node *string `json:"node,omitempty"`
+	// This node's root SSH public key. An existing member installs it into the cluster's replicated authorized_keys so a desired-but-absent node can authenticate its join. The joiner cannot do this itself: the file is cluster state it has no access to until it is a member.
+	RootKey *string `json:"root_key,omitempty"`
 }
 
 type _MembershipMemberView MembershipMemberView
@@ -107,6 +111,39 @@ func (o *MembershipMemberView) SetFingerprint(v string) {
 	o.Fingerprint = &v
 }
 
+// GetHostKeys returns the HostKeys field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *MembershipMemberView) GetHostKeys() []string {
+	if o == nil {
+		var ret []string
+		return ret
+	}
+	return o.HostKeys
+}
+
+// GetHostKeysOk returns a tuple with the HostKeys field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *MembershipMemberView) GetHostKeysOk() ([]string, bool) {
+	if o == nil || IsNil(o.HostKeys) {
+		return nil, false
+	}
+	return o.HostKeys, true
+}
+
+// HasHostKeys returns a boolean if a field has been set.
+func (o *MembershipMemberView) HasHostKeys() bool {
+	if o != nil && !IsNil(o.HostKeys) {
+		return true
+	}
+
+	return false
+}
+
+// SetHostKeys gets a reference to the given []string and assigns it to the HostKeys field.
+func (o *MembershipMemberView) SetHostKeys(v []string) {
+	o.HostKeys = v
+}
+
 // GetHypervisorId returns the HypervisorId field value
 func (o *MembershipMemberView) GetHypervisorId() string {
 	if o == nil {
@@ -163,6 +200,38 @@ func (o *MembershipMemberView) SetNode(v string) {
 	o.Node = &v
 }
 
+// GetRootKey returns the RootKey field value if set, zero value otherwise.
+func (o *MembershipMemberView) GetRootKey() string {
+	if o == nil || IsNil(o.RootKey) {
+		var ret string
+		return ret
+	}
+	return *o.RootKey
+}
+
+// GetRootKeyOk returns a tuple with the RootKey field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MembershipMemberView) GetRootKeyOk() (*string, bool) {
+	if o == nil || IsNil(o.RootKey) {
+		return nil, false
+	}
+	return o.RootKey, true
+}
+
+// HasRootKey returns a boolean if a field has been set.
+func (o *MembershipMemberView) HasRootKey() bool {
+	if o != nil && !IsNil(o.RootKey) {
+		return true
+	}
+
+	return false
+}
+
+// SetRootKey gets a reference to the given string and assigns it to the RootKey field.
+func (o *MembershipMemberView) SetRootKey(v string) {
+	o.RootKey = &v
+}
+
 func (o MembershipMemberView) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -177,9 +246,15 @@ func (o MembershipMemberView) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Fingerprint) {
 		toSerialize["fingerprint"] = o.Fingerprint
 	}
+	if o.HostKeys != nil {
+		toSerialize["host_keys"] = o.HostKeys
+	}
 	toSerialize["hypervisor_id"] = o.HypervisorId
 	if !IsNil(o.Node) {
 		toSerialize["node"] = o.Node
+	}
+	if !IsNil(o.RootKey) {
+		toSerialize["root_key"] = o.RootKey
 	}
 	return toSerialize, nil
 }

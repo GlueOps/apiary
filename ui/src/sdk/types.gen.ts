@@ -157,9 +157,13 @@ export type AgentMembershipResponseBody = {
     members?: Array<MembershipMemberView> | null;
     revision?: number;
     /**
-     * This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster.
+     * This host's node name as the control plane knows it. Empty for a machine that has never joined a cluster.
      */
     self?: string;
+    /**
+     * This machine's hypervisor id, which is how a host with no node name yet locates itself in the list — the state every arrival starts from.
+     */
+    self_id?: string;
 };
 
 export type AgentUpgradeRequestBody = {
@@ -874,10 +878,19 @@ export type HeartbeatRequestBody = {
      */
     observed_guests?: number;
     /**
+     * Public host keys in authorized_keys form, e.g. 'ssh-ed25519 AAAA...'. Public material only.
+     */
+    observed_host_keys?: Array<string> | null;
+    /**
      * Node names corosync reports, this host included.
      */
     observed_members?: Array<string> | null;
+    observed_node?: string;
     observed_quorate?: boolean;
+    /**
+     * Public material only.
+     */
+    observed_root_key?: string;
     /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
@@ -1348,6 +1361,10 @@ export type MembershipMemberView = {
      */
     fingerprint?: string;
     /**
+     * This node's SSH host public keys. A joining host pins these before pvecm add runs ssh-copy-id.
+     */
+    host_keys?: Array<string> | null;
+    /**
      * Identifies the machine across a node name it does not have yet.
      */
     hypervisor_id: string;
@@ -1355,6 +1372,10 @@ export type MembershipMemberView = {
      * The Proxmox node name, absent for a machine that has never been in a cluster.
      */
     node?: string;
+    /**
+     * This node's root SSH public key. An existing member installs it into the cluster's replicated authorized_keys so a desired-but-absent node can authenticate its join. The joiner cannot do this itself: the file is cluster state it has no access to until it is a member.
+     */
+    root_key?: string;
 };
 
 export type MintApiKeyRequestBody = {
@@ -2309,9 +2330,13 @@ export type AgentMembershipResponseBodyWritable = {
     members?: Array<MembershipMemberView> | null;
     revision?: number;
     /**
-     * This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster.
+     * This host's node name as the control plane knows it. Empty for a machine that has never joined a cluster.
      */
     self?: string;
+    /**
+     * This machine's hypervisor id, which is how a host with no node name yet locates itself in the list — the state every arrival starts from.
+     */
+    self_id?: string;
 };
 
 export type AgentUpgradeRequestBodyWritable = {
@@ -2705,10 +2730,19 @@ export type HeartbeatRequestBodyWritable = {
      */
     observed_guests?: number;
     /**
+     * Public host keys in authorized_keys form, e.g. 'ssh-ed25519 AAAA...'. Public material only.
+     */
+    observed_host_keys?: Array<string> | null;
+    /**
      * Node names corosync reports, this host included.
      */
     observed_members?: Array<string> | null;
+    observed_node?: string;
     observed_quorate?: boolean;
+    /**
+     * Public material only.
+     */
+    observed_root_key?: string;
     /**
      * Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
      */
