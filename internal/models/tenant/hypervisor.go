@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"gorm.io/datatypes"
 	"math"
 	"time"
 
@@ -121,6 +122,27 @@ type Hypervisor struct {
 	// only exists inside a cluster, Address is what the network calls the box and
 	// exists from the moment somebody racks it.
 	Address string `gorm:"type:varchar(253);not null;default:''" json:"address"`
+
+	// SSHHostKeys are this machine's own SSH host public keys, captured during
+	// onboarding over the control plane's authenticated session to it.
+	//
+	// STORED because the node that needs them is not the node that has them. A
+	// joining host must have its PEER's key in known_hosts before pvecm add runs
+	// ssh-copy-id, or the whole join fails with "unable to copy ssh ID: exit code
+	// 1" — a message naming neither the host, nor the key, nor verification.
+	//
+	// The control plane used to read them at join time, holding SSH sessions to
+	// both machines at once. Under agent-polled convergence the joining host acts
+	// on its own, so there is no such moment: the keys have to have been captured
+	// earlier and travel to the joiner through the composition it already fetches.
+	// That preserves the assurance rather than weakening it — the key reaches the
+	// joiner over its authenticated control-plane session, not from whatever
+	// answers on the peer's address, which is the defect ssh-keyscan and
+	// StrictHostKeyChecking=no both have.
+	//
+	// Public keys only. There is nothing secret here; the value is in WHERE they
+	// came from.
+	SSHHostKeys datatypes.JSONType[[]string] `gorm:"type:jsonb" json:"ssh_host_keys,omitzero"`
 
 	// SwarmID is the named group this hypervisor belongs to, or nil for spare
 	// capacity.
