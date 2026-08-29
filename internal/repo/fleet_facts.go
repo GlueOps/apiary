@@ -2,7 +2,9 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
@@ -55,9 +57,51 @@ func Heartbeated(ctx context.Context, db *gorm.DB, machineID string, since time.
 // left. ck_hypervisors_swarm_needs_hive refuses the swarm_id half outright, so
 // dropping it from this map turns a departure into a constraint violation.
 func MarkFleetless(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) error {
-	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+	// Read BEFORE the clear. Which hive this machine is leaving is the one thing
+	// the update destroys, and it is exactly what has to be republished
+	// afterwards so the remaining members learn the node is desired-absent.
+	// Scanned into a struct rather than plucked: Pluck hands the driver value
+	// straight to a scalar destination, and a uuid arrives as a string that a
+	// *uuid.UUID cannot take.
+	var leaving struct{ HiveID *uuid.UUID }
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Select("hive_id").Where("id = ?", hypervisorID).Scan(&leaving).Error; err != nil {
+		return fmt.Errorf("read the hive this hypervisor is leaving: %w", err)
+	}
+
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("id = ?", hypervisorID).
-		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil}).Error
+		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil}).Error; err != nil {
+		return err
+	}
+	publishMembership(ctx, db, leaving.HiveID)
+	return nil
+}
+
+// publishMembership republishes a hive's composition after its membership
+// changed, and never fails the operation that changed it.
+//
+// Best effort ON PURPOSE, which is safe only because the resolve path repairs
+// it: DesiredMembershipForBee re-renders on every heartbeat and publishes when
+// the rendered digest disagrees with the stored one, so a publish missed here is
+// picked up by the next heartbeat from any member of that hive. Doing it here as
+// well is what makes convergence start in the same second as the write rather
+// than on the next poll.
+//
+// Failing the caller instead would be worse than the delay it avoids: a
+// departure that has already made a node standalone and then reports failure
+// gets retried, and the retry re-runs a destructive step that has already
+// happened.
+func publishMembership(ctx context.Context, db *gorm.DB, hiveID *uuid.UUID) {
+	if hiveID == nil || *hiveID == uuid.Nil {
+		return
+	}
+	if _, err := PublishHiveMembership(ctx, db, *hiveID); err != nil &&
+		!errors.Is(err, ErrMembershipUnchanged) {
+		slog.WarnContext(ctx, "could not publish a hive's cluster composition after a membership "+
+			"change; the next heartbeat from any of its members will republish it",
+			"hive_id", *hiveID, "error", err)
+	}
 }
 
 // MarkJoined records that a hypervisor has joined a hive under a node name, and
@@ -88,13 +132,17 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 			"so recording membership would leave a row the next capacity sync "+
 			"cannot match and would duplicate", hiveID)
 	}
-	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("id = ?", hypervisorID).
 		Updates(map[string]any{
 			"hive_id":     hiveID,
 			"name":        nodeName,
 			"schedulable": false,
-		}).Error
+		}).Error; err != nil {
+		return err
+	}
+	publishMembership(ctx, db, &hiveID)
+	return nil
 }
 
 // RecordObservedGuestsIfFleetless writes a host's self-reported guest count, and

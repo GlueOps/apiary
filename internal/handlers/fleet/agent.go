@@ -119,6 +119,30 @@ type HeartbeatRequest struct {
 		// agent omits the field, and reading that as zero would be inventing an
 		// observation nobody made — the same mistake, one level down.
 		ObservedGuests *int `json:"observed_guests,omitempty" minimum:"0" maximum:"100000" doc:"VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy."`
+
+		// What cluster this host can actually SEE, which the control plane cannot
+		// soundly learn any other way for the states that matter. The capacity
+		// sync reads the Proxmox API per CLUSTER, so a machine in no cluster is
+		// never observed by it — and fleetless is exactly the state a machine is
+		// in when it is about to join one. A departed node holds no credential
+		// that API would accept, and a host serving a broken pveproxy answers its
+		// agent while answering nothing else.
+		//
+		// Pointer, so "did not say" stays distinct from "said standalone". An
+		// older agent omits these, and reading the omission as standalone would
+		// invent an observation and hand it to a loop that acts on it.
+		ObservedCluster *string  `json:"observed_cluster,omitempty" maxLength:"100" doc:"The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look."`
+		ObservedMembers []string `json:"observed_members,omitempty" maxItems:"64" doc:"Node names corosync reports, this host included."`
+		ObservedQuorate *bool    `json:"observed_quorate,omitempty"`
+
+		// ObservedFingerprint is this host's own API certificate fingerprint. A
+		// peer joining through this node must present it, and without one pvecm
+		// PROMPTS — which non-interactively hangs until something kills it and
+		// reports a timeout that says nothing about the cause.
+		ObservedFingerprint string `json:"observed_fingerprint,omitempty" maxLength:"200"`
+
+		AppliedMembershipRevision int    `json:"applied_membership_revision,omitempty" minimum:"0" doc:"The cluster composition this host has converged on. Omit or zero if it has converged on none."`
+		AppliedMembershipDigest   string `json:"applied_membership_digest,omitempty" maxLength:"71"`
 	}
 }
 
@@ -136,6 +160,18 @@ type HeartbeatResponse struct {
 		// to say "unchanged"; the agent fetches it from /agent/firewall only when
 		// these differ from what it applied.
 		Firewall *FirewallDesiredView `json:"firewall,omitempty"`
+
+		// Membership is the cluster composition this host's hive should have.
+		// ABSENT means HOLD, for the same reason an absent firewall does: it is
+		// returned for a machine in no hive and for a hive that has published
+		// nothing, and neither is "you should be in no cluster". Reading it as one
+		// would dissolve an unpublished hive node by node.
+		//
+		// Only the revision and digest travel here. The composition itself is
+		// fetched from /agent/membership when these differ from what was applied,
+		// which keeps the common case — nothing has changed — to two small fields
+		// on a poll every host makes.
+		Membership *MembershipDesiredView `json:"membership,omitempty"`
 	}
 }
 
@@ -143,6 +179,44 @@ type HeartbeatResponse struct {
 type FirewallDesiredView struct {
 	Revision int    `json:"revision" doc:"Only ever increases. A backout is a NEW revision carrying an older body, so an agent comparing revisions can use != or < and behave identically."`
 	Digest   string `json:"digest" doc:"Of the rendered body. Compared as well as the revision, so a host that loaded the right revision from a corrupted or hand-edited file is still seen as diverged."`
+}
+
+// MembershipDesiredView is the small half of the membership convergence
+// protocol, mirroring FirewallDesiredView deliberately rather than inventing a
+// second shape beside it.
+type MembershipDesiredView struct {
+	Revision int    `json:"revision" doc:"Only ever increases, including when a node is added back after being removed. An agent comparing revisions can use != or < and behave identically."`
+	Digest   string `json:"digest" doc:"Of the rendered composition. A revision bumped by an edit that changed no member leaves this identical, and no host touches corosync."`
+}
+
+type AgentMembershipRequest struct{}
+
+// MembershipMemberView is one node the cluster should contain.
+type MembershipMemberView struct {
+	Node         string `json:"node,omitempty" doc:"The Proxmox node name, absent for a machine that has never been in a cluster."`
+	HypervisorID string `json:"hypervisor_id" format:"uuid" doc:"Identifies the machine across a node name it does not have yet."`
+	Address      string `json:"address"`
+	Fingerprint  string `json:"fingerprint,omitempty" doc:"This node's API certificate fingerprint, as its OWN agent reported it. A member without one is not a usable join target."`
+}
+
+type AgentMembershipResponse struct {
+	Body struct {
+		// Absent (revision 0) means hold what you have. Same meaning as on the
+		// heartbeat.
+		Revision int                    `json:"revision,omitempty"`
+		Digest   string                 `json:"digest,omitempty"`
+		Cluster  string                 `json:"cluster,omitempty" doc:"The corosync cluster name this hive should form."`
+		Self     string                 `json:"self,omitempty" doc:"This host's node name as the control plane knows it, so an agent can locate itself in the list. Empty for a machine that has never joined a cluster."`
+		Members  []MembershipMemberView `json:"members,omitempty" doc:"The complete desired composition, not a delta."`
+
+		// Departing is the ONLY authority for an eviction. Absence from members is
+		// deliberately not enough: a node in the cluster and missing from the
+		// composition is as likely to be one nobody has recorded yet — joined by
+		// hand, or awaiting adoption by the capacity sync — as one that was
+		// removed, and evicting on that inference reads the control plane's own
+		// incompleteness as an instruction.
+		Departing []string `json:"departing,omitempty" doc:"Nodes the control plane records as removed. A member may evict one of these and nothing else; anything present and unrecorded is reported as a discrepancy instead."`
+	}
 }
 
 type AgentFirewallRequest struct{}
@@ -304,6 +378,28 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 				"bee_id", sess.Bee.ID, "error", err)
 		}
 
+		// Recorded before the wait too, and never fatal, for the same reason: a
+		// host whose observation failed to store is still alive, and refusing its
+		// heartbeat over bookkeeping would page someone for a host that is fine.
+		if in.Body.ObservedCluster != nil {
+			obs := tenant.Observed{
+				Cluster: *in.Body.ObservedCluster,
+				Members: in.Body.ObservedMembers,
+			}
+			if in.Body.ObservedQuorate != nil {
+				obs.Quorate = *in.Body.ObservedQuorate
+			}
+			if err := svc.RecordObservedMembership(ctx, sess, &obs, in.Body.ObservedFingerprint); err != nil {
+				slog.WarnContext(ctx, "could not record a bee's observed cluster membership",
+					"bee_id", sess.Bee.ID, "error", err)
+			}
+		}
+		if err := svc.RecordAppliedMembership(ctx, sess,
+			in.Body.AppliedMembershipRevision, in.Body.AppliedMembershipDigest); err != nil {
+			slog.WarnContext(ctx, "could not record a bee's applied membership revision",
+				"bee_id", sess.Bee.ID, "error", err)
+		}
+
 		res, err := svc.Heartbeat(ctx, service.HeartbeatInput{
 			Session:           sess,
 			AgentVersion:      in.Body.AgentVersion,
@@ -327,6 +423,16 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 				"bee_id", sess.Bee.ID, "error", err)
 		} else if snap != nil {
 			out.Body.Firewall = &FirewallDesiredView{Revision: snap.Revision, Digest: snap.Digest}
+		}
+
+		// Absent means HOLD, and a failure to resolve leaves it absent for the
+		// same reason it does above: a check that cannot reach a decision must not
+		// act, and the action here would be a host leaving its cluster.
+		if m, err := svc.DesiredMembershipFor(ctx, sess); err != nil {
+			slog.WarnContext(ctx, "could not resolve a bee's desired cluster membership; telling it to hold",
+				"bee_id", sess.Bee.ID, "error", err)
+		} else if m != nil {
+			out.Body.Membership = &MembershipDesiredView{Revision: m.Revision, Digest: m.Digest}
 		}
 		return out, nil
 	})
@@ -362,6 +468,54 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 		out.Body.Revision = snap.Revision
 		out.Body.Digest = snap.Digest
 		out.Body.Content = snap.Content
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-bee-membership",
+		Method:      http.MethodGet,
+		Path:        "/agent/membership",
+		Summary:     "Fetch the cluster composition this host's hive should have",
+		Description: "The COMPLETE desired composition, not a delta. A node present in the " +
+			"cluster and absent from this list is desired-absent, which is what a departure " +
+			"looks like from the outside.\n\n" +
+			"Published per CLUSTER rather than per host, because a departure is executed by a " +
+			"node that REMAINS: the node being removed cannot run delnode against itself. An " +
+			"agent that only knew its own membership could never own that, so every member is " +
+			"told the whole composition and reconciles its own view of it.\n\n" +
+			"The agent derives the verb from this against what corosync reports — to become a " +
+			"member of a cluster with no other members is create, of one with members is join, " +
+			"and of nothing is delnode. Nothing here decides which.\n\n" +
+			"An EMPTY response means hold what you have. It is returned for a machine in no " +
+			"hive and for a hive that has published nothing, and neither is an instruction to " +
+			"leave a cluster.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityAgent,
+	}, func(ctx context.Context, _ *AgentMembershipRequest) (*AgentMembershipResponse, error) {
+		sess, ok := apimiddleware.BeeFromContext(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("not an authenticated bee")
+		}
+		snap, err := svc.DesiredMembershipFor(ctx, sess)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		out := &AgentMembershipResponse{}
+		if snap == nil {
+			return out, nil
+		}
+		out.Body.Revision = snap.Revision
+		out.Body.Digest = snap.Digest
+		out.Body.Cluster = snap.Membership.Cluster
+		out.Body.Self = snap.Self
+		out.Body.Departing = snap.Membership.Departing
+		out.Body.Members = make([]MembershipMemberView, 0, len(snap.Membership.Members))
+		for _, m := range snap.Membership.Members {
+			out.Body.Members = append(out.Body.Members, MembershipMemberView{
+				Node: m.Node, HypervisorID: m.HypervisorID,
+				Address: m.Address, Fingerprint: m.Fingerprint,
+			})
+		}
 		return out, nil
 	})
 
