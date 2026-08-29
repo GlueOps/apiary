@@ -22,6 +22,7 @@ type HeartbeatResponseBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 	Firewall *FirewallDesiredView `json:"firewall,omitempty"`
+	Membership *MembershipDesiredView `json:"membership,omitempty"`
 	// This bee's one outstanding task, or absent. A bee that already holds a task is handed the SAME one back.
 	Task *TaskView `json:"task,omitempty"`
 }
@@ -107,6 +108,38 @@ func (o *HeartbeatResponseBody) SetFirewall(v FirewallDesiredView) {
 	o.Firewall = &v
 }
 
+// GetMembership returns the Membership field value if set, zero value otherwise.
+func (o *HeartbeatResponseBody) GetMembership() MembershipDesiredView {
+	if o == nil || IsNil(o.Membership) {
+		var ret MembershipDesiredView
+		return ret
+	}
+	return *o.Membership
+}
+
+// GetMembershipOk returns a tuple with the Membership field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatResponseBody) GetMembershipOk() (*MembershipDesiredView, bool) {
+	if o == nil || IsNil(o.Membership) {
+		return nil, false
+	}
+	return o.Membership, true
+}
+
+// HasMembership returns a boolean if a field has been set.
+func (o *HeartbeatResponseBody) HasMembership() bool {
+	if o != nil && !IsNil(o.Membership) {
+		return true
+	}
+
+	return false
+}
+
+// SetMembership gets a reference to the given MembershipDesiredView and assigns it to the Membership field.
+func (o *HeartbeatResponseBody) SetMembership(v MembershipDesiredView) {
+	o.Membership = &v
+}
+
 // GetTask returns the Task field value if set, zero value otherwise.
 func (o *HeartbeatResponseBody) GetTask() TaskView {
 	if o == nil || IsNil(o.Task) {
@@ -154,6 +187,9 @@ func (o HeartbeatResponseBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Firewall) {
 		toSerialize["firewall"] = o.Firewall
+	}
+	if !IsNil(o.Membership) {
+		toSerialize["membership"] = o.Membership
 	}
 	if !IsNil(o.Task) {
 		toSerialize["task"] = o.Task

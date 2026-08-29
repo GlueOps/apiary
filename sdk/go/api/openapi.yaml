@@ -273,6 +273,36 @@ paths:
       summary: Report liveness and collect work
       tags:
       - Fleet
+  /api/v1/agent/membership:
+    get:
+      description: |-
+        The COMPLETE desired composition, not a delta. A node present in the cluster and absent from this list is desired-absent, which is what a departure looks like from the outside.
+
+        Published per CLUSTER rather than per host, because a departure is executed by a node that REMAINS: the node being removed cannot run delnode against itself. An agent that only knew its own membership could never own that, so every member is told the whole composition and reconciles its own view of it.
+
+        The agent derives the verb from this against what corosync reports — to become a member of a cluster with no other members is create, of one with members is join, and of nothing is delnode. Nothing here decides which.
+
+        An EMPTY response means hold what you have. It is returned for a machine in no hive and for a hive that has published nothing, and neither is an instruction to leave a cluster.
+      operationId: fleet-bee-membership
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMembershipResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - AgentKeyAuth: []
+        AgentKeySecret: []
+      summary: Fetch the cluster composition this host's hive should have
+      tags:
+      - Fleet
   /api/v1/agent/tasks/{id}/logs:
     post:
       description: "So a fleet operation can be watched without SSH-ing to a hypervisor\
@@ -4278,6 +4308,61 @@ components:
         revision:
           format: int64
           type: integer
+    AgentMembershipResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        cluster: cluster
+        departing:
+        - departing
+        - departing
+        digest: digest
+        members:
+        - address: address
+          fingerprint: fingerprint
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          node: node
+        - address: address
+          fingerprint: fingerprint
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          node: node
+        revision: 0
+        self: self
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        cluster:
+          description: The corosync cluster name this hive should form.
+          type: string
+        departing:
+          description: Nodes the control plane records as removed. A member may evict
+            one of these and nothing else; anything present and unrecorded is reported
+            as a discrepancy instead.
+          items:
+            type: string
+          nullable: true
+          type: array
+          default: null
+        digest:
+          type: string
+        members:
+          description: "The complete desired composition, not a delta."
+          items:
+            $ref: "#/components/schemas/MembershipMemberView"
+          nullable: true
+          type: array
+          default: null
+        revision:
+          format: int64
+          type: integer
+        self:
+          description: "This host's node name as the control plane knows it, so an\
+            \ agent can locate itself in the list. Empty for a machine that has never\
+            \ joined a cluster."
+          type: string
     AgentUpgradeRequestBody:
       additionalProperties: false
       example:
@@ -5844,9 +5929,20 @@ components:
         agent_version: agent_version
         applied_firewall_digest: applied_firewall_digest
         applied_firewall_revision: 0
+        applied_membership_digest: applied_membership_digest
+        applied_membership_revision: 0
         back: true
-        observed_guests: 60274
-        unavailable_for_seconds: 12664
+        observed_cluster: observed_cluster
+        observed_fingerprint: observed_fingerprint
+        observed_guests: 14658
+        observed_members:
+        - observed_members
+        - observed_members
+        - observed_members
+        - observed_members
+        - observed_members
+        observed_quorate: true
+        unavailable_for_seconds: 51512
         unavailable_reason: unavailable_reason
         wait_seconds: 14
       properties:
@@ -5872,9 +5968,27 @@ components:
           format: int64
           minimum: 0
           type: integer
+        applied_membership_digest:
+          maxLength: 71
+          type: string
+        applied_membership_revision:
+          description: The cluster composition this host has converged on. Omit or
+            zero if it has converged on none.
+          format: int64
+          minimum: 0
+          type: integer
         back:
           description: "Withdraws a standing declaration: the host has returned."
           type: boolean
+        observed_cluster:
+          description: "The corosync cluster this host is in. EMPTY STRING means standalone,\
+            \ which is an observation; omitting the field means this agent did not\
+            \ look."
+          maxLength: 100
+          type: string
+        observed_fingerprint:
+          maxLength: 200
+          type: string
         observed_guests:
           description: "VMs and containers registered to this host, stopped ones included.\
             \ Counted from /etc/pve rather than the Proxmox API, so it survives a\
@@ -5883,6 +5997,16 @@ components:
           maximum: 100000
           minimum: 0
           type: integer
+        observed_members:
+          description: "Node names corosync reports, this host included."
+          items:
+            type: string
+          maxItems: 64
+          nullable: true
+          type: array
+          default: null
+        observed_quorate:
+          type: boolean
         unavailable_for_seconds:
           description: "Declared BEFORE acting: how long this host expects to be unreachable,\
             \ e.g. across a reboot. Until it elapses, silence from this bee is expected\
@@ -5908,6 +6032,9 @@ components:
         firewall:
           digest: digest
           revision: 0
+        membership:
+          digest: digest
+          revision: 6
         task: ""
       properties:
         $schema:
@@ -5917,6 +6044,8 @@ components:
           type: string
         firewall:
           $ref: "#/components/schemas/FirewallDesiredView"
+        membership:
+          $ref: "#/components/schemas/MembershipDesiredView"
         task:
           allOf:
           - $ref: "#/components/schemas/TaskView"
@@ -7383,6 +7512,51 @@ components:
       - role
       - support_enabled
       - user_id
+    MembershipDesiredView:
+      additionalProperties: false
+      example:
+        digest: digest
+        revision: 6
+      properties:
+        digest:
+          description: "Of the rendered composition. A revision bumped by an edit\
+            \ that changed no member leaves this identical, and no host touches corosync."
+          type: string
+        revision:
+          description: "Only ever increases, including when a node is added back after\
+            \ being removed. An agent comparing revisions can use != or < and behave\
+            \ identically."
+          format: int64
+          type: integer
+      required:
+      - digest
+      - revision
+    MembershipMemberView:
+      additionalProperties: false
+      example:
+        address: address
+        fingerprint: fingerprint
+        hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        node: node
+      properties:
+        address:
+          type: string
+        fingerprint:
+          description: "This node's API certificate fingerprint, as its OWN agent\
+            \ reported it. A member without one is not a usable join target."
+          type: string
+        hypervisor_id:
+          description: Identifies the machine across a node name it does not have
+            yet.
+          format: uuid
+          type: string
+        node:
+          description: "The Proxmox node name, absent for a machine that has never\
+            \ been in a cluster."
+          type: string
+      required:
+      - address
+      - hypervisor_id
     MintAPIKeyRequestBody:
       additionalProperties: false
       example:

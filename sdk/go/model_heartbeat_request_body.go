@@ -27,10 +27,19 @@ type HeartbeatRequestBody struct {
 	AppliedFirewallDigest *string `json:"applied_firewall_digest,omitempty"`
 	// The firewall revision this host has actually loaded. Omit or zero if it has applied none.
 	AppliedFirewallRevision *int64 `json:"applied_firewall_revision,omitempty"`
+	AppliedMembershipDigest *string `json:"applied_membership_digest,omitempty"`
+	// The cluster composition this host has converged on. Omit or zero if it has converged on none.
+	AppliedMembershipRevision *int64 `json:"applied_membership_revision,omitempty"`
 	// Withdraws a standing declaration: the host has returned.
 	Back *bool `json:"back,omitempty"`
+	// The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
+	ObservedCluster *string `json:"observed_cluster,omitempty"`
+	ObservedFingerprint *string `json:"observed_fingerprint,omitempty"`
 	// VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
 	ObservedGuests *int64 `json:"observed_guests,omitempty"`
+	// Node names corosync reports, this host included.
+	ObservedMembers []string `json:"observed_members,omitempty"`
+	ObservedQuorate *bool `json:"observed_quorate,omitempty"`
 	// Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault.
 	UnavailableForSeconds *int64 `json:"unavailable_for_seconds,omitempty"`
 	UnavailableReason *string `json:"unavailable_reason,omitempty"`
@@ -215,6 +224,70 @@ func (o *HeartbeatRequestBody) SetAppliedFirewallRevision(v int64) {
 	o.AppliedFirewallRevision = &v
 }
 
+// GetAppliedMembershipDigest returns the AppliedMembershipDigest field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetAppliedMembershipDigest() string {
+	if o == nil || IsNil(o.AppliedMembershipDigest) {
+		var ret string
+		return ret
+	}
+	return *o.AppliedMembershipDigest
+}
+
+// GetAppliedMembershipDigestOk returns a tuple with the AppliedMembershipDigest field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetAppliedMembershipDigestOk() (*string, bool) {
+	if o == nil || IsNil(o.AppliedMembershipDigest) {
+		return nil, false
+	}
+	return o.AppliedMembershipDigest, true
+}
+
+// HasAppliedMembershipDigest returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasAppliedMembershipDigest() bool {
+	if o != nil && !IsNil(o.AppliedMembershipDigest) {
+		return true
+	}
+
+	return false
+}
+
+// SetAppliedMembershipDigest gets a reference to the given string and assigns it to the AppliedMembershipDigest field.
+func (o *HeartbeatRequestBody) SetAppliedMembershipDigest(v string) {
+	o.AppliedMembershipDigest = &v
+}
+
+// GetAppliedMembershipRevision returns the AppliedMembershipRevision field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetAppliedMembershipRevision() int64 {
+	if o == nil || IsNil(o.AppliedMembershipRevision) {
+		var ret int64
+		return ret
+	}
+	return *o.AppliedMembershipRevision
+}
+
+// GetAppliedMembershipRevisionOk returns a tuple with the AppliedMembershipRevision field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetAppliedMembershipRevisionOk() (*int64, bool) {
+	if o == nil || IsNil(o.AppliedMembershipRevision) {
+		return nil, false
+	}
+	return o.AppliedMembershipRevision, true
+}
+
+// HasAppliedMembershipRevision returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasAppliedMembershipRevision() bool {
+	if o != nil && !IsNil(o.AppliedMembershipRevision) {
+		return true
+	}
+
+	return false
+}
+
+// SetAppliedMembershipRevision gets a reference to the given int64 and assigns it to the AppliedMembershipRevision field.
+func (o *HeartbeatRequestBody) SetAppliedMembershipRevision(v int64) {
+	o.AppliedMembershipRevision = &v
+}
+
 // GetBack returns the Back field value if set, zero value otherwise.
 func (o *HeartbeatRequestBody) GetBack() bool {
 	if o == nil || IsNil(o.Back) {
@@ -247,6 +320,70 @@ func (o *HeartbeatRequestBody) SetBack(v bool) {
 	o.Back = &v
 }
 
+// GetObservedCluster returns the ObservedCluster field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedCluster() string {
+	if o == nil || IsNil(o.ObservedCluster) {
+		var ret string
+		return ret
+	}
+	return *o.ObservedCluster
+}
+
+// GetObservedClusterOk returns a tuple with the ObservedCluster field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedClusterOk() (*string, bool) {
+	if o == nil || IsNil(o.ObservedCluster) {
+		return nil, false
+	}
+	return o.ObservedCluster, true
+}
+
+// HasObservedCluster returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedCluster() bool {
+	if o != nil && !IsNil(o.ObservedCluster) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedCluster gets a reference to the given string and assigns it to the ObservedCluster field.
+func (o *HeartbeatRequestBody) SetObservedCluster(v string) {
+	o.ObservedCluster = &v
+}
+
+// GetObservedFingerprint returns the ObservedFingerprint field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedFingerprint() string {
+	if o == nil || IsNil(o.ObservedFingerprint) {
+		var ret string
+		return ret
+	}
+	return *o.ObservedFingerprint
+}
+
+// GetObservedFingerprintOk returns a tuple with the ObservedFingerprint field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedFingerprintOk() (*string, bool) {
+	if o == nil || IsNil(o.ObservedFingerprint) {
+		return nil, false
+	}
+	return o.ObservedFingerprint, true
+}
+
+// HasObservedFingerprint returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedFingerprint() bool {
+	if o != nil && !IsNil(o.ObservedFingerprint) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedFingerprint gets a reference to the given string and assigns it to the ObservedFingerprint field.
+func (o *HeartbeatRequestBody) SetObservedFingerprint(v string) {
+	o.ObservedFingerprint = &v
+}
+
 // GetObservedGuests returns the ObservedGuests field value if set, zero value otherwise.
 func (o *HeartbeatRequestBody) GetObservedGuests() int64 {
 	if o == nil || IsNil(o.ObservedGuests) {
@@ -277,6 +414,71 @@ func (o *HeartbeatRequestBody) HasObservedGuests() bool {
 // SetObservedGuests gets a reference to the given int64 and assigns it to the ObservedGuests field.
 func (o *HeartbeatRequestBody) SetObservedGuests(v int64) {
 	o.ObservedGuests = &v
+}
+
+// GetObservedMembers returns the ObservedMembers field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *HeartbeatRequestBody) GetObservedMembers() []string {
+	if o == nil {
+		var ret []string
+		return ret
+	}
+	return o.ObservedMembers
+}
+
+// GetObservedMembersOk returns a tuple with the ObservedMembers field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *HeartbeatRequestBody) GetObservedMembersOk() ([]string, bool) {
+	if o == nil || IsNil(o.ObservedMembers) {
+		return nil, false
+	}
+	return o.ObservedMembers, true
+}
+
+// HasObservedMembers returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedMembers() bool {
+	if o != nil && !IsNil(o.ObservedMembers) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedMembers gets a reference to the given []string and assigns it to the ObservedMembers field.
+func (o *HeartbeatRequestBody) SetObservedMembers(v []string) {
+	o.ObservedMembers = v
+}
+
+// GetObservedQuorate returns the ObservedQuorate field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedQuorate() bool {
+	if o == nil || IsNil(o.ObservedQuorate) {
+		var ret bool
+		return ret
+	}
+	return *o.ObservedQuorate
+}
+
+// GetObservedQuorateOk returns a tuple with the ObservedQuorate field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedQuorateOk() (*bool, bool) {
+	if o == nil || IsNil(o.ObservedQuorate) {
+		return nil, false
+	}
+	return o.ObservedQuorate, true
+}
+
+// HasObservedQuorate returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedQuorate() bool {
+	if o != nil && !IsNil(o.ObservedQuorate) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedQuorate gets a reference to the given bool and assigns it to the ObservedQuorate field.
+func (o *HeartbeatRequestBody) SetObservedQuorate(v bool) {
+	o.ObservedQuorate = &v
 }
 
 // GetUnavailableForSeconds returns the UnavailableForSeconds field value if set, zero value otherwise.
@@ -400,11 +602,29 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.AppliedFirewallRevision) {
 		toSerialize["applied_firewall_revision"] = o.AppliedFirewallRevision
 	}
+	if !IsNil(o.AppliedMembershipDigest) {
+		toSerialize["applied_membership_digest"] = o.AppliedMembershipDigest
+	}
+	if !IsNil(o.AppliedMembershipRevision) {
+		toSerialize["applied_membership_revision"] = o.AppliedMembershipRevision
+	}
 	if !IsNil(o.Back) {
 		toSerialize["back"] = o.Back
 	}
+	if !IsNil(o.ObservedCluster) {
+		toSerialize["observed_cluster"] = o.ObservedCluster
+	}
+	if !IsNil(o.ObservedFingerprint) {
+		toSerialize["observed_fingerprint"] = o.ObservedFingerprint
+	}
 	if !IsNil(o.ObservedGuests) {
 		toSerialize["observed_guests"] = o.ObservedGuests
+	}
+	if o.ObservedMembers != nil {
+		toSerialize["observed_members"] = o.ObservedMembers
+	}
+	if !IsNil(o.ObservedQuorate) {
+		toSerialize["observed_quorate"] = o.ObservedQuorate
 	}
 	if !IsNil(o.UnavailableForSeconds) {
 		toSerialize["unavailable_for_seconds"] = o.UnavailableForSeconds

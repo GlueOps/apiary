@@ -133,6 +133,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetBeeEnrol**](docs/FleetAPI.md#fleetbeeenrol) | **Post** /api/v1/agent/enrol | Enrol a fleet agent into an organization
 *FleetAPI* | [**FleetBeeFirewall**](docs/FleetAPI.md#fleetbeefirewall) | **Get** /api/v1/agent/firewall | Fetch the ruleset this host should enforce
 *FleetAPI* | [**FleetBeeHeartbeat**](docs/FleetAPI.md#fleetbeeheartbeat) | **Post** /api/v1/agent/heartbeat | Report liveness and collect work
+*FleetAPI* | [**FleetBeeMembership**](docs/FleetAPI.md#fleetbeemembership) | **Get** /api/v1/agent/membership | Fetch the cluster composition this host&#39;s hive should have
 *FleetAPI* | [**FleetBeeReportTask**](docs/FleetAPI.md#fleetbeereporttask) | **Post** /api/v1/agent/tasks/{id}/status | Report progress or the outcome of a task
 *FleetAPI* | [**FleetBeesDelete**](docs/FleetAPI.md#fleetbeesdelete) | **Delete** /api/v1/fleet/bees/{id} | Remove a fleet agent
 *FleetAPI* | [**FleetBeesList**](docs/FleetAPI.md#fleetbeeslist) | **Get** /api/v1/fleet/bees | List fleet agents
@@ -195,6 +196,7 @@ Class | Method | HTTP request | Description
  - [AgentBuildView](docs/AgentBuildView.md)
  - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
  - [AgentFirewallResponseBody](docs/AgentFirewallResponseBody.md)
+ - [AgentMembershipResponseBody](docs/AgentMembershipResponseBody.md)
  - [AgentUpgradeRequestBody](docs/AgentUpgradeRequestBody.md)
  - [AgentUpgradeResponseBody](docs/AgentUpgradeResponseBody.md)
  - [ArriveRequestBody](docs/ArriveRequestBody.md)
@@ -288,6 +290,8 @@ Class | Method | HTTP request | Description
  - [MFAVerifyRequestBody](docs/MFAVerifyRequestBody.md)
  - [MFAVerifyResponseBody](docs/MFAVerifyResponseBody.md)
  - [MemberView](docs/MemberView.md)
+ - [MembershipDesiredView](docs/MembershipDesiredView.md)
+ - [MembershipMemberView](docs/MembershipMemberView.md)
  - [MintAPIKeyRequestBody](docs/MintAPIKeyRequestBody.md)
  - [MintAPIKeyResponseBody](docs/MintAPIKeyResponseBody.md)
  - [MintRequestBody](docs/MintRequestBody.md)

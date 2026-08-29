@@ -9,8 +9,14 @@ Name | Type | Description | Notes
 **AgentVersion** | Pointer to **string** |  | [optional] 
 **AppliedFirewallDigest** | Pointer to **string** | Digest of the body actually loaded, so a host that applied the right revision from a stale body is still detected as diverged. | [optional] 
 **AppliedFirewallRevision** | Pointer to **int64** | The firewall revision this host has actually loaded. Omit or zero if it has applied none. | [optional] 
+**AppliedMembershipDigest** | Pointer to **string** |  | [optional] 
+**AppliedMembershipRevision** | Pointer to **int64** | The cluster composition this host has converged on. Omit or zero if it has converged on none. | [optional] 
 **Back** | Pointer to **bool** | Withdraws a standing declaration: the host has returned. | [optional] 
+**ObservedCluster** | Pointer to **string** | The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look. | [optional] 
+**ObservedFingerprint** | Pointer to **string** |  | [optional] 
 **ObservedGuests** | Pointer to **int64** | VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy. | [optional] 
+**ObservedMembers** | Pointer to **[]string** | Node names corosync reports, this host included. | [optional] 
+**ObservedQuorate** | Pointer to **bool** |  | [optional] 
 **UnavailableForSeconds** | Pointer to **int64** | Declared BEFORE acting: how long this host expects to be unreachable, e.g. across a reboot. Until it elapses, silence from this bee is expected rather than a fault. | [optional] 
 **UnavailableReason** | Pointer to **string** |  | [optional] 
 **WaitSeconds** | Pointer to **int64** | Hold the request open for up to this long waiting for a task. The response is the same shape either way. | [optional] 
@@ -159,6 +165,56 @@ SetAppliedFirewallRevision sets AppliedFirewallRevision field to given value.
 
 HasAppliedFirewallRevision returns a boolean if a field has been set.
 
+### GetAppliedMembershipDigest
+
+`func (o *HeartbeatRequestBody) GetAppliedMembershipDigest() string`
+
+GetAppliedMembershipDigest returns the AppliedMembershipDigest field if non-nil, zero value otherwise.
+
+### GetAppliedMembershipDigestOk
+
+`func (o *HeartbeatRequestBody) GetAppliedMembershipDigestOk() (*string, bool)`
+
+GetAppliedMembershipDigestOk returns a tuple with the AppliedMembershipDigest field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAppliedMembershipDigest
+
+`func (o *HeartbeatRequestBody) SetAppliedMembershipDigest(v string)`
+
+SetAppliedMembershipDigest sets AppliedMembershipDigest field to given value.
+
+### HasAppliedMembershipDigest
+
+`func (o *HeartbeatRequestBody) HasAppliedMembershipDigest() bool`
+
+HasAppliedMembershipDigest returns a boolean if a field has been set.
+
+### GetAppliedMembershipRevision
+
+`func (o *HeartbeatRequestBody) GetAppliedMembershipRevision() int64`
+
+GetAppliedMembershipRevision returns the AppliedMembershipRevision field if non-nil, zero value otherwise.
+
+### GetAppliedMembershipRevisionOk
+
+`func (o *HeartbeatRequestBody) GetAppliedMembershipRevisionOk() (*int64, bool)`
+
+GetAppliedMembershipRevisionOk returns a tuple with the AppliedMembershipRevision field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAppliedMembershipRevision
+
+`func (o *HeartbeatRequestBody) SetAppliedMembershipRevision(v int64)`
+
+SetAppliedMembershipRevision sets AppliedMembershipRevision field to given value.
+
+### HasAppliedMembershipRevision
+
+`func (o *HeartbeatRequestBody) HasAppliedMembershipRevision() bool`
+
+HasAppliedMembershipRevision returns a boolean if a field has been set.
+
 ### GetBack
 
 `func (o *HeartbeatRequestBody) GetBack() bool`
@@ -184,6 +240,56 @@ SetBack sets Back field to given value.
 
 HasBack returns a boolean if a field has been set.
 
+### GetObservedCluster
+
+`func (o *HeartbeatRequestBody) GetObservedCluster() string`
+
+GetObservedCluster returns the ObservedCluster field if non-nil, zero value otherwise.
+
+### GetObservedClusterOk
+
+`func (o *HeartbeatRequestBody) GetObservedClusterOk() (*string, bool)`
+
+GetObservedClusterOk returns a tuple with the ObservedCluster field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedCluster
+
+`func (o *HeartbeatRequestBody) SetObservedCluster(v string)`
+
+SetObservedCluster sets ObservedCluster field to given value.
+
+### HasObservedCluster
+
+`func (o *HeartbeatRequestBody) HasObservedCluster() bool`
+
+HasObservedCluster returns a boolean if a field has been set.
+
+### GetObservedFingerprint
+
+`func (o *HeartbeatRequestBody) GetObservedFingerprint() string`
+
+GetObservedFingerprint returns the ObservedFingerprint field if non-nil, zero value otherwise.
+
+### GetObservedFingerprintOk
+
+`func (o *HeartbeatRequestBody) GetObservedFingerprintOk() (*string, bool)`
+
+GetObservedFingerprintOk returns a tuple with the ObservedFingerprint field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedFingerprint
+
+`func (o *HeartbeatRequestBody) SetObservedFingerprint(v string)`
+
+SetObservedFingerprint sets ObservedFingerprint field to given value.
+
+### HasObservedFingerprint
+
+`func (o *HeartbeatRequestBody) HasObservedFingerprint() bool`
+
+HasObservedFingerprint returns a boolean if a field has been set.
+
 ### GetObservedGuests
 
 `func (o *HeartbeatRequestBody) GetObservedGuests() int64`
@@ -208,6 +314,66 @@ SetObservedGuests sets ObservedGuests field to given value.
 `func (o *HeartbeatRequestBody) HasObservedGuests() bool`
 
 HasObservedGuests returns a boolean if a field has been set.
+
+### GetObservedMembers
+
+`func (o *HeartbeatRequestBody) GetObservedMembers() []string`
+
+GetObservedMembers returns the ObservedMembers field if non-nil, zero value otherwise.
+
+### GetObservedMembersOk
+
+`func (o *HeartbeatRequestBody) GetObservedMembersOk() (*[]string, bool)`
+
+GetObservedMembersOk returns a tuple with the ObservedMembers field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedMembers
+
+`func (o *HeartbeatRequestBody) SetObservedMembers(v []string)`
+
+SetObservedMembers sets ObservedMembers field to given value.
+
+### HasObservedMembers
+
+`func (o *HeartbeatRequestBody) HasObservedMembers() bool`
+
+HasObservedMembers returns a boolean if a field has been set.
+
+### SetObservedMembersNil
+
+`func (o *HeartbeatRequestBody) SetObservedMembersNil(b bool)`
+
+ SetObservedMembersNil sets the value for ObservedMembers to be an explicit nil
+
+### UnsetObservedMembers
+`func (o *HeartbeatRequestBody) UnsetObservedMembers()`
+
+UnsetObservedMembers ensures that no value is present for ObservedMembers, not even an explicit nil
+### GetObservedQuorate
+
+`func (o *HeartbeatRequestBody) GetObservedQuorate() bool`
+
+GetObservedQuorate returns the ObservedQuorate field if non-nil, zero value otherwise.
+
+### GetObservedQuorateOk
+
+`func (o *HeartbeatRequestBody) GetObservedQuorateOk() (*bool, bool)`
+
+GetObservedQuorateOk returns a tuple with the ObservedQuorate field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedQuorate
+
+`func (o *HeartbeatRequestBody) SetObservedQuorate(v bool)`
+
+SetObservedQuorate sets ObservedQuorate field to given value.
+
+### HasObservedQuorate
+
+`func (o *HeartbeatRequestBody) HasObservedQuorate() bool`
+
+HasObservedQuorate returns a boolean if a field has been set.
 
 ### GetUnavailableForSeconds
 
