@@ -43,10 +43,10 @@ type MembershipResult struct {
 // it is actually serving. A stale fingerprint from a node whose certificate was
 // reissued would fail a join with a mismatch, which is the correct outcome and a
 // legible one.
-func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (string, []tenant.MembershipMember, error) {
+func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (string, []tenant.MembershipMember, []string, error) {
 	var hive tenant.Hive
 	if err := tx.WithContext(ctx).Where("id = ?", hiveID).First(&hive).Error; err != nil {
-		return "", nil, fmt.Errorf("membership: read the hive: %w", err)
+		return "", nil, nil, fmt.Errorf("membership: read the hive: %w", err)
 	}
 
 	type row struct {
@@ -56,6 +56,7 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 		Fingerprint string
 		RootKey     string
 		SSHHostKeys datatypes.JSONType[[]string]
+		Departing   bool
 	}
 	var rows []row
 	// LEFT JOIN, so a hypervisor whose agent has never reported still appears in
@@ -64,6 +65,7 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 	// "this host's agent is not running yet" into "remove it from the cluster".
 	if err := tx.WithContext(ctx).Raw(`
 		SELECT h.id, h.name, h.address,
+		       (h.departing_at IS NOT NULL) AS departing,
 		       -- The agent's live report wins over what onboarding captured: host
 		       -- keys survive a rebuild only by accident, and a stale pin fails a
 		       -- join with a message that names nothing. The stored column stays
@@ -74,14 +76,25 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 		  FROM hypervisors h
 		  LEFT JOIN bees b ON b.id = h.bee_id
 		 WHERE h.hive_id = ?`, hiveID).Scan(&rows).Error; err != nil {
-		return "", nil, fmt.Errorf("membership: read the hive's hypervisors: %w", err)
+		return "", nil, nil, fmt.Errorf("membership: read the hive's hypervisors: %w", err)
 	}
 
 	members := make([]tenant.MembershipMember, 0, len(rows))
+	var departing []string
 	for _, r := range rows {
 		name := ""
 		if r.Name != nil {
 			name = *r.Name
+		}
+		// A DEPARTING machine leaves the member list and enters Departing, which
+		// is the only thing that authorises a peer to evict it. It keeps its
+		// hive_id and name until the cluster has actually dropped it — a
+		// remaining node cannot run delnode against a name nobody published.
+		if r.Departing {
+			if name != "" {
+				departing = append(departing, name)
+			}
+			continue
 		}
 		members = append(members, tenant.MembershipMember{
 			Node:         name,
@@ -92,7 +105,7 @@ func ResolveMembership(ctx context.Context, tx *gorm.DB, hiveID uuid.UUID) (stri
 			RootKey:      r.RootKey,
 		})
 	}
-	return hive.Name, members, nil
+	return hive.Name, members, departing, nil
 }
 
 // PublishHiveMembership renders one hive's composition and commits it as the
@@ -126,11 +139,11 @@ func PublishHiveMembership(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (
 		// hypervisor's assignment change between the render and the write, and
 		// the stored digest would then describe a composition no set of rows ever
 		// produced — with every agent comparing against it.
-		name, members, err := ResolveMembership(ctx, tx, hiveID)
+		name, members, departing, err := ResolveMembership(ctx, tx, hiveID)
 		if err != nil {
 			return err
 		}
-		doc, digest := tenant.RenderMembership(name, members)
+		doc, digest := tenant.RenderMembership(name, members, departing)
 		if digest == "" {
 			return errors.New("membership: the composition could not be rendered")
 		}

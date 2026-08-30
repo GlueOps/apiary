@@ -58,11 +58,11 @@ func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) 
 	// Repair first: a rendered digest that disagrees with the published one means
 	// either a write moved membership without publishing, or this hive has never
 	// published at all. Idempotent, so the common case costs one locked read.
-	name, members, err := ResolveMembership(ctx, db, *row.HiveID)
+	name, members, departing, err := ResolveMembership(ctx, db, *row.HiveID)
 	if err != nil {
 		return nil, err
 	}
-	if _, digest := tenant.RenderMembership(name, members); digest != row.Digest {
+	if _, digest := tenant.RenderMembership(name, members, departing); digest != row.Digest {
 		res, perr := PublishHiveMembership(ctx, db, *row.HiveID)
 		switch {
 		case perr == nil, errors.Is(perr, ErrMembershipUnchanged):
@@ -133,7 +133,7 @@ func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) 
 		// never recorded, so serve the current composition at the current
 		// revision rather than holding forever.
 		next, digest = row.Revision, row.Digest
-		doc, _ = tenant.RenderMembership(name, members)
+		doc, _ = tenant.RenderMembership(name, members, departing)
 	}
 
 	if next != row.Issued {

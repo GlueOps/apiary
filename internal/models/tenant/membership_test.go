@@ -143,8 +143,8 @@ func TestRenderMembershipIsOrderIndependent(t *testing.T) {
 	a := []MembershipMember{member("pve3", "c", "10.0.0.3"), member("pve1", "a", "10.0.0.1")}
 	b := []MembershipMember{member("pve1", "a", "10.0.0.1"), member("pve3", "c", "10.0.0.3")}
 
-	_, da := RenderMembership("lab-a", a)
-	_, db := RenderMembership("lab-a", b)
+	_, da := RenderMembership("lab-a", a, nil)
+	_, db := RenderMembership("lab-a", b, nil)
 	if da != db {
 		t.Fatalf("digest depends on input order: %s vs %s", da, db)
 	}
@@ -152,7 +152,7 @@ func TestRenderMembershipIsOrderIndependent(t *testing.T) {
 		t.Fatalf("digest %q is not prefixed", da)
 	}
 
-	_, dc := RenderMembership("lab-a", a[:1])
+	_, dc := RenderMembership("lab-a", a[:1], nil)
 	if dc == da {
 		t.Fatal("dropping a member did not change the digest")
 	}

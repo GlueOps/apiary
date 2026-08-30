@@ -928,7 +928,17 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		// Publishing here also means a failed departure leaves the composition
 		// saying what the operator asked for, which is the honest state: the
 		// machine is out, and the host-side cleanup is what still has to happen.
-		if err := repo.MarkFleetless(ctx, db, id); err != nil {
+		// MARKED DEPARTING, not cleared. The machine keeps its hive_id and node
+		// name so the composition can NAME it in Departing, which is the only
+		// thing that authorises a remaining member to run `pvecm delnode` — a
+		// peer cannot remove a node nobody published. Clearing here left nothing
+		// to name, which is why convergent eviction was built and never armed.
+		//
+		// It leaves the member list in the same publication, so every remaining
+		// member learns in one step both that it should no longer be there and
+		// that removing it is authorised. The row is cleared once a quorate peer
+		// observes it actually gone.
+		if err := repo.MarkDeparting(ctx, db, id); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		if err := deps.Jobs.EnqueueDepartHypervisor(ctx, &workflow.DepartHypervisorArgs{

@@ -144,6 +144,23 @@ type Hypervisor struct {
 	// came from.
 	SSHHostKeys datatypes.JSONType[[]string] `gorm:"type:jsonb" json:"ssh_host_keys,omitzero"`
 
+	// DepartingAt marks a machine an operator has removed from its hive but
+	// which the cluster has not yet dropped.
+	//
+	// IT KEEPS hive_id AND name, and that is the whole point. Clearing them the
+	// moment an operator clicks Depart leaves nothing for the composition to
+	// NAME, and a remaining member can only run `pvecm delnode <node>` if it is
+	// told which node — so eviction could never be armed. Absence from the
+	// member list is deliberately not enough: a node in corosync that the control
+	// plane merely has no record of is as likely to be one nobody has onboarded
+	// yet, and evicting on that inference orphans guests.
+	//
+	// It is also the truthful state. The machine IS still in the cluster until a
+	// peer removes it; what has changed is the intention, not the fact. The
+	// record catches up when a remaining member observes it gone, at which point
+	// hive_id, name and swarm_id are cleared together as they always were.
+	DepartingAt *time.Time `gorm:"type:timestamptz;index" json:"departing_at,omitempty"`
+
 	// SwarmID is the named group this hypervisor belongs to, or nil for spare
 	// capacity.
 	//

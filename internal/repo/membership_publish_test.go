@@ -107,7 +107,7 @@ func TestADepartureBumpsTheRevisionAndDropsTheMember(t *testing.T) {
 		t.Fatalf("members = %d, want 1", after.Members)
 	}
 
-	_, members, err := ResolveMembership(ctx, db, hive.ID)
+	_, members, _, err := ResolveMembership(ctx, db, hive.ID)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestAHypervisorWithNoAgentIsStillAMember(t *testing.T) {
 	hive := seedMembershipHive(t, db)
 	seedNode(t, db, &hive, "pve1")
 
-	_, members, err := ResolveMembership(ctx, db, hive.ID)
+	_, members, _, err := ResolveMembership(ctx, db, hive.ID)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestAHypervisorWithNoAgentIsStillAMember(t *testing.T) {
 	}
 	// And it is correctly excluded as a join TARGET, because a join through a
 	// peer with no fingerprint prompts and hangs.
-	doc, _ := tenant.RenderMembership("lab", members)
+	doc, _ := tenant.RenderMembership("lab", members, nil)
 	if got := doc.JoinTargets(tenant.Self{Node: "pve9"}); len(got) != 0 {
 		t.Fatalf("join targets = %d, want 0 for a member with no fingerprint", len(got))
 	}
@@ -400,5 +400,106 @@ func TestAnUnreachableStepIsSkippedRatherThanDeadlocking(t *testing.T) {
 	if verb == tenant.VerbWait || verb == tenant.VerbBlocked {
 		t.Fatalf("issued revision %d yields %q, which only another actor can resolve",
 			got.Revision, verb)
+	}
+}
+
+// ARMING EVICTION: a departing machine keeps its hive and name so the
+// composition can NAME it, which is the only thing that authorises a peer to
+// run `pvecm delnode`.
+//
+// Clearing the row on the operator's click left nothing to name, which is why
+// convergent eviction was built and never armed — Departing was always empty and
+// absence from the member list is deliberately not enough.
+func TestADepartingMachineIsNamedSoAPeerCanEvictIt(t *testing.T) {
+	db := membershipDB(t)
+	ctx := context.Background()
+	hive := seedMembershipHive(t, db)
+	stay := seedNode(t, db, &hive, "pve1")
+	leave := seedNode(t, db, &hive, "pve2")
+
+	if err := MarkDeparting(ctx, db, leave.ID); err != nil {
+		t.Fatalf("mark departing: %v", err)
+	}
+
+	name, members, departing, err := ResolveMembership(ctx, db, hive.ID)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(members) != 1 || members[0].Node != "pve1" {
+		t.Fatalf("members = %+v, want only pve1", members)
+	}
+	if len(departing) != 1 || departing[0] != "pve2" {
+		t.Fatalf("departing = %v, want [pve2] — a peer cannot evict a node nobody published",
+			departing)
+	}
+
+	// And the remaining member now decides to evict it, which it would not do on
+	// absence alone.
+	doc, _ := tenant.RenderMembership(name, members, departing)
+	verb, target, _ := doc.Decide(
+		tenant.Self{ID: stay.ID.String(), Node: "pve1"},
+		tenant.Observed{Cluster: name, Members: []string{"pve1", "pve2"}, Quorate: true})
+	if verb != tenant.VerbEvict || target != "pve2" {
+		t.Fatalf("verb = %q target = %q, want evict pve2", verb, target)
+	}
+}
+
+// The record is cleared on evidence from a REMAINING member, never from the
+// departing node — after delnode it still believes it is a member, which is why
+// it must not be powered back on.
+func TestADepartureIsFinalisedOnlyOnAPeersObservation(t *testing.T) {
+	db := membershipDB(t)
+	ctx := context.Background()
+	hive := seedMembershipHive(t, db)
+	stay := seedNode(t, db, &hive, "pve1")
+	leave := seedNode(t, db, &hive, "pve2")
+
+	bee := tenant.Bee{ID: uuid.New(), APIKeyID: uuid.New()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", stay.ID).
+		Update("bee_id", bee.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkDeparting(ctx, db, leave.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The peer still sees it: nothing is finalised.
+	obs := func(members []string) {
+		t.Helper()
+		if err := db.Model(&tenant.Bee{}).Where("id = ?", bee.ID).Updates(map[string]any{
+			"observed_members":       datatypes.NewJSONType(members),
+			"observed_quorate":       true,
+			"observed_membership_at": time.Now(),
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	obs([]string{"pve1", "pve2"})
+	if n, err := FinaliseDepartures(ctx, db, hive.ID); err != nil || n != 0 {
+		t.Fatalf("finalised %d (%v) while the peer still lists it", n, err)
+	}
+	var mid tenant.Hypervisor
+	if err := db.First(&mid, "id = ?", leave.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if mid.HiveID == nil {
+		t.Fatal("membership was cleared before the cluster dropped the node")
+	}
+
+	// The peer no longer lists it: now it is finalised.
+	obs([]string{"pve1"})
+	if n, err := FinaliseDepartures(ctx, db, hive.ID); err != nil || n != 1 {
+		t.Fatalf("finalised %d (%v), want 1", n, err)
+	}
+	var done tenant.Hypervisor
+	if err := db.First(&done, "id = ?", leave.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if done.HiveID != nil || done.Name != nil || done.DepartingAt != nil {
+		t.Fatalf("row not cleared: hive=%v name=%v departing=%v",
+			done.HiveID, done.Name, done.DepartingAt)
 	}
 }

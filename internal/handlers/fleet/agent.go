@@ -430,6 +430,13 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 					"bee_id", sess.Bee.ID, "error", err)
 			}
 		}
+		// A quorate member's observation is the evidence that a departure has
+		// actually happened. Checked here because this is the moment it arrives,
+		// and it is what turns "a peer ran delnode" into a cleared record.
+		if err := svc.FinaliseDepartures(ctx, sess); err != nil {
+			slog.WarnContext(ctx, "could not finalise departures for this bee's hive",
+				"bee_id", sess.Bee.ID, "error", err)
+		}
 		if err := svc.RecordObservedNodeName(ctx, sess, in.Body.ObservedNode); err != nil {
 			slog.WarnContext(ctx, "could not record a bee's observed node name",
 				"bee_id", sess.Bee.ID, "error", err)

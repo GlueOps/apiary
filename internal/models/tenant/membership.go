@@ -118,8 +118,16 @@ type MembershipMember struct {
 // on a query plan change and send an entire fleet reconciling a composition
 // nobody edited. Sorted by node name, then by hypervisor id for the members that
 // have no name yet.
-func RenderMembership(cluster string, members []MembershipMember) (Membership, string) {
-	out := Membership{Cluster: cluster, Members: append([]MembershipMember(nil), members...)}
+func RenderMembership(cluster string, members []MembershipMember, departing []string) (Membership, string) {
+	out := Membership{
+		Cluster: cluster,
+		Members: append([]MembershipMember(nil), members...),
+		// Sorted for the same reason the members are: the digest gates every
+		// agent's decision to act, and an order that depends on how rows came
+		// back from Postgres would change it without the composition changing.
+		Departing: append([]string(nil), departing...),
+	}
+	sort.Strings(out.Departing)
 	sort.SliceStable(out.Members, func(i, j int) bool {
 		a, b := out.Members[i], out.Members[j]
 		if !strings.EqualFold(a.Node, b.Node) {

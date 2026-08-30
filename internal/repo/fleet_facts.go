@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
@@ -158,21 +159,29 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 func RecordObservedGuestsIfFleetless(
 	ctx context.Context, db *gorm.DB, beeID uuid.UUID, guests int, inACluster bool,
 ) error {
-	// ASSIGNED IS NOT THE SAME AS JOINED, and keying on hive_id alone assumed it
-	// was. Under convergence a machine is given a hive_id as an INTENTION and
-	// joins later on its own, so between those two moments it is in a hive by
-	// the record and in no cluster in fact. The capacity sync could not see it —
-	// it is not in the cluster — and this writer skipped it because hive_id was
-	// set. Neither wrote, last_synced_at froze, the drain gate read "unknown",
-	// and the host could never be departed. Observed on .12, stuck at a
-	// 16-minute-old sync that was never going to be superseded.
+	// THE HOST IS THE PRIMARY OBSERVER, so it always records — there is no
+	// condition on cluster membership any more.
 	//
-	// The condition is therefore what the AGENT observes, not what the record
-	// intends: a host that reports no cluster is one the per-cluster sync
-	// structurally cannot cover, whatever its hive_id says.
-	if inACluster {
-		return nil
-	}
+	// This was gated twice and both gates were wrong. First on `hive_id IS NULL`,
+	// which assumed assigned meant joined: under convergence a machine is given a
+	// hive_id as an INTENTION and joins later on its own, so in between it is in
+	// a hive by the record and in no cluster in fact — invisible to the
+	// per-cluster sync and skipped here. Then on what the agent observed, which
+	// still left a CLUSTERED host depending on the capacity sync alone.
+	//
+	// That dependency is the problem. The sync needs a working hive API
+	// credential, and when one is missing or stale it correctly refuses rather
+	// than inventing membership — at which point last_synced_at freezes, the
+	// drain gate reads "unknown", and no host in that hive can be departed. Every
+	// node in a five-node lab sat two hours stale for exactly that reason, while
+	// each of their agents was reporting every twenty-five seconds.
+	//
+	// The two writers do not fight. This records what a host counts on ITSELF
+	// from /etc/pve; the sync records cluster-wide capacity the host does not
+	// report. Where they overlap they should agree, and a disagreement is the
+	// useful signal rather than a race — it is how a node that has silently
+	// fallen out of its cluster becomes visible.
+	_ = inACluster
 	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("bee_id = ?", beeID).
 		Updates(map[string]any{
@@ -304,4 +313,100 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Code == "23505"
 	}
 	return false
+}
+
+// MarkDeparting records that an operator has removed a machine from its hive,
+// while the cluster still contains it.
+//
+// KEEPS hive_id AND name. That is what arms the eviction: a remaining member
+// runs `pvecm delnode <node>`, and it can only do that if the composition NAMES
+// the node. Clearing the row on the operator's click left nothing to name, which
+// is why convergent eviction could be built and never armed.
+//
+// The machine leaves the member list and enters Departing in the same
+// publication, so every remaining member learns in one step both that it should
+// no longer be there and that removing it is authorised.
+func MarkDeparting(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) error {
+	var row struct{ HiveID *uuid.UUID }
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Select("hive_id").Where("id = ?", hypervisorID).Scan(&row).Error; err != nil {
+		return fmt.Errorf("read the hive this hypervisor is leaving: %w", err)
+	}
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Where("id = ?", hypervisorID).
+		Updates(map[string]any{
+			"departing_at": time.Now().UTC(),
+			// Unschedulable immediately: a node on its way out must not be given
+			// new work while it waits for a peer to remove it.
+			"schedulable": false,
+		}).Error; err != nil {
+		return fmt.Errorf("mark %s departing: %w", hypervisorID, err)
+	}
+	publishMembership(ctx, db, row.HiveID)
+	return nil
+}
+
+// FinaliseDepartures clears the machines a hive has actually dropped.
+//
+// EVIDENCE FROM A REMAINING MEMBER, not from the departing node. After `pvecm
+// delnode` the removed host still believes it is a member — that is the whole
+// reason it must not be powered back on — so asking it would get the wrong
+// answer. A quorate peer that no longer lists it is the authority.
+//
+// Only then are hive_id, name and swarm_id cleared, which is the same
+// MarkFleetless has always done. Doing it earlier is what let an agent read
+// stale desired state and re-form the cluster it was being removed from; doing
+// it never leaves the row claiming a membership the cluster has dropped.
+func FinaliseDepartures(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (int, error) {
+	// One quorate observation is enough, and it must come from a member that is
+	// NOT itself departing — a node on its way out is not a witness to the
+	// cluster's composition.
+	var witness struct {
+		Members datatypes.JSONType[[]string]
+	}
+	if err := db.WithContext(ctx).Raw(`
+		SELECT b.observed_members AS members
+		  FROM hypervisors h
+		  JOIN bees b ON b.id = h.bee_id
+		 WHERE h.hive_id = ? AND h.departing_at IS NULL
+		   AND b.observed_quorate = true
+		   AND b.observed_membership_at > now() - interval '5 minutes'
+		 LIMIT 1`, hiveID).Scan(&witness).Error; err != nil {
+		return 0, fmt.Errorf("find a witness for departures from %s: %w", hiveID, err)
+	}
+	present := map[string]bool{}
+	for _, n := range witness.Members.Data() {
+		present[strings.ToLower(strings.TrimSpace(n))] = true
+	}
+	if len(present) == 0 {
+		// No fresh quorate witness. Nothing is finalised rather than guessed:
+		// clearing membership on no evidence is how a live node becomes a row
+		// nobody owns.
+		return 0, nil
+	}
+
+	var departing []tenant.Hypervisor
+	if err := db.WithContext(ctx).
+		Where("hive_id = ? AND departing_at IS NOT NULL", hiveID).
+		Find(&departing).Error; err != nil {
+		return 0, err
+	}
+	done := 0
+	for _, h := range departing {
+		if h.Name != nil && present[strings.ToLower(*h.Name)] {
+			continue // still in the cluster; the eviction has not happened yet
+		}
+		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+			Where("id = ?", h.ID).
+			Updates(map[string]any{
+				"hive_id": nil, "swarm_id": nil, "name": nil, "departing_at": nil,
+			}).Error; err != nil {
+			return done, fmt.Errorf("finalise the departure of %s: %w", h.ID, err)
+		}
+		done++
+	}
+	if done > 0 {
+		publishMembership(ctx, db, &hiveID)
+	}
+	return done, nil
 }

@@ -331,7 +331,7 @@ func TestAFleetlessHostsOwnGuestCountIsRecorded(t *testing.T) {
 // The predicate is in the UPDATE rather than in a read-then-write on purpose, so
 // a machine that joins between an agent's report and this write cannot have the
 // stale observation land afterwards.
-func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
+func TestAClusteredHostAlsoRecordsItsOwnObservation(t *testing.T) {
 	db := factsDB(t)
 
 	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
@@ -348,8 +348,10 @@ func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The host reports that it IS in a cluster, which is what makes this the
-	// capacity sync's to observe.
+	// A CLUSTERED host records too, now. Depending on the capacity sync alone
+	// left every node in a hive two hours stale the moment its API credential
+	// went bad — the sync then correctly refuses, last_synced_at freezes, and the
+	// drain gate reads "unknown" so nothing can be departed.
 	if err := RecordObservedGuestsIfFleetless(context.Background(), db, bee.ID, 0, true); err != nil {
 		t.Fatalf("record: %v", err)
 	}
@@ -358,8 +360,12 @@ func TestAClusteredHostsGuestCountIsLeftToTheCapacitySync(t *testing.T) {
 	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got.ObservedGuests != 7 {
-		t.Fatalf("observed_guests = %d, want the sync's 7 left alone", got.ObservedGuests)
+	if got.ObservedGuests != 0 {
+		t.Fatalf("observed_guests = %d, want the host's own count of 0", got.ObservedGuests)
+	}
+	if got.LastSyncedAt == nil {
+		t.Fatal("last_synced_at was not stamped, so a hive with a stale API credential has " +
+			"no fresh observation at all and nothing in it can be departed")
 	}
 }
 
