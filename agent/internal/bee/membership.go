@@ -94,8 +94,27 @@ func (b *Bee) convergeMembership(ctx context.Context, desiredRev int, desiredDig
 	// Both compared, as for the firewall. A revision that matches while the
 	// digest does not means the composition changed without the number moving,
 	// and it is the composition that is being enforced.
+	//
+	// BUT AGREEMENT ON THE NUMBER IS NOT CONVERGENCE. This used to return here,
+	// which made the loop edge-triggered: a host acted when the revision moved
+	// and never again. A node that FELL OUT of its cluster afterwards never
+	// re-evaluated, and the control plane went on reporting it converged.
+	//
+	// Observed live: pve3 sat with corosync running and a corosync.conf naming
+	// three nodes, while pmxcfs reported no cluster at all — outside lab-b, and
+	// shown as 21/21.
+	//
+	// So the observation is re-checked every cycle against the composition last
+	// applied. It costs one read of /etc/pve/.members, which this agent has
+	// already done for the heartbeat.
 	if haveRev == desiredRev && haveDigest == desiredDigest {
-		return
+		if b.stillConverged(ctx) {
+			return
+		}
+		// Drifted. Clearing what was applied makes the control plane see the
+		// divergence rather than a host that quietly stopped being a member, and
+		// re-issues the composition so the paths below can act on it.
+		b.membership.set(0, "")
 	}
 
 	if b.opts.Fleet.Cluster == nil {
@@ -175,6 +194,7 @@ func (b *Bee) convergeMembership(ctx context.Context, desiredRev int, desiredDig
 	}
 
 	b.membership.set(int(res.GetRevision()), res.GetDigest())
+	b.lastComposition.Store(&want)
 	slog.InfoContext(ctx, "cluster membership converged",
 		"revision", res.GetRevision(), "cluster", want.Cluster, "verb", verb)
 }
@@ -197,4 +217,35 @@ func (b *Bee) membershipEnv(ctx context.Context) *fleetops.Env {
 		// outcome to report afterwards.
 		Declare: func(context.Context, time.Duration, string) error { return nil },
 	}
+}
+
+// stillConverged re-checks the last applied composition against what this host
+// can see NOW.
+//
+// Level-triggered, not edge-triggered. Convergence that only runs when a number
+// changes cannot notice a host leaving its cluster, losing quorum, or being
+// evicted by a peer — none of which move the revision, and all of which mean the
+// host is no longer in the state it reported reaching.
+//
+// Returns true when there is nothing recorded to check against: a process that
+// has applied nothing in this run has no claim to re-examine, and the ordinary
+// path below will establish one.
+func (b *Bee) stillConverged(ctx context.Context) bool {
+	want, _ := b.lastComposition.Load().(*fleetops.Desired)
+	if want == nil || b.opts.Fleet.Cluster == nil {
+		return true
+	}
+	obs, err := fleetops.Observe(ctx, b.opts.Fleet.Cluster)
+	if err != nil {
+		// COULD NOT ASK is not DRIFTED. Treating an unreadable host as diverged
+		// would have it re-run cluster work on the strength of a failed read.
+		return true
+	}
+	verb, _, why := want.Decide(obs)
+	if verb == fleetops.VerbNone {
+		return true
+	}
+	slog.WarnContext(ctx, "this host has drifted out of the composition it converged on",
+		"verb", verb, "why", why)
+	return false
 }
