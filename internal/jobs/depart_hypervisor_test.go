@@ -239,8 +239,12 @@ func TestDepartHappyPath(t *testing.T) {
 	// The MACHINE is recorded fleetless, not the agent. Membership lived on both
 	// rows and they diverged during exactly this operation; there is one column
 	// now and this is what writes it.
-	if len(h.fleetless) != 1 || h.fleetless[0] != h.snapshot.Hypervisor.ID {
-		t.Fatalf("the machine must be recorded fleetless exactly once, got %v", h.fleetless)
+	// NOT recorded fleetless here. The machine keeps its hive and name until a
+	// remaining member observes the cluster has dropped it; clearing on this
+	// job's success removed it from the composition before any peer could evict
+	// it. See TestTheDepartureJobDoesNotClearMembership.
+	if len(h.fleetless) != 0 {
+		t.Fatalf("the job cleared membership, got %v", h.fleetless)
 	}
 }
 
@@ -256,7 +260,7 @@ func TestDepartRecordsAMachineWithNoAgentAsFleetless(t *testing.T) {
 	if err := h.run(); err != nil {
 		t.Fatalf("a drained agentless node must still depart: %v", err)
 	}
-	if len(h.fleetless) != 1 || h.fleetless[0] != h.snapshot.Hypervisor.ID {
+	if len(h.fleetless) != 0 {
 		t.Fatalf("the machine must be recorded fleetless even with no agent enrolled, got %v",
 			h.fleetless)
 	}
@@ -378,8 +382,8 @@ func TestDepartSucceedsEvenWhenTheSyncCannotBeEnqueued(t *testing.T) {
 	if err := h.run(); err != nil {
 		t.Fatalf("a failed sync enqueue must not fail a departure that succeeded: %v", err)
 	}
-	if len(h.fleetless) != 1 {
-		t.Errorf("the machine must still be recorded fleetless, got %v", h.fleetless)
+	if len(h.fleetless) != 0 {
+		t.Errorf("the job cleared membership; FinaliseDepartures owns that now, got %v", h.fleetless)
 	}
 	if len(h.syncs) != 1 {
 		t.Errorf("the enqueue must have been attempted, got %v", h.syncs)
@@ -449,8 +453,8 @@ func TestARetriedDepartureResumesAfterTheDetach(t *testing.T) {
 	if !disarmed {
 		t.Fatal("the retry skipped the disarm, which is the work it existed to finish")
 	}
-	if len(h.fleetless) != 1 {
-		t.Fatalf("the machine must still be recorded fleetless, got %v", h.fleetless)
+	if len(h.fleetless) != 0 {
+		t.Fatalf("the job cleared membership; FinaliseDepartures owns that now, got %v", h.fleetless)
 	}
 }
 
@@ -535,8 +539,8 @@ func TestDepartingTheLastNodeDismantlesTheCluster(t *testing.T) {
 	if !converted {
 		t.Fatal("the last node was not converted to standalone, so nothing was actually done")
 	}
-	if len(h.fleetless) != 1 {
-		t.Fatalf("the machine must be recorded fleetless, got %v", h.fleetless)
+	if len(h.fleetless) != 0 {
+		t.Fatalf("the job cleared membership; FinaliseDepartures owns that now, got %v", h.fleetless)
 	}
 }
 
@@ -553,5 +557,29 @@ func TestPeersWithNoAddressAreNotReportedAsAnEmptyCluster(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "last node") {
 		t.Fatalf("an address problem was reported as an empty cluster: %v", err)
+	}
+}
+
+// THE JOB MUST NOT CLEAR MEMBERSHIP, because doing so undoes the departure that
+// started it.
+//
+// A departure MARKS the machine — departing_at set, hive_id and name kept — so
+// the composition can name it and a remaining member can evict it. MarkFleetless
+// knew nothing about that marker: it cleared hive_id and left departing_at set,
+// producing a row that was fleetless AND departing at once, and removing the
+// node from the composition before any peer had seen it.
+//
+// Observed on lab-a: pve was left alone below quorum with /etc/pve read-only,
+// still listing a pve2 that nothing would ever remove — the node it needed to
+// evict had already vanished from the document that authorises the eviction.
+func TestTheDepartureJobDoesNotClearMembership(t *testing.T) {
+	h := newHarness(t)
+	if err := h.run(); err != nil {
+		t.Fatalf("depart: %v", err)
+	}
+	// The harness records every MarkFleetless call; there must be none.
+	if len(h.fleetless) > 0 {
+		t.Fatal("the job cleared membership; that removes the node from the composition before " +
+			"a peer can evict it, and leaves the row fleetless and departing at once")
 	}
 }

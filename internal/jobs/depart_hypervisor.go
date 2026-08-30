@@ -387,19 +387,24 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return err
 	}
 
-	// Last, and only on success. The machine keeps claiming its old hive until the
-	// cluster work is genuinely done.
+	// THE MEMBERSHIP IS NOT CLEARED HERE. Doing so undid the departure that
+	// started it.
 	//
-	// No longer conditional on an agent being enrolled. It used to be — membership
-	// lived on the bee, so a node with no bee had nowhere to record the change and
-	// the departure silently left the fleet state wrong. Membership is on the
-	// machine record now, which every departing node has by definition.
-	if d.MarkFleetless != nil {
-		if err := d.MarkFleetless(ctx, in.OrganizationID, snap.Hypervisor.ID); err != nil {
-			return fmt.Errorf("depart: the host has left the cluster but recording it as fleetless "+
-				"failed, so the control plane still shows it in %q: %w", snap.Hive.Name, err)
-		}
-	}
+	// A departure MARKS the machine — departing_at set, hive_id and name kept —
+	// so the composition can name it and a remaining member can evict it.
+	// MarkFleetless knows nothing about that marker: it cleared hive_id and left
+	// departing_at set, producing a row that was fleetless AND departing at once,
+	// and removing the node from the composition before any peer had seen it.
+	//
+	// The consequence was not cosmetic. lab-a was left with pve alone below
+	// quorum and /etc/pve read-only, still listing a pve2 that nothing would ever
+	// remove — because the node it needed to evict had already vanished from the
+	// document that authorises the eviction.
+	//
+	// FinaliseDepartures clears the row instead, on evidence from a remaining
+	// member that the cluster has actually dropped the node. This job's own
+	// success says only that the departing host was disarmed, which is a
+	// different fact.
 
 	// The Hypervisor row is deliberately NOT deleted here, and no longer because
 	// the capacity sync owns it — it does not. THIS ROW IS THE MACHINE. Deleting
