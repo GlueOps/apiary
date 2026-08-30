@@ -500,3 +500,34 @@ func TestANodeNameIsRecordedOnce(t *testing.T) {
 		t.Fatalf("name = %q, want the original — a heartbeat must not rename a machine", *got.Name)
 	}
 }
+
+// A node name means nothing outside a cluster, which is why a departure clears
+// it. /etc/pve/.members keeps reporting one on a standalone host, so recording
+// it unconditionally put the name straight back onto a machine that had just
+// been departed — observed on pve5, fleetless and still called pve5.
+func TestAFleetlessMachineDoesNotReclaimItsNodeName(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Departed: no hive, no name.
+	hv := tenant.Hypervisor{BeeID: &bee.ID, Address: "192.0.2.40"}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordObservedNodeName(ctx, db, bee.ID, "pve5"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != nil {
+		t.Fatalf("a fleetless machine reclaimed the node name %q that its departure cleared",
+			*got.Name)
+	}
+}
