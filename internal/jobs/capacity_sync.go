@@ -88,10 +88,31 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 		_, clustered, cerr := d.ClusterIdentity(ctx, orgID, hiveID)
 		switch {
 		case cerr != nil:
-			// Not fatal on its own: the inventory read below will fail too if the
-			// endpoint is genuinely unreachable, and with a better message.
-			slog.WarnContext(ctx, "could not establish whether this hive's endpoint is a cluster",
-				"organization_id", orgID, "hive_id", hiveID, "error", cerr)
+			// COULD NOT ASK IS A REFUSAL HERE, not a warning to proceed past.
+			//
+			// This used to log and continue, reasoning that "the inventory read
+			// below will fail too if the endpoint is genuinely unreachable". That
+			// is wrong for the one case this check exists to catch, and the
+			// comment directly above says why: a standalone host answers the
+			// inventory PERFECTLY WELL, and the answer is the problem. So an
+			// unanswerable identity check followed by a successful inventory is
+			// exactly the shape of a machine that is in no cluster — and
+			// proceeding recorded it as a member of one.
+			//
+			// It happened on a freshly rebuilt lab: .11 was standalone, had never
+			// been asked to create anything, and the sync gave it a node row in
+			// lab-a. That phantom row then held a node name, which made an
+			// enrolment ambiguous between it and the operator's declared record,
+			// so the agent's machine got a THIRD row and none of them merged.
+			//
+			// Refusing costs a skipped tick on a transient API failure, and the
+			// sync is periodic and changes nothing when it returns early. The
+			// project's standing rule applies unchanged: a check that cannot
+			// reach a decision denies.
+			return 0, fmt.Errorf("%w: could not establish whether this hive's endpoint is a "+
+				"cluster, and a standalone host answers the inventory as convincingly as a "+
+				"real one — so nothing was recorded. Retrying on the next tick: %w",
+				ErrHiveIsNotACluster, cerr)
 		case !clustered:
 			// WHAT A STANDALONE ANSWER ACTUALLY PROVES is only that the machine at
 			// the API URL is in no cluster. It says nothing about the other
@@ -204,8 +225,28 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 		//
 		// Restricted to THIS hive for the named case, because a machine assigned
 		// to another hive is not ours to adopt.
+		// A UNION OF TWO CASES, and dropping either one duplicates machines.
+		//
+		// FLEETLESS, named or not: a machine onboarded through this system has a
+		// machine id and an address, and may already carry the node name its
+		// enrolment matched. It has no hive because a node name does not put it
+		// in one. This is the original case and the common one.
+		//
+		// ASSIGNED TO THIS HIVE BUT UNNAMED: what convergence creates. An arrival
+		// records membership as an INTENTION — a hive_id with no name — and the
+		// host joins on its own afterwards. Between those moments the machine is
+		// in this hive and unnamed, so a pool of `hive_id IS NULL` alone missed
+		// it and the sync created a second record.
+		//
+		// Restricted to THIS hive for the second case: a machine assigned
+		// elsewhere is not ours to adopt.
+		//
+		// Written as a union because the first attempt at this replaced the
+		// fleetless case rather than adding to it, which stopped enrolled
+		// machines from being adopted and produced three rows for one host on a
+		// freshly deployed fleet.
 		var unclustered []tenant.Hypervisor
-		if err := tx.Where("name IS NULL AND (hive_id IS NULL OR hive_id = ?)", hiveID).
+		if err := tx.Where("hive_id IS NULL OR (hive_id = ? AND name IS NULL)", hiveID).
 			Find(&unclustered).Error; err != nil {
 			return fmt.Errorf("load adoptable machines: %w", err)
 		}
