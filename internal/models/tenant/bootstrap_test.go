@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +31,7 @@ func TestBootstrapAllowsAFleetlessHostIntoAnEmptyHive(t *testing.T) {
 	rs := CheckBootstrap(BootstrapRequest{
 		TargetHive:        Hive{Name: "dev"},
 		ProvisioningState: OnboardProvisioned,
+		AgentOnline:       true,
 	})
 	if len(rs) != 0 {
 		t.Fatalf("a provisioned fleetless host must be allowed to create an empty hive, got %v",
@@ -53,6 +55,7 @@ func TestBootstrapDoesNotRefuseAHostCarryingGuests(t *testing.T) {
 	rs := CheckBootstrap(BootstrapRequest{
 		TargetHive:        Hive{Name: "dev"},
 		ProvisioningState: OnboardProvisioned,
+		AgentOnline:       true,
 	})
 	for _, r := range rs {
 		if strings.Contains(r.Code, "guest") {
@@ -69,6 +72,7 @@ func TestBootstrapRefusesAHostAlreadyInAHive(t *testing.T) {
 		TargetHive:        Hive{Name: "dev"},
 		CurrentHiveID:     &id,
 		ProvisioningState: OnboardProvisioned,
+		AgentOnline:       true,
 	})
 	if !bootstrapHas(rs, RefuseBootstrapInHive) {
 		t.Fatalf("a clustered host must not create a second cluster on itself, got %v",
@@ -84,6 +88,7 @@ func TestBootstrapRefusesAHiveThatAlreadyHasNodes(t *testing.T) {
 		TargetHive:        Hive{Name: "dev"},
 		HiveNodeCount:     1,
 		ProvisioningState: OnboardProvisioned,
+		AgentOnline:       true,
 	})
 	if !bootstrapHas(rs, RefuseBootstrapHiveNotEmpty) {
 		t.Fatalf("a hive that already has nodes must refuse a bootstrap, got %v",
@@ -91,13 +96,21 @@ func TestBootstrapRefusesAHiveThatAlreadyHasNodes(t *testing.T) {
 	}
 }
 
-func TestBootstrapRefusesAHalfOnboardedHost(t *testing.T) {
+// A half-onboarded host with a LIVE AGENT is allowed, which is the inversion of
+// what this test used to assert.
+//
+// It required `provisioned` because "every step of a bootstrap runs over SSH as
+// the control plane". The agent creates the cluster now and the control plane
+// opens no connection, so an unfinished onboarding says something about the
+// SSH fallback and nothing about whether this machine can form a cluster.
+func TestBootstrapAllowsAHalfOnboardedHostWithALiveAgent(t *testing.T) {
 	rs := CheckBootstrap(BootstrapRequest{
 		TargetHive:        Hive{Name: "dev"},
 		ProvisioningState: OnboardPending,
+		AgentOnline:       true,
 	})
-	if !bootstrapHas(rs, RefuseBootstrapUnprovisioned) {
-		t.Fatalf("a host that has not finished onboarding must be refused, got %v",
+	if bootstrapHas(rs, RefuseBootstrapUnprovisioned) {
+		t.Fatalf("a host with a live agent was refused for the control plane's own SSH state: %v",
 			bootstrapCodes(rs))
 	}
 }
@@ -112,6 +125,8 @@ func TestBootstrapReportsEveryRefusalAtOnce(t *testing.T) {
 		CurrentHiveID:     &id,
 		HiveNodeCount:     2,
 		ProvisioningState: OnboardPending,
+		// No agent, which is what RefuseBootstrapUnprovisioned now means.
+		AgentOnline: false,
 	})
 	for _, want := range []string{
 		RefuseBootstrapInHive, RefuseBootstrapHiveNotEmpty, RefuseBootstrapUnprovisioned,
@@ -144,5 +159,55 @@ func TestClusterNameMatchesWhatProxmoxAccepts(t *testing.T) {
 			t.Errorf("ValidateClusterName(%q) = nil, want an error (%s); pvecm create would "+
 				"refuse it on the host, after the session is already open", bad.name, bad.why)
 		}
+	}
+}
+
+// THE PRECONDITION IS A LIVE AGENT, not a provisioning state.
+//
+// This gate used to refuse any host that was not `provisioned`, because "every
+// step of a bootstrap runs over SSH as the control plane". Neither half is true
+// now: the agent creates the cluster itself and the control plane opens no
+// connection at all. The old rule refused a host whose agent was enrolled and
+// heartbeating because a later onboarding step — proving the control plane's own
+// managed SSH key — had lost a reconnect race.
+func TestBootstrapGatesOnTheAgentNotOnSSHProvisioning(t *testing.T) {
+	// Onboarding never finished proving the managed key, but the agent is live.
+	// The agent is what runs `pvecm create`, so this must be allowed.
+	rs := CheckBootstrap(BootstrapRequest{
+		TargetHive:        Hive{Name: "dev"},
+		ProvisioningState: OnboardFailed,
+		AgentOnline:       true,
+	})
+	if len(rs) != 0 {
+		t.Fatalf("a host with a live agent was refused for the control plane's own SSH state: %v",
+			bootstrapCodes(rs))
+	}
+
+	// No agent is a real refusal: nothing would create the cluster.
+	rs = CheckBootstrap(BootstrapRequest{
+		TargetHive:        Hive{Name: "dev"},
+		ProvisioningState: OnboardProvisioned,
+		AgentOnline:       false,
+	})
+	if !slices.Contains(bootstrapCodes(rs), RefuseBootstrapUnprovisioned) {
+		t.Fatalf("a host with no live agent was allowed to create a cluster: %v",
+			bootstrapCodes(rs))
+	}
+
+	// And an unfinished onboarding is still SAID, as context on the refusal
+	// rather than as the refusal itself.
+	rs = CheckBootstrap(BootstrapRequest{
+		TargetHive:        Hive{Name: "dev"},
+		ProvisioningState: OnboardPending,
+		AgentOnline:       false,
+	})
+	var detail string
+	for _, r := range rs {
+		if r.Code == RefuseBootstrapUnprovisioned {
+			detail = r.Detail
+		}
+	}
+	if !strings.Contains(detail, OnboardPending) {
+		t.Fatalf("the refusal does not mention the unfinished onboarding: %q", detail)
 	}
 }

@@ -1,8 +1,12 @@
 package jobs
 
 import (
+	"errors"
+	"io"
+	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -55,5 +59,34 @@ func TestLockedBufferSurvivesConcurrentWriters(t *testing.T) {
 	}
 	if strings.Trim(got, "x") != "" {
 		t.Fatal("buffer contents corrupted under concurrency")
+	}
+}
+
+// A REFUSED CONNECTION IS NOT A REFUSED KEY.
+//
+// A lab host failed onboarding here while its sshd was reachable before and
+// after. The reload that runs immediately before was the natural suspect and was
+// ruled out — the port stayed open across it and socket activation was disabled
+// — so the transient is unexplained. The retry stands on its own reasoning: a
+// refusal between two reachable moments is transient, and the alternative is
+// failing an onboarding on a single dial.
+func TestConnectionRefusalIsRetryableAndAuthFailureIsNot(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}
+	if !isConnectionRefused(refused) {
+		t.Fatal("a refused dial was not treated as retryable")
+	}
+	if !isConnectionRefused(io.EOF) {
+		t.Fatal("a listener disappearing mid-handshake was not treated as retryable")
+	}
+
+	// An authentication failure is the thing this reconnect exists to PROVE.
+	// Retrying it would turn a real finding into a slow one.
+	authErr := errors.New("ssh: handshake failed: ssh: unable to authenticate")
+	if isConnectionRefused(authErr) {
+		t.Fatal("an authentication failure was treated as a transport problem; the reconnect " +
+			"exists to catch exactly this and must fail fast")
+	}
+	if isConnectionRefused(nil) {
+		t.Fatal("nil reported as refused")
 	}
 }

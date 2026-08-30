@@ -93,6 +93,11 @@ type Bee struct {
 	membership        appliedMembership
 	desiredMembership atomic.Value
 
+	// lastComposition is what this agent most recently converged on, kept so the
+	// loop can re-check it against live observation rather than trusting that a
+	// revision it once reached is still true.
+	lastComposition atomic.Value
+
 	// warnedNoClient is the last revision this agent complained it could not
 	// converge, so a host with no Proxmox token says so once per change rather
 	// than on every heartbeat forever.

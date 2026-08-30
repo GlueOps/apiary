@@ -325,6 +325,27 @@ type Bee struct {
 	AppliedMembershipDigest   string     `gorm:"type:varchar(71);not null;default:''" json:"applied_membership_digest,omitempty"`
 	AppliedMembershipAt       *time.Time `gorm:"type:timestamptz" json:"applied_membership_at,omitempty"`
 
+	// IssuedMembershipRevision is the composition this agent was last HANDED, as
+	// distinct from the one it has reached.
+	//
+	// ONE OUTSTANDING CONVERGENCE PER AGENT. Without this the control plane
+	// re-advertises the newest revision on every heartbeat and has no idea where
+	// any host actually is: an agent midway through a join is indistinguishable
+	// from one that has not started, and a revision published while it works
+	// silently replaces the one it is acting on.
+	//
+	// The rule is issue-then-acknowledge. A revision is handed out only when the
+	// last one handed out has been applied, so a host converges one step at a
+	// time and the control plane always knows which step that is.
+	//
+	// It is deliberately NOT a replay of history. Each revision is a complete
+	// desired state, not a diff, so a host behind by several is given the LATEST
+	// rather than walked forward through the ones in between — walking would make
+	// it act on compositions that have since been withdrawn, which is exactly how
+	// an agent re-created a cluster an operator was removing it from.
+	IssuedMembershipRevision int        `gorm:"not null;default:0" json:"issued_membership_revision"`
+	IssuedMembershipAt       *time.Time `gorm:"type:timestamptz" json:"issued_membership_at,omitempty"`
+
 	EnrolledAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"enrolled_at"`
 	CreatedAt  time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
 	UpdatedAt  time.Time `gorm:"type:timestamptz;autoUpdateTime;not null;default:now()" json:"updated_at"`

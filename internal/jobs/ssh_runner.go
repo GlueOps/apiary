@@ -3,11 +3,14 @@ package jobs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -110,8 +113,49 @@ func (s *SSHRunner) Connect(ctx context.Context) error {
 // under test broke authentication, the caller keeps a working session to report
 // from and to undo with — closing first would strand the job on the far side of
 // its own mistake.
+// reconnectSettle bounds the wait for sshd to accept again after a reload.
+//
+// Vars so a test can shorten them.
+var (
+	reconnectSettleTimeout  = 20 * time.Second
+	reconnectSettleInterval = time.Second
+)
+
 func (s *SSHRunner) Reconnect(ctx context.Context) error {
-	fresh, err := s.dial(ctx)
+	// A REFUSED CONNECTION IS NOT A REFUSED KEY, and this dialled once.
+	//
+	// A lab host failed onboarding here with "connection refused" while its sshd
+	// was reachable before and after, and stayed `failed` while four identical
+	// hosts passed.
+	//
+	// THE OBVIOUS CAUSE WAS RULED OUT rather than assumed: the step before this
+	// reloads sshd, so a reload window was the natural suspect — but polling the
+	// port across `systemctl reload ssh` on that host showed it open throughout,
+	// and socket activation was disabled there. Whatever the transient was, it
+	// was not the reload.
+	//
+	// The retry is kept anyway, because it is cheap and correct for its own
+	// reason: a connection refused between two reachable moments is transient by
+	// definition, and the alternative is failing an onboarding on one dial.
+	//
+	// Only CONNECTION failures are retried. An authentication failure means the
+	// key genuinely does not work, which is the thing this reconnect exists to
+	// prove — retrying it would turn a real finding into a slow one, and the
+	// whole point of the proof is that it can fail.
+	deadline := time.Now().Add(reconnectSettleTimeout)
+	var fresh *ssh.Client
+	var err error
+	for {
+		fresh, err = s.dial(ctx)
+		if err == nil || !isConnectionRefused(err) || time.Now().After(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(reconnectSettleInterval):
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("onboard: reconnect %s: %w", s.addr, err)
 	}
@@ -280,4 +324,22 @@ func (s *SSHRunner) Upload(ctx context.Context, path string, mode uint32, conten
 		}
 		return nil
 	}
+}
+
+// isConnectionRefused reports whether an error is a transport-level refusal
+// rather than a rejection of the credential.
+//
+// Matched on the syscall error, not on the message: the text is produced by the
+// resolver and the kernel and differs between platforms, and matching prose is
+// how isNotClustered ended up mistaking "standalone" for "unreadable".
+func isConnectionRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	// A listener that has gone away mid-handshake surfaces as EOF rather than as
+	// a syscall error, and it means the same thing here.
+	return errors.Is(err, io.EOF)
 }

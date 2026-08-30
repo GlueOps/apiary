@@ -9,6 +9,7 @@ import (
 
 	"github.com/glueops/apiary/internal/models/tenant"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -260,6 +261,24 @@ func RecordObservedNodeName(ctx context.Context, db *gorm.DB, beeID uuid.UUID, n
 		Where("bee_id = ? AND (name IS NULL OR name = '')", beeID).
 		Update("name", node)
 	if res.Error != nil {
+		// A UNIQUE VIOLATION HERE IS A DUPLICATE MACHINE RECORD, not a transient
+		// write failure, and it must not read as one. ux_hypervisor_hive_name is
+		// unique on (hive_id, name), so this fails when some OTHER row in the
+		// same hive already holds this node name — which happens when a sync
+		// adopted the node as new while this row was still unnamed.
+		//
+		// It is unrecoverable from here and permanent: the real row can never be
+		// given its name while the duplicate holds it, so it stays NULL forever
+		// and the machine has two records. Observed on .12. The caller logs this
+		// and continues, so the message has to say what is actually wrong rather
+		// than looking like a failed write worth retrying.
+		if isUniqueViolation(res.Error) {
+			return fmt.Errorf("this host reports node name %q, but another hypervisor row in the "+
+				"same hive already holds it — the machine has TWO records, and this one can never "+
+				"be named while that is true. The duplicate is almost certainly a capacity sync "+
+				"adoption of a machine that was assigned to the hive before it had a node name; "+
+				"merge them: %w", node, res.Error)
+		}
 		return res.Error
 	}
 	if res.RowsAffected > 0 {
@@ -272,4 +291,17 @@ func RecordObservedNodeName(ctx context.Context, db *gorm.DB, beeID uuid.UUID, n
 		}
 	}
 	return nil
+}
+
+// isUniqueViolation reports whether an error is Postgres 23505.
+//
+// Matched on the SQLSTATE rather than on the message, which is localised and
+// reworded between versions — the same trap that had isNotClustered grepping an
+// API's prose for "no cluster".
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }

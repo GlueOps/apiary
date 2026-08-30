@@ -35,6 +35,7 @@ func main() {
 		&tenant.FirewallRule{},
 		&tenant.FirewallBinding{},
 		&tenant.FirewallSnapshot{},
+		&tenant.MembershipSnapshot{},
 
 		// The placement oracle, folded in from waggle. Hypervisor hangs off Hive
 		// rather than a parallel Datacenter, and Placement carries hive_id so the

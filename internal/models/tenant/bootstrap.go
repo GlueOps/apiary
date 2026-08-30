@@ -36,9 +36,16 @@ type BootstrapRequest struct {
 	// zero means the cluster exists and this is an arrival, not a bootstrap.
 	HiveNodeCount int
 
-	// ProvisioningState of the host. A machine that has not finished onboarding
-	// has no agent, and every step below runs over SSH as the control plane.
+	// ProvisioningState of the host. Kept for the message, no longer gated on —
+	// see the refusal below.
 	ProvisioningState string
+
+	// AgentOnline is whether this host's agent is currently live.
+	//
+	// This is the precondition that actually matters, because the agent is what
+	// creates the cluster: it derives the verb from what corosync reports and
+	// runs `pvecm create` locally. The control plane opens no connection.
+	AgentOnline bool
 }
 
 // CheckBootstrap returns every reason the host may not create this hive, or nil.
@@ -88,17 +95,28 @@ func CheckBootstrap(req BootstrapRequest) []BootstrapRefusal {
 		})
 	}
 
-	// Same rule as onboarding's, and here for the same reason: every step of a
-	// bootstrap runs over SSH as the control plane, and a half-installed host is
-	// one where that access is not yet established.
-	if req.ProvisioningState != "" && req.ProvisioningState != OnboardProvisioned {
+	// THE PRECONDITION IS A LIVE AGENT, not a provisioning state.
+	//
+	// This used to refuse any host that was not `provisioned`, because "every
+	// step of a bootstrap runs over SSH as the control plane, and a
+	// half-installed host is one where that access is not yet established".
+	// Neither half of that is true any more: the agent creates the cluster
+	// itself, deriving the verb from what corosync reports and running `pvecm
+	// create` locally, and the control plane opens no connection at all.
+	//
+	// Gating on the old state refused a host whose agent was enrolled and
+	// heartbeating because a LATER onboarding step — proving the control plane's
+	// own managed SSH key — had failed on a reconnect race. That failure is worth
+	// knowing about, since the managed key is the fallback for a host whose agent
+	// dies, but it says nothing about whether this machine can form a cluster.
+	// It is reported on the host rather than blocking the operation.
+	if !req.AgentOnline {
 		out = append(out, BootstrapRefusal{
 			Code: RefuseBootstrapUnprovisioned,
-			Detail: fmt.Sprintf(
-				"this host is %q rather than %q; finish onboarding before creating a cluster on "+
-					"it, or the cluster is created on a machine the control plane cannot reliably "+
-					"reach afterwards",
-				req.ProvisioningState, OnboardProvisioned),
+			Detail: "this host has no live agent, and the agent is what creates the cluster — " +
+				"it reads what corosync reports and runs `pvecm create` locally. Wait for it to " +
+				"check in, or finish onboarding if it has not been installed yet" +
+				provisioningSuffix(req.ProvisioningState),
 		})
 	}
 
@@ -115,4 +133,14 @@ func BootstrapRefusalsError(rs []BootstrapRefusal) error {
 		parts = append(parts, r.Error())
 	}
 	return fmt.Errorf("%s", strings.Join(parts, "; "))
+}
+
+// provisioningSuffix names the onboarding state when it is not clean, so a host
+// that never finished onboarding still says so — as context on the real
+// refusal rather than as the refusal itself.
+func provisioningSuffix(state string) string {
+	if state == "" || state == OnboardProvisioned {
+		return "."
+	}
+	return fmt.Sprintf(" (onboarding is %q).", state)
 }

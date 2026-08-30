@@ -167,6 +167,9 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 	}
 
 	// FIRST. Everything after this can be retried; losing SSH cannot.
+	//
+	// Genuinely pre-enrolment: this is what gives the control plane the durable
+	// access it uses to install the agent, so it cannot be the agent's job.
 	if err := InstallManagedKey(ctx, runner, OnboardPlan{
 		PublicKey:  pub,
 		FromClause: restriction.Render(),

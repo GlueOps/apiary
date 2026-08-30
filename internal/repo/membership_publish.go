@@ -130,7 +130,7 @@ func PublishHiveMembership(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (
 		if err != nil {
 			return err
 		}
-		_, digest := tenant.RenderMembership(name, members)
+		doc, digest := tenant.RenderMembership(name, members)
 		if digest == "" {
 			return errors.New("membership: the composition could not be rendered")
 		}
@@ -141,6 +141,20 @@ func PublishHiveMembership(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (
 		}
 
 		next := hive.MembershipRevision + 1
+
+		// The BODY first, then the pointer at it — one transaction, the same
+		// discipline the firewall publish states: a pointer naming a snapshot that
+		// does not exist is every agent in the hive asking for a composition
+		// nobody can serve.
+		if err := tx.Create(&tenant.MembershipSnapshot{
+			HiveID:   hiveID,
+			Revision: next,
+			Content:  datatypes.NewJSONType(doc),
+			Digest:   digest,
+		}).Error; err != nil {
+			return fmt.Errorf("membership: write the composition snapshot: %w", err)
+		}
+
 		if err := tx.Model(&tenant.Hive{}).Where("id = ?", hiveID).
 			Updates(map[string]any{
 				"membership_revision":     next,

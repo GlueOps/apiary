@@ -1110,7 +1110,7 @@ func TestSyncLeavesARealClusterAlone(t *testing.T) {
 
 // An endpoint that cannot be reached is NOT a standalone host. Mistaking the two
 // would release a whole cluster's membership on a network blip.
-func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
+func TestSyncRefusesAndChangesNothingWhenTheClusterCheckFails(t *testing.T) {
 	db := capacityDB(t)
 	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
 	if err := db.Create(&hive).Error; err != nil {
@@ -1127,9 +1127,28 @@ func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
 		return "", false, errors.New("dial tcp 192.0.2.1:8006: i/o timeout")
 	}
 
-	if _, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID); err != nil {
-		t.Fatalf("an unreachable check must not fail the sync on its own: %v", err)
+	// REFUSES, and changes nothing in either direction.
+	//
+	// This used to assert that a failed check "must not fail the sync on its
+	// own", on the reasoning that an unreachable endpoint would fail the
+	// inventory too. It does not: a STANDALONE host answers the inventory
+	// perfectly well, which is the entire reason this check exists — so
+	// continuing past an unanswerable check is how the sync recorded a machine
+	// that is in no cluster as a member of one. It did exactly that to a freshly
+	// rebuilt lab node that had never been asked to create anything.
+	//
+	// Failing the tick is cheap: the sync is periodic and this path writes
+	// nothing. Inventing membership is not.
+	_, err := SyncHiveCapacity(context.Background(), deps, uuid.New(), hive.ID)
+	if err == nil {
+		t.Fatal("an unanswerable cluster check was treated as permission to proceed")
 	}
+	if !errors.Is(err, ErrHiveIsNotACluster) {
+		t.Fatalf("err = %v, want it to report the check it could not make", err)
+	}
+
+	// Membership is NOT released — that remains the important half. A transient
+	// API failure must never dismantle a live fleet's records.
 	var count int64
 	if err := db.Model(&tenant.Hypervisor{}).
 		Where("hive_id = ?", hive.ID).Count(&count).Error; err != nil {
@@ -1137,6 +1156,22 @@ func TestSyncDoesNotReleaseMembersWhenTheClusterCheckFails(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("membership was released on a failed check; %d members remain, want 1", count)
+	}
+
+	// And nothing was RECORDED either — the phantom row is the failure this
+	// change exists to prevent.
+	//
+	// Scoped to this hive's own node name rather than counting the table: every
+	// test in this package shares one schema, so a global count passes alone and
+	// fails the moment the package runs as a whole.
+	var named int64
+	if err := db.Model(&tenant.Hypervisor{}).
+		Where("hive_id = ? AND name = ?", hive.ID, "hv1").Count(&named).Error; err != nil {
+		t.Fatal(err)
+	}
+	if named != 1 {
+		t.Fatalf("%d rows named hv1 in this hive, want 1 — the sync invented membership from "+
+			"an inventory it should never have read", named)
 	}
 }
 

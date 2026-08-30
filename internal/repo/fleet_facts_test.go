@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -402,5 +403,94 @@ func TestAnAssignedButUnjoinedHostIsStillObservedByItsAgent(t *testing.T) {
 	if got.LastSyncedAt == nil {
 		t.Fatal("last_synced_at was not stamped, so the drain gate reads unknown and departure " +
 			"is refused forever")
+	}
+}
+
+// A machine assigned to a hive before it has a node name must be ADOPTED when
+// it appears under that name, not duplicated.
+//
+// This is the window AssignToHive opens: an arrival records membership as an
+// intention, so the row sits in the hive unnamed until the host joins and
+// reports what it became. A pool of `hive_id IS NULL` excluded exactly those
+// rows, so the sync created a second record — carrying no machine id, no agent
+// and none of the onboarding history — and that duplicate then held
+// (hive_id, name), which meant the real row could never be named and stayed
+// NULL permanently. Observed on a lab node.
+func TestRecordingANodeNameSaysSoWhenADuplicateHoldsIt(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The real machine: assigned to the hive, agent attached, not yet named.
+	real := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Address: "192.0.2.30"}
+	if err := db.Create(&real).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The duplicate a sync would have created, already holding the name.
+	dup := "pve9"
+	if err := db.Create(&tenant.Hypervisor{
+		HiveID: &hive.ID, Name: &dup, Address: "192.0.2.30",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := RecordObservedNodeName(ctx, db, bee.ID, "pve9")
+	if err == nil {
+		t.Fatal("a duplicate machine record was reported as success; it is permanent and " +
+			"the real row can never be named while it stands")
+	}
+	if !strings.Contains(err.Error(), "TWO records") {
+		t.Fatalf("err = %v, want it to name the actual problem rather than look like a "+
+			"retryable write failure", err)
+	}
+}
+
+// The ordinary case still works: an unnamed row takes the name its host reports.
+func TestANodeNameIsRecordedOnce(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	hv := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Address: "192.0.2.31"}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordObservedNodeName(ctx, db, bee.ID, "pve8"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Name == nil || *got.Name != "pve8" {
+		t.Fatalf("name = %v, want pve8", got.Name)
+	}
+
+	// A rename must NOT come from a heartbeat: once a machine has a name, the
+	// capacity sync and the composition are both keyed on it, and moving it out
+	// from under them would strand every reference.
+	if err := RecordObservedNodeName(ctx, db, bee.ID, "somethingelse"); err != nil {
+		t.Fatalf("second record: %v", err)
+	}
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if *got.Name != "pve8" {
+		t.Fatalf("name = %q, want the original — a heartbeat must not rename a machine", *got.Name)
 	}
 }
