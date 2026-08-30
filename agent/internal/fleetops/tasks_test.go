@@ -25,6 +25,8 @@ type fakeCluster struct {
 	created      *proxmoxCreateOptions
 	createErr    error
 	joinAttempts int
+	expected     int
+	expectedErr  error
 
 	// statusHook runs at the top of each Status call, with the number of calls
 	// made so far including this one. It lets a test model a host whose API goes
@@ -35,6 +37,18 @@ type fakeCluster struct {
 }
 
 func (f *fakeCluster) ClusterName() string { return f.name }
+
+func (f *fakeCluster) Expected(_ context.Context, votes int) error {
+	f.expected = votes
+	if f.expectedErr != nil {
+		return f.expectedErr
+	}
+	// Lowering the expectation is what makes a shrunken cluster quorate again —
+	// and it STAYS quorate, so any hook modelling the loss stops applying.
+	f.statusHook = nil
+	f.quorate = true
+	return nil
+}
 
 func (f *fakeCluster) NodeName() string { return f.self }
 
@@ -603,5 +617,58 @@ func TestVerifyAfterRebootStillFailsOnALostQuorum(t *testing.T) {
 		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil))
 	if err == nil || !strings.Contains(err.Error(), "NOT quorate") {
 		t.Fatalf("err = %v, want a failure naming the lost quorum", err)
+	}
+}
+
+// 2 -> 1 IS ALLOWED, and quorum is restored on the node that stays.
+//
+// Removing one of two leaves the survivor below the expected vote count and its
+// /etc/pve read-only. `pvecm expected 1` brings it back, and it cannot be done
+// in advance — corosync refuses to set expected below the votes currently
+// present. So the removal proceeds and the remedy runs immediately after, on the
+// node doing the reconciling, which is the only host it affects.
+func TestEvictShrinksATwoNodeClusterAndRestoresQuorum(t *testing.T) {
+	cl := &fakeCluster{
+		name: "lab-a", members: 2, names: []string{"pve", "pve2"},
+		quorate: true, guests: map[string][]Guest{},
+		// Quorate for the preflight, and not once the node is gone.
+		statusHook: func(call int, f *fakeCluster) {
+			if call > 1 {
+				f.quorate = false
+			}
+		},
+	}
+	var phases []string
+	if err := Evict(context.Background(),
+		Deps{Cluster: cl, Node: "pve"},
+		testEnv(&phases, nil, nil), `{"node":"pve2"}`); err != nil {
+		t.Fatalf("a two-node hive must be shrinkable: %v", err)
+	}
+	if len(cl.deleted) != 1 || cl.deleted[0] != "pve2" {
+		t.Fatalf("deleted = %v, want [pve2]", cl.deleted)
+	}
+	if cl.expected != 1 {
+		t.Fatalf("expected votes set to %d, want 1 — without it the survivor keeps a read-only "+
+			"/etc/pve and the cluster cannot be managed", cl.expected)
+	}
+}
+
+// It must NOT be lowered when the cluster is still quorate: `pvecm expected` is
+// a runtime override, and setting it needlessly weakens the majority the cluster
+// is protected by.
+func TestEvictLeavesQuorumAloneWhenItSurvives(t *testing.T) {
+	cl := &fakeCluster{
+		name: "lab-b", members: 3, names: []string{"pve3", "pve4", "pve5"},
+		quorate: true, guests: map[string][]Guest{},
+	}
+	var phases []string
+	if err := Evict(context.Background(),
+		Deps{Cluster: cl, Node: "pve3"},
+		testEnv(&phases, nil, nil), `{"node":"pve5"}`); err != nil {
+		t.Fatalf("evict: %v", err)
+	}
+	if cl.expected != 0 {
+		t.Fatalf("expected votes were lowered to %d on a cluster that stayed quorate",
+			cl.expected)
 	}
 }

@@ -266,8 +266,12 @@ func RecordObservedNodeName(ctx context.Context, db *gorm.DB, beeID uuid.UUID, n
 	if node == "" {
 		return nil
 	}
+	// AND ONLY FOR A MACHINE IN A HIVE. A node name means nothing outside a
+	// cluster — a departure clears it for that reason — so recording one against
+	// a fleetless row puts back exactly what the departure removed. The agent is
+	// also guarded, but the condition belongs here too: this is the write.
 	res := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-		Where("bee_id = ? AND (name IS NULL OR name = '')", beeID).
+		Where("bee_id = ? AND hive_id IS NOT NULL AND (name IS NULL OR name = '')", beeID).
 		Update("name", node)
 	if res.Error != nil {
 		// A UNIQUE VIOLATION HERE IS A DUPLICATE MACHINE RECORD, not a transient

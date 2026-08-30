@@ -476,7 +476,22 @@ func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 	}
 	members := d.Cluster.MemberCount()
 	if !quorumSurvivesLosing(members, 1) {
-		r.blocked("removing a node leaves %d of %d, which is not a majority", members-1, members)
+		// A NOTE, NOT A REFUSAL, because the remedy runs on this node right after
+		// the removal.
+		//
+		// Removing one of two leaves a survivor below the expected vote count and
+		// its /etc/pve read-only. `pvecm expected 1` lowers the runtime
+		// expectation and brings it back, and it CANNOT be done in advance —
+		// corosync refuses to set expected below the votes currently present, so
+		// it is only valid once the removed node has stopped voting.
+		//
+		// This node is the right place for it: `pvecm expected` affects only the
+		// host it runs on, and under per-cluster convergence the node doing the
+		// reconciling is the one that needs it lowered. Refusing here instead
+		// would make a two-node hive impossible to shrink, which the departure
+		// path has always supported.
+		r.note("removing a node leaves %d of %d, so quorum will be restored on this node "+
+			"afterwards with expected=%d", members-1, members, members-1)
 	}
 
 	known := false
@@ -535,9 +550,43 @@ func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 	}
 
 	e.Phase(phaseEvicting)
+
+	// CLEAR A STALE LOCK FIRST. A delnode that died part-way leaves
+	// /etc/pve/priv/lock/file-corosync_conf behind, and every retry then fails
+	// with "cfs-lock 'file-corosync_conf' error: got lock request timeout" — a
+	// message that points at contention rather than at a leftover directory.
+	// Without clearing it the removal can never complete and the cluster stays
+	// wedged.
+	// Nil-guarded rather than assumed. A Deps without a Runner is a real shape —
+	// a host that is not a Proxmox node builds one — and a nil dereference three
+	// calls deep reports as a segfault address, which is the failure requireCluster
+	// exists to keep out of the journal.
+	if d.Runner != nil {
+		if err := d.Runner.Run(ctx, discard, "sh", "-c",
+			"rmdir "+cfsLockDir+" 2>/dev/null || true"); err != nil {
+			e.Logf("agent", "could not clear a stale cfs lock (%v); continuing", err)
+		}
+	}
+
 	e.Logf("agent", "removing %s from the cluster", spec.Node)
 	if err := d.Cluster.DeleteConfigNode(ctx, spec.Node); err != nil {
 		return fmt.Errorf("remove %s: %w", spec.Node, err)
+	}
+
+	// RESTORE QUORUM, because delnode on a small cluster is SELF-BLOCKING.
+	//
+	// Removing the node drops this one below the expected vote count, and the
+	// very next thing delnode does — rewriting corosync.conf to lower that count
+	// — needs the writable /etc/pve it just lost. It fails with a bare
+	// "Permission denied" on a temp file and leaves the cluster read-only, guests
+	// unmanageable, and the config still naming the departed node.
+	//
+	// `pvecm expected <n>` lowers the runtime expectation without writing
+	// anything, which is the only way back in. It CANNOT be done in advance:
+	// corosync refuses to set expected below the votes currently present, so this
+	// is only valid once the removed node has actually stopped voting.
+	if err := restoreQuorumAfterRemoval(ctx, d, e, members-1); err != nil {
+		return err
 	}
 
 	e.Logf("agent", "%s removed.", spec.Node)
@@ -552,4 +601,36 @@ func orEmptyJSON(s string) string {
 		return "{}"
 	}
 	return s
+}
+
+// cfsLockDir is the lock a half-finished delnode leaves behind.
+var cfsLockDir = "/etc/pve/priv/lock/file-corosync_conf"
+
+// restoreQuorumAfterRemoval lowers this node's expected votes when the removal
+// cost it quorum.
+//
+// Only this node's, which is exactly right: `pvecm expected` affects the node it
+// runs on, and under per-cluster convergence the node doing the reconciling IS
+// the one that needs it lowered. That was awkward when a central job had to
+// choose a host to run it on; here it falls out.
+//
+// Proven rather than assumed: everything a cluster does next writes to pmxcfs
+// and would fail obscurely on a still-read-only filesystem.
+func restoreQuorumAfterRemoval(ctx context.Context, d Deps, e *Env, expect int) error {
+	if expect < 1 {
+		return nil
+	}
+	if err := d.Cluster.Status(ctx); err == nil && d.Cluster.Quorate() {
+		return nil
+	}
+	e.Logf("agent", "the removal cost this node quorum; lowering expected votes to %d", expect)
+	if err := d.Cluster.Expected(ctx, expect); err != nil {
+		return fmt.Errorf("restore quorum with expected=%d after removing a node: %w", expect, err)
+	}
+	if err := d.Cluster.Status(ctx); err != nil || !d.Cluster.Quorate() {
+		return fmt.Errorf("expected votes were lowered to %d but this node is still not quorate, "+
+			"so /etc/pve stays read-only and the cluster cannot be managed", expect)
+	}
+	e.Logf("agent", "quorum restored")
+	return nil
 }

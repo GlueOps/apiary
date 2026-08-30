@@ -274,24 +274,32 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return fmt.Errorf("depart: establish whether this node is still a cluster member: %w", adErr)
 	}
 
-	// Both mean "there is no cluster-side removal to perform": one because it has
-	// already happened, the other because there is no peer it could happen from.
-	skipClusterSide := alreadyDetached || snap.LastNode
+	// THE CLUSTER-SIDE REMOVAL IS NOT THIS JOB'S.
+	//
+	// A remaining member runs `pvecm delnode` itself: the departure publishes the
+	// node into the composition's Departing list, every peer sees it, and the
+	// deterministic owner among them removes it locally. The node that acts is
+	// one that is STAYING, which is the only node that can — a departing node
+	// cannot remove itself.
+	//
+	// Its preflight moves with it, onto the same remaining member: fleetops.Evict
+	// refuses on lost quorum and on guests it would orphan, and where the removal
+	// costs quorum it runs `pvecm expected` on ITSELF afterwards. That last part
+	// is why the check belongs there rather than here — `pvecm expected` affects
+	// only the host it runs on, and the reconciling node is the one that needs it
+	// lowered.
+	//
+	// This job used to do all of it and won the race every time: it completed in
+	// seconds while the peers were still on their poll interval, so convergent
+	// eviction was armed and never once fired. What is left here is the part
+	// convergence deliberately does NOT do — disarming the departed node, where
+	// rotate versus accept-exposure is an operator's decision with a security
+	// consequence rather than something derivable from desired state.
+	skipClusterSide := true
 
-	if skipClusterSide {
-		slog.WarnContext(ctx, "the cluster-side removal is being skipped",
-			"hypervisor_id", in.HypervisorID,
-			"already_detached", alreadyDetached, "last_node", snap.LastNode)
-	} else {
-		// Preflight on the node that STAYS, before anything is stopped. A departure
-		// begun against an already-degraded cluster leaves a stopped node and an
-		// unchanged config, which is harder to reason about than either problem
-		// alone. See AssertClusterHealthy for why the obvious alternative — lowering
-		// the expected vote count up front — is not available.
-		if err := AssertClusterHealthy(ctx, remaining, snap.HiveNodeCount); err != nil {
-			return err
-		}
-	}
+	slog.InfoContext(ctx, "the cluster-side removal is left to a remaining member",
+		"hypervisor_id", in.HypervisorID,
+		"already_detached", alreadyDetached, "last_node", snap.LastNode)
 
 	if !skipClusterSide {
 		if err := StopClusterStack(ctx, departing); err != nil {
@@ -379,19 +387,24 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return err
 	}
 
-	// Last, and only on success. The machine keeps claiming its old hive until the
-	// cluster work is genuinely done.
+	// THE MEMBERSHIP IS NOT CLEARED HERE. Doing so undid the departure that
+	// started it.
 	//
-	// No longer conditional on an agent being enrolled. It used to be — membership
-	// lived on the bee, so a node with no bee had nowhere to record the change and
-	// the departure silently left the fleet state wrong. Membership is on the
-	// machine record now, which every departing node has by definition.
-	if d.MarkFleetless != nil {
-		if err := d.MarkFleetless(ctx, in.OrganizationID, snap.Hypervisor.ID); err != nil {
-			return fmt.Errorf("depart: the host has left the cluster but recording it as fleetless "+
-				"failed, so the control plane still shows it in %q: %w", snap.Hive.Name, err)
-		}
-	}
+	// A departure MARKS the machine — departing_at set, hive_id and name kept —
+	// so the composition can name it and a remaining member can evict it.
+	// MarkFleetless knows nothing about that marker: it cleared hive_id and left
+	// departing_at set, producing a row that was fleetless AND departing at once,
+	// and removing the node from the composition before any peer had seen it.
+	//
+	// The consequence was not cosmetic. lab-a was left with pve alone below
+	// quorum and /etc/pve read-only, still listing a pve2 that nothing would ever
+	// remove — because the node it needed to evict had already vanished from the
+	// document that authorises the eviction.
+	//
+	// FinaliseDepartures clears the row instead, on evidence from a remaining
+	// member that the cluster has actually dropped the node. This job's own
+	// success says only that the departing host was disarmed, which is a
+	// different fact.
 
 	// The Hypervisor row is deliberately NOT deleted here, and no longer because
 	// the capacity sync owns it — it does not. THIS ROW IS THE MACHINE. Deleting

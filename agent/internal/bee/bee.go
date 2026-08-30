@@ -281,12 +281,22 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		body.SetObservedCluster(obs.Cluster)
 		body.SetObservedMembers(obs.Members)
 		body.SetObservedQuorate(obs.Quorate)
-		// What pmxcfs calls this host. An arrival records membership before the
-		// machine has a node name, and this is what fills it in — a row left with
-		// a NULL name is one the capacity sync cannot match, so it adopts the
-		// node as new and the cluster ends up holding two rows for one machine.
-		if n := b.localNodeName(); n != "" {
-			body.SetObservedNode(n)
+		// What pmxcfs calls this host, and ONLY while it is in a cluster.
+		//
+		// An arrival records membership before the machine has a node name, and
+		// this is what fills it in — a row left with a NULL name is one the
+		// capacity sync cannot match, so it adopts the node as new and the cluster
+		// ends up holding two rows for one machine.
+		//
+		// But a node name means nothing outside a cluster, which is why a
+		// departure clears it along with the hive. /etc/pve/.members keeps
+		// reporting one on a standalone host, so sending it unconditionally put
+		// the name straight back onto a machine that had just been departed —
+		// observed on pve5, fleetless and still called pve5.
+		if obs.Cluster != "" {
+			if n := b.localNodeName(); n != "" {
+				body.SetObservedNode(n)
+			}
 		}
 	}
 	// This host's own certificate fingerprint, which is what a PEER needs to join
