@@ -3,7 +3,9 @@ package repo
 import (
 	"context"
 	"errors"
+	"gorm.io/datatypes"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,7 +19,7 @@ var membershipTestSchema = testsupport.SchemaName("apiary_repo_membership_test")
 func membershipDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return testsupport.OpenSchema(t, membershipTestSchema,
-		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{})
+		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{}, &tenant.MembershipSnapshot{})
 }
 
 func seedMembershipHive(t *testing.T, db *gorm.DB) tenant.Hive {
@@ -221,5 +223,182 @@ func TestAFleetlessMachineResolvesToHold(t *testing.T) {
 	}
 	if snap != nil {
 		t.Fatalf("a fleetless machine resolved to %+v, want HOLD", snap)
+	}
+}
+
+// ONE STEP AT A TIME: issue N+1, wait for the acknowledgement, issue N+2.
+//
+// Acknowledged means REACHED, not received — the agent re-observes and records a
+// revision as applied only when observed state equals desired state at it.
+func TestRevisionsAreIssuedOneStepAtATime(t *testing.T) {
+	db := membershipDB(t)
+	ctx := context.Background()
+	hive := seedMembershipHive(t, db)
+	node := seedNode(t, db, &hive, "pve1")
+
+	bee := tenant.Bee{ID: uuid.New(), APIKeyID: uuid.New()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", node.ID).
+		Update("bee_id", bee.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Revision 1.
+	first, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || first == nil {
+		t.Fatalf("first resolve: %v (%v)", err, first)
+	}
+	if first.Revision != 1 {
+		t.Fatalf("first issue = %d, want 1", first.Revision)
+	}
+
+	// Two further publications stack up while the agent has acknowledged nothing.
+	seedNode(t, db, &hive, "pve2")
+	if _, err := PublishHiveMembership(ctx, db, hive.ID); err != nil {
+		t.Fatal(err)
+	}
+	seedNode(t, db, &hive, "pve3")
+	if _, err := PublishHiveMembership(ctx, db, hive.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Still 1: nothing advances without an acknowledgement.
+	held, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || held == nil {
+		t.Fatalf("resolve in flight: %v (%v)", err, held)
+	}
+	if held.Revision != first.Revision || held.Digest != first.Digest {
+		t.Fatalf("advanced to %d while %d was in flight", held.Revision, first.Revision)
+	}
+
+	// Acknowledge 1 -> issued 2, NOT the latest 3. And it carries revision 2's
+	// own body: one member, as published at that step.
+	if err := RecordAppliedMembership(ctx, db, bee.ID, first.Revision, first.Digest); err != nil {
+		t.Fatal(err)
+	}
+	second, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || second == nil {
+		t.Fatalf("resolve after ack: %v (%v)", err, second)
+	}
+	if second.Revision != 2 {
+		t.Fatalf("issued %d after acknowledging 1, want 2 — steps must not be skipped",
+			second.Revision)
+	}
+	if len(second.Membership.Members) != 2 {
+		t.Fatalf("revision 2 served %d members, want the 2 it was published with — serving "+
+			"today's members under an older number makes the agent report a digest nobody "+
+			"issued", len(second.Membership.Members))
+	}
+
+	// Acknowledge 2 -> issued 3.
+	if err := RecordAppliedMembership(ctx, db, bee.ID, second.Revision, second.Digest); err != nil {
+		t.Fatal(err)
+	}
+	third, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || third == nil {
+		t.Fatalf("resolve after second ack: %v (%v)", err, third)
+	}
+	if third.Revision != 3 {
+		t.Fatalf("issued %d after acknowledging 2, want 3", third.Revision)
+	}
+	if len(third.Membership.Members) != 3 {
+		t.Fatalf("revision 3 served %d members, want 3", len(third.Membership.Members))
+	}
+
+	// Converged: the last step stays put.
+	if err := RecordAppliedMembership(ctx, db, bee.ID, third.Revision, third.Digest); err != nil {
+		t.Fatal(err)
+	}
+	settled, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || settled == nil {
+		t.Fatalf("resolve when converged: %v (%v)", err, settled)
+	}
+	if settled.Revision != 3 {
+		t.Fatalf("issued %d when already at the latest, want 3", settled.Revision)
+	}
+}
+
+// A STEP THE HOST CANNOT REACH IS SKIPPED, not re-served forever.
+//
+// Observed live: lab-b went {pve3,pve4,pve5} at 17, {pve3,pve4} at 18, and back
+// to {pve3,pve4,pve5} by 21. pve5 applied 17, was issued 18 — where it is
+// desired-absent while sitting in the cluster with peers — and Decide answered
+// VerbWait, because a departing node cannot remove itself. Not VerbNone, so it
+// never acknowledged, and 18 was re-served indefinitely. The agent was correct
+// and the step was impossible.
+func TestAnUnreachableStepIsSkippedRatherThanDeadlocking(t *testing.T) {
+	db := membershipDB(t)
+	ctx := context.Background()
+	hive := seedMembershipHive(t, db)
+
+	a := seedNode(t, db, &hive, "pve3")
+	b := seedNode(t, db, &hive, "pve4")
+	me := seedNode(t, db, &hive, "pve5")
+
+	bee := tenant.Bee{ID: uuid.New(), APIKeyID: uuid.New()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", me.ID).
+		Update("bee_id", bee.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	// It reports what it actually sees: in lab-b, quorate, all three present.
+	now := time.Now()
+	if err := db.Model(&tenant.Bee{}).Where("id = ?", bee.ID).Updates(map[string]any{
+		"observed_cluster":       hive.Name,
+		"observed_members":       datatypes.NewJSONType([]string{"pve3", "pve4", "pve5"}),
+		"observed_quorate":       true,
+		"observed_membership_at": now,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	_ = a
+	_ = b
+
+	// Revision 1: all three.
+	first, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || first == nil {
+		t.Fatalf("first resolve: %v (%v)", err, first)
+	}
+	if err := RecordAppliedMembership(ctx, db, bee.ID, first.Revision, first.Digest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Revision 2 drops pve5 — the withdrawn state it can never reach.
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", me.ID).
+		Update("hive_id", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PublishHiveMembership(ctx, db, hive.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Revision 3 puts it back.
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", me.ID).
+		Update("hive_id", hive.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PublishHiveMembership(ctx, db, hive.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := DesiredMembershipForBee(ctx, db, bee.ID)
+	if err != nil || got == nil {
+		t.Fatalf("resolve after the withdrawn revision: %v (%v)", err, got)
+	}
+	if got.Revision == first.Revision+1 {
+		t.Fatalf("issued the withdrawn revision %d, which this host can never acknowledge — "+
+			"it is desired-absent there while sitting in the cluster with peers, so Decide "+
+			"answers VerbWait and the step is re-served forever", got.Revision)
+	}
+	// It landed on a step it CAN act on.
+	verb, _, _ := got.Membership.Decide(
+		tenant.Self{ID: me.ID.String(), Node: "pve5"},
+		tenant.Observed{Cluster: hive.Name, Members: []string{"pve3", "pve4", "pve5"}, Quorate: true})
+	if verb == tenant.VerbWait || verb == tenant.VerbBlocked {
+		t.Fatalf("issued revision %d yields %q, which only another actor can resolve",
+			got.Revision, verb)
 	}
 }

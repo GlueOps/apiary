@@ -4,8 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Membership is the desired composition of one cluster, published to every
@@ -427,3 +430,36 @@ type MembershipDesired struct {
 	// empty for a machine that has never been in a cluster.
 	Self string
 }
+
+// MembershipSnapshot is one published composition, kept by revision.
+//
+// STORED rather than re-derived, and that is what makes issue-then-acknowledge
+// coherent. An agent is handed revision N and converges on it; if the
+// composition moves to N+1 while it works, the control plane must keep
+// advertising N until N is acknowledged. Deriving the body at serve time cannot
+// do that — the agent would fetch today's members under yesterday's number,
+// apply them, report a digest nobody issued, and never be judged converged.
+//
+// It mirrors FirewallSnapshot deliberately. The same problem produced the same
+// answer there, and having two shapes for "the body at a revision" is how the
+// two drift.
+type MembershipSnapshot struct {
+	ID     uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	HiveID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ux_membership_snapshot_rev,priority:1" json:"hive_id"`
+
+	// Revision only ever increases. Unique per hive, which is what stops two
+	// concurrent publishes claiming one number with different bodies — the thing
+	// every agent uses as its whole basis for deciding it has converged.
+	Revision int `gorm:"not null;uniqueIndex:ux_membership_snapshot_rev,priority:2" json:"revision"`
+
+	// Content is the rendered Membership, exactly as served.
+	Content datatypes.JSONType[Membership] `gorm:"type:jsonb;not null" json:"content"`
+
+	// Digest of Content, so a lagging agent is told from a converged one without
+	// decoding every body.
+	Digest string `gorm:"type:varchar(71);not null" json:"digest"`
+
+	CreatedAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
+}
+
+func (MembershipSnapshot) TableName() string { return "membership_snapshots" }
