@@ -274,24 +274,32 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		return fmt.Errorf("depart: establish whether this node is still a cluster member: %w", adErr)
 	}
 
-	// Both mean "there is no cluster-side removal to perform": one because it has
-	// already happened, the other because there is no peer it could happen from.
-	skipClusterSide := alreadyDetached || snap.LastNode
+	// THE CLUSTER-SIDE REMOVAL IS NOT THIS JOB'S.
+	//
+	// A remaining member runs `pvecm delnode` itself: the departure publishes the
+	// node into the composition's Departing list, every peer sees it, and the
+	// deterministic owner among them removes it locally. The node that acts is
+	// one that is STAYING, which is the only node that can — a departing node
+	// cannot remove itself.
+	//
+	// Its preflight moves with it, onto the same remaining member: fleetops.Evict
+	// refuses on lost quorum and on guests it would orphan, and where the removal
+	// costs quorum it runs `pvecm expected` on ITSELF afterwards. That last part
+	// is why the check belongs there rather than here — `pvecm expected` affects
+	// only the host it runs on, and the reconciling node is the one that needs it
+	// lowered.
+	//
+	// This job used to do all of it and won the race every time: it completed in
+	// seconds while the peers were still on their poll interval, so convergent
+	// eviction was armed and never once fired. What is left here is the part
+	// convergence deliberately does NOT do — disarming the departed node, where
+	// rotate versus accept-exposure is an operator's decision with a security
+	// consequence rather than something derivable from desired state.
+	skipClusterSide := true
 
-	if skipClusterSide {
-		slog.WarnContext(ctx, "the cluster-side removal is being skipped",
-			"hypervisor_id", in.HypervisorID,
-			"already_detached", alreadyDetached, "last_node", snap.LastNode)
-	} else {
-		// Preflight on the node that STAYS, before anything is stopped. A departure
-		// begun against an already-degraded cluster leaves a stopped node and an
-		// unchanged config, which is harder to reason about than either problem
-		// alone. See AssertClusterHealthy for why the obvious alternative — lowering
-		// the expected vote count up front — is not available.
-		if err := AssertClusterHealthy(ctx, remaining, snap.HiveNodeCount); err != nil {
-			return err
-		}
-	}
+	slog.InfoContext(ctx, "the cluster-side removal is left to a remaining member",
+		"hypervisor_id", in.HypervisorID,
+		"already_detached", alreadyDetached, "last_node", snap.LastNode)
 
 	if !skipClusterSide {
 		if err := StopClusterStack(ctx, departing); err != nil {

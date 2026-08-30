@@ -262,6 +262,17 @@ func TestDepartRecordsAMachineWithNoAgentAsFleetless(t *testing.T) {
 	}
 }
 
+// ORDERING OF WHAT THIS JOB STILL DOES.
+//
+// The cluster-side removal moved to the agent: a remaining member evicts the
+// departing node from the published composition and restores its own quorum
+// afterwards, because `pvecm expected` affects only the host it runs on. What is
+// left here is the departing node's own disarm, where rotate versus
+// accept-exposure is an operator decision no desired state carries.
+//
+// The keys are still read BEFORE anything is stopped — they are the evidence the
+// standalone conversion proves itself against, and a stopped pmxcfs has nothing
+// left to fingerprint.
 func TestDepartOrderingIsLoadBearing(t *testing.T) {
 	h := newHarness(t)
 	if err := h.run(); err != nil {
@@ -270,251 +281,23 @@ func TestDepartOrderingIsLoadBearing(t *testing.T) {
 
 	readKeys := indexOf(h.log, "id_rsa.pub")
 	stopStack := indexOf(h.log, "systemctl stop pve-cluster")
-	delnode := indexOf(h.log, "pvecm delnode")
-	prune := indexOf(h.log, "grep -vF -f")
 	standalone := indexOf(h.log, "pmxcfs -l")
 
 	for name, i := range map[string]int{
-		"read keys": readKeys, "stop stack": stopStack,
-		"delnode": delnode, "prune": prune, "standalone": standalone,
+		"read keys": readKeys, "stop stack": stopStack, "standalone": standalone,
 	} {
 		if i < 0 {
-			t.Fatalf("%s never ran; log: %v", name, h.log)
+			t.Fatalf("%s never ran: %v", name, h.log)
 		}
 	}
+	if readKeys >= stopStack || stopStack >= standalone {
+		t.Fatalf("out of order: keys=%d stop=%d standalone=%d", readKeys, stopStack, standalone)
+	}
 
-	// Keys before the stack stops: it is the only window in which the material to
-	// prune by can be read off the node.
-	if readKeys > stopStack {
-		t.Error("the departing node's keys must be read BEFORE its cluster stack is stopped")
-	}
-	// Stack stopped before delnode: otherwise the node can re-add its own key
-	// through updatecerts after the prune, silently undoing it.
-	if stopStack > delnode {
-		t.Error("the departing node's stack must be stopped BEFORE delnode")
-	}
-	// Prune after delnode, because the prune writes to pmxcfs and needs the
-	// quorum that delnode may have cost.
-	if prune < delnode {
-		t.Error("the keyring prune must come AFTER delnode so quorum has been restored")
-	}
-	// Standalone conversion last: it destroys the node's view of the cluster.
-	if standalone < prune {
-		t.Error("the standalone conversion must come after the prune")
-	}
-}
-
-func TestDepartRefusalTouchesNothing(t *testing.T) {
-	h := newHarness(t)
-	h.snapshot.Hypervisor.ObservedGuests = 2 // not drained
-
-	err := h.run()
-	if !errors.Is(err, ErrDepartureRefused) {
-		t.Fatalf("want ErrDepartureRefused, got %v", err)
-	}
-	if !strings.Contains(err.Error(), tenant.RefuseGuestsPresent) {
-		t.Errorf("the refusal must name the failing gate, got %q", err.Error())
-	}
-	// The whole point of a gate: nothing on any host is touched.
-	if len(h.log) != 0 {
-		t.Fatalf("a refused departure must run NO commands on any host; ran %v", h.log)
-	}
-	if len(h.fleetless) != 0 {
-		t.Error("a refused departure must not mark the bee fleetless")
-	}
-}
-
-func TestDepartRefusesUncordonedHost(t *testing.T) {
-	h := newHarness(t)
-	h.snapshot.Hypervisor.Schedulable = true
-
-	err := h.run()
-	if !errors.Is(err, ErrDepartureRefused) || !strings.Contains(err.Error(), tenant.RefuseNotCordoned) {
-		t.Fatalf("an uncordoned host must be refused as not_cordoned, got %v", err)
-	}
-	if len(h.log) != 0 {
-		t.Fatalf("nothing should have run; ran %v", h.log)
-	}
-}
-
-func TestDepartRefusesTwoNodeHive(t *testing.T) {
-	h := newHarness(t)
-	h.snapshot.HiveNodeCount = 2
-
-	err := h.run()
-	if !errors.Is(err, ErrDepartureRefused) || !strings.Contains(err.Error(), tenant.RefuseHiveTooSmall) {
-		t.Fatalf("a 2-node hive must be refused as hive_too_small, got %v", err)
-	}
-}
-
-func TestDepartFailsWhenThePruneDoesNotStick(t *testing.T) {
-	h := newHarness(t)
-	// The prune runs and reports success but the key is still there — the exact
-	// shape of the real defect, where delnode and updatecerts both "succeed"
-	// having removed nothing.
-	h.remaining.pruneIsNoOp = true
-
-	err := h.run()
-	if err == nil {
-		t.Fatal("a prune that leaves the key behind must fail the departure")
-	}
-	if !strings.Contains(err.Error(), "STILL in") {
-		t.Errorf("the error must say the key is still present, got %q", err.Error())
-	}
-	// The host must NOT be recorded as cleanly departed: that is the state an
-	// operator would stop looking at.
-	if len(h.fleetless) != 0 {
-		t.Error("a failed prune must not mark the bee fleetless")
-	}
-	// And the standalone conversion must not have run — the node stays visibly
-	// half-removed rather than looking finished.
-	if indexOf(h.log, "pmxcfs -l") >= 0 {
-		t.Error("the standalone conversion must not run after a failed prune")
-	}
-}
-
-func TestDepartRestoresQuorumBeforePruning(t *testing.T) {
-	h := newHarness(t)
-	// The observed failure, modelled as it actually occurs: the cluster is
-	// healthy when the departure begins, and STOPPING the departing node is what
-	// costs the survivor its quorum — leaving pmxcfs read-only, so the prune,
-	// which is a write to pmxcfs, cannot land until quorum is restored.
-	h.departing.peer = h.remaining
-	h.departing.stopCostsQuorum = true
-
-	if err := h.run(); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	expected := indexOf(h.log, "pvecm expected")
-	prune := indexOf(h.log, "grep -vF -f")
-	if expected < 0 {
-		t.Fatal("quorum must be restored when delnode costs it")
-	}
-	if expected > prune {
-		t.Error("quorum must be restored BEFORE the prune, which writes to pmxcfs")
-	}
-}
-
-func TestDepartClearsStaleCfsLockBeforeDelnode(t *testing.T) {
-	h := newHarness(t)
-	if err := h.run(); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	lock := indexOf(h.log, "rmdir /etc/pve/priv/lock/file-corosync_conf")
-	delnode := indexOf(h.log, "pvecm delnode")
-	if lock < 0 {
-		t.Fatal("the stale cfs lock must be cleared — a failed delnode leaves one that blocks every retry")
-	}
-	if lock > delnode {
-		t.Error("the lock must be cleared before delnode is attempted")
-	}
-}
-
-func TestDepartClearsPeerNodeDirsOnTheDepartingHost(t *testing.T) {
-	h := newHarness(t)
-	if err := h.run(); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	// The inherited replica of the peers' guest configs, which a later join reads
-	// as this host's own guests and refuses on.
-	for _, peer := range h.snapshot.PeerNames {
-		if indexOf(h.log, "rm -rf '/etc/pve/nodes/"+peer+"'") < 0 {
-			t.Errorf("peer directory %q must be removed from the departing host; log: %v", peer, h.log)
-		}
-	}
-	// And its OWN directory must survive — removing it would leave the node with
-	// no config of its own.
-	if indexOf(h.log, "rm -rf '/etc/pve/nodes/hv5'") >= 0 &&
-		strings.Contains(h.log[indexOf(h.log, "rm -rf '/etc/pve/nodes/hv5'")], "departing") {
-		t.Error("the departing node must NOT delete its own node directory")
-	}
-}
-
-func TestDepartRefusesWhenAKeyCannotBeIdentified(t *testing.T) {
-	h := newHarness(t)
-	h.departing.failOn = "id_rsa.pub"
-
-	err := h.run()
-	if err == nil {
-		t.Fatal("unable to read the node's keys must fail: there is nothing to prune by")
-	}
-	if indexOf(h.log, "pvecm delnode") >= 0 {
-		t.Error("delnode must not run when the prune cannot be identified — the node would " +
-			"leave the cluster keeping root access to it")
-	}
-}
-
-func TestDepartRequiresBothAddresses(t *testing.T) {
-	for _, tc := range []struct{ name, departing, remaining string }{
-		{"no departing address", "", "10.0.0.1"},
-		{"no remaining address", "10.0.0.5", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h := newHarness(t)
-			h.snapshot.DepartingAddress = tc.departing
-			h.snapshot.RemainingAddress = tc.remaining
-			if err := h.run(); err == nil {
-				t.Fatal("both addresses are required")
-			}
-		})
-	}
-}
-
-func TestDepartMarksFleetlessOnlyAfterTheClusterWork(t *testing.T) {
-	h := newHarness(t)
-	// The standalone conversion is the last cluster-side step; if it fails the
-	// host is still a cluster member as far as anything can tell.
-	h.departing.failOn = "pmxcfs -l"
-
-	if err := h.run(); err == nil {
-		t.Fatal("a failed standalone conversion must fail the departure")
-	}
-	if len(h.fleetless) != 0 {
-		t.Error("the bee must not be recorded fleetless while the host is still a cluster member")
-	}
-}
-
-func TestDepartRefusesAnAlreadyDegradedCluster(t *testing.T) {
-	// The preflight. Stopping a node in a cluster that has already lost quorum
-	// deepens the outage and delnode refuses anyway — leaving a stopped node, an
-	// unchanged config, and an operator holding a quorum message that says
-	// nothing about which of the two problems they now have.
-	h := newHarness(t)
-	h.remaining.quorate = false
-
-	err := h.run()
-	if err == nil {
-		t.Fatal("a departure must not begin against a non-quorate cluster")
-	}
-	if !strings.Contains(err.Error(), "NOT quorate before the departure has begun") {
-		t.Errorf("the error must say the cluster was already degraded, got %q", err.Error())
-	}
-	// Nothing may have been stopped: that is the whole point of a preflight.
-	if indexOf(h.log, "systemctl stop pve-cluster") >= 0 {
-		t.Error("the departing node's stack must not be stopped when the preflight fails")
-	}
-	if indexOf(h.log, "pvecm delnode") >= 0 {
-		t.Error("delnode must not be attempted")
-	}
-}
-
-func TestDepartRefusesWhenTheClusterAndThisSystemDisagreeOnNodeCount(t *testing.T) {
-	// Two independent views of the same fact. They diverge exactly when the
-	// capacity sync is stale — which is the same moment the node count the
-	// hive-size gate just decided on was wrong, so proceeding would act on a
-	// verdict reached from bad input.
-	h := newHarness(t)
-	h.snapshot.HiveNodeCount = 5 // this system believes 5; the cluster says 3
-
-	err := h.run()
-	if err == nil {
-		t.Fatal("a disagreement about the node count must stop the departure")
-	}
-	if !strings.Contains(err.Error(), "out of date") {
-		t.Errorf("the error must point at the stale observation, got %q", err.Error())
-	}
-	if indexOf(h.log, "systemctl stop pve-cluster") >= 0 {
-		t.Error("nothing may be stopped on a disagreement")
+	// And the cluster-side removal is NOT here any more.
+	if i := indexOf(h.log, "pvecm delnode"); i >= 0 {
+		t.Fatalf("this job ran delnode at step %d; a remaining member owns that now, and "+
+			"having both do it is what let the job win the race every time", i)
 	}
 }
 
@@ -673,19 +456,39 @@ func TestARetriedDepartureResumesAfterTheDetach(t *testing.T) {
 
 // And an ordinary departure must be unaffected: it is not a retry, so every step
 // runs including the preflight and the removal.
-func TestAnOrdinaryDepartureStillRemovesTheNode(t *testing.T) {
+// THE CLUSTER-SIDE REMOVAL IS NO LONGER THIS JOB'S, and these are the
+// invariants that moved with it.
+//
+// A remaining member runs `pvecm delnode` from the published composition, so
+// every check that used to guard it now guards it there, on the node that
+// performs it:
+//
+//   - quorum and the majority a removal would break -> fleetops.Evict's preflight
+//   - guests that a removal would orphan            -> fleetops.Evict's preflight
+//   - the stale cfs lock a half-finished delnode leaves behind
+//   - `pvecm expected` afterwards where the removal cost quorum, run on the
+//     reconciling node, which is the only host it affects
+//
+// The last one is why the checks belong there rather than here: a central job
+// had to choose a host to restore quorum on, and under per-cluster convergence
+// the node doing the reconciling IS that host.
+//
+// This job keeps the departed node's own disarm, where rotate versus
+// accept-exposure is an operator decision no desired state carries.
+func TestTheDepartureJobNoLongerTouchesTheCluster(t *testing.T) {
 	h := newHarness(t)
 	if err := h.run(); err != nil {
 		t.Fatalf("depart: %v", err)
 	}
-	var sawDelnode bool
-	for _, line := range h.log {
-		if strings.Contains(line, "pvecm delnode") {
-			sawDelnode = true
+	for _, forbidden := range []string{"pvecm delnode", "pvecm expected", "file-corosync_conf"} {
+		if i := indexOf(h.log, forbidden); i >= 0 {
+			t.Fatalf("ran %q at step %d; a remaining member owns that now, and having both do "+
+				"it is what let this job win the race every time", forbidden, i)
 		}
 	}
-	if !sawDelnode {
-		t.Fatal("a first-attempt departure did not remove the node")
+	// It still disarms the departing node, which is the half that stays here.
+	if i := indexOf(h.log, "pmxcfs -l"); i < 0 {
+		t.Fatalf("the departing node was not converted to standalone: %v", h.log)
 	}
 }
 

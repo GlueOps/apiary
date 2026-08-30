@@ -39,6 +39,11 @@ type Cluster interface {
 	JoinCluster(ctx context.Context, opts *proxmoxJoinOptions) (string, error)
 	CreateCluster(ctx context.Context, opts *proxmoxCreateOptions) (string, error)
 
+	// Expected lowers THIS node's expected vote count. Only valid once a removed
+	// node has stopped voting: corosync refuses to set it below the votes
+	// currently present, so it cannot be used as a preflight.
+	Expected(ctx context.Context, votes int) error
+
 	// NodeName is what pmxcfs calls this host.
 	//
 	// Read from .members rather than taken from configuration. PVE derives the
