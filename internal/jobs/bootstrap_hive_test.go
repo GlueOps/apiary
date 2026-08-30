@@ -104,6 +104,7 @@ func standaloneSnapshot() BootstrapSnapshot {
 		HostNodeName:      "pve",
 		HiveNodeCount:     0,
 		ProvisioningState: "provisioned",
+		AgentOnline:       true,
 	}
 }
 

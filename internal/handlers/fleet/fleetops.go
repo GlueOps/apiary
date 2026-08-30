@@ -911,6 +911,26 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		if deps.Jobs == nil {
 			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
 		}
+		// DESIRED STATE FIRST, then the host-side work.
+		//
+		// The job used to call MarkFleetless at its END, so for the whole run —
+		// and forever if it failed — the composition still said this machine
+		// belonged to the hive. Its agent read that, saw itself standalone, and
+		// FORMED THE CLUSTER the operator was removing it from. On a lab node the
+		// two then fought: the agent created lab-a, the retrying departure tore it
+		// down, and neither converged.
+		//
+		// Clearing first makes the two agree. The agent sees itself desired-absent
+		// and does nothing — a departing node cannot remove itself, so it waits
+		// for a remaining member or, alone, refuses and says a departure is
+		// needed. Nothing it can do races the job.
+		//
+		// Publishing here also means a failed departure leaves the composition
+		// saying what the operator asked for, which is the honest state: the
+		// machine is out, and the host-side cleanup is what still has to happen.
+		if err := repo.MarkFleetless(ctx, db, id); err != nil {
+			return nil, mapErr(ctx, err)
+		}
 		if err := deps.Jobs.EnqueueDepartHypervisor(ctx, &workflow.DepartHypervisorArgs{
 			OrganizationID:        p.OrganizationID.String(),
 			HypervisorID:          id.String(),
@@ -1183,11 +1203,16 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 
 		// Checked here so the operator is told immediately, and again in the job
 		// because state moves between the two.
+		// A LIVE AGENT is the precondition, because the agent is what creates the
+		// cluster. Read here rather than inferred from the provisioning state,
+		// which describes the control plane's own SSH access and no longer has
+		// anything to do with whether this machine can form a cluster.
 		refusals := tenant.CheckBootstrap(tenant.BootstrapRequest{
 			TargetHive:        hive,
 			CurrentHiveID:     hv.HiveID,
 			HiveNodeCount:     int(nodes),
 			ProvisioningState: hv.ProvisioningState,
+			AgentOnline:       agentOnline(ctx, db, hv.BeeID),
 		})
 		if len(refusals) > 0 {
 			auditRefused(ctx, db, p, tenant.AuditHypervisorBootstrap, tenant.AuditTargetHypervisor,
@@ -1197,15 +1222,18 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 				bootstrapRefusalViews(refusals))
 		}
 
-		if deps.Jobs == nil {
-			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
-		}
-		if err := deps.Jobs.EnqueueBootstrapHive(ctx, &workflow.BootstrapHiveArgs{
-			OrganizationID: p.OrganizationID.String(),
-			HypervisorID:   hypID.String(),
-			TargetHiveID:   hiveID.String(),
-			Links:          links,
-		}); err != nil {
+		// DESIRED STATE, NOT A DISPATCH — the same as an arrival, because under
+		// convergence they are the same request.
+		//
+		// Creating a cluster is not an onboarding task and does not run over SSH.
+		// The host's own agent sees itself in the hive's published composition,
+		// observes that it is standalone with no other member present, and runs
+		// `pvecm create` locally. The control plane opens no connection.
+		//
+		// This endpoint remains only so an operator who asked to "create" gets an
+		// answer phrased that way. It writes exactly what /arrive writes, and the
+		// verb is derived from the world rather than from which URL was called.
+		if err := repo.AssignToHive(ctx, db, hypID, hiveID); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 
@@ -1214,7 +1242,8 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 
 		out := &BootstrapResponse{}
 		out.Body.Queued = true
-		out.Body.Detail = fmt.Sprintf("creating %q on this host, queued", hive.Name)
+		out.Body.Detail = fmt.Sprintf("this host is recorded as a member of %q; its agent will "+
+			"form the cluster on its next check-in", hive.Name)
 		return out, nil
 	})
 
@@ -1783,4 +1812,26 @@ type DeclareHostsResponse struct {
 		Created int                `json:"created"`
 		Hosts   []DeclaredHostView `json:"hosts"`
 	}
+}
+
+// agentOnline reports whether a machine's agent is currently live.
+//
+// The bootstrap and arrival paths gate on this rather than on the provisioning
+// state: under agent-driven convergence the host creates or joins its own
+// cluster, and the control plane opens no connection to it at all. A host whose
+// managed SSH key never got proved is a host with a degraded FALLBACK, not one
+// that cannot form a cluster.
+func agentOnline(ctx context.Context, db *gorm.DB, beeID *uuid.UUID) bool {
+	if beeID == nil {
+		return false
+	}
+	var bee tenant.Bee
+	if err := db.WithContext(ctx).First(&bee, "id = ?", *beeID).Error; err != nil {
+		// Could not ask. Reported as not online, so the refusal says what is
+		// missing rather than the operation proceeding on an unknown.
+		return false
+	}
+	// The same two-minute grace the fleet views use, so an operator is never told
+	// a host is online in one place and refused for being offline in another.
+	return bee.LivenessAt(time.Now(), 2*time.Minute) == tenant.BeeStatusOnline
 }

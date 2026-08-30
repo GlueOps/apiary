@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -31,6 +32,16 @@ func BootstrapSnapshotFromDB(
 		snap.CurrentHiveID = host.HiveID
 		snap.HostAddress = host.Address
 		snap.ProvisioningState = host.ProvisioningState
+
+		// The agent creates the cluster, so its liveness is the precondition the
+		// gate actually needs. Read in the same transaction as the rest, so the
+		// decision is made against one picture.
+		if host.BeeID != nil {
+			var bee tenant.Bee
+			if err := tx.First(&bee, "id = ?", *host.BeeID).Error; err == nil {
+				snap.AgentOnline = bee.LivenessAt(time.Now(), 2*time.Minute) == tenant.BeeStatusOnline
+			}
+		}
 
 		if host.Name != nil {
 			snap.HostNodeName = *host.Name

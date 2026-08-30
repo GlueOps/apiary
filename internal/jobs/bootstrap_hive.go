@@ -18,6 +18,11 @@ var ErrBootstrapRefused = errors.New("bootstrap: refused by a precondition")
 type BootstrapSnapshot struct {
 	TargetHive tenant.Hive
 
+	// AgentOnline is whether this host's agent is live. The agent creates the
+	// cluster, so this is the precondition — not the control plane's own SSH
+	// provisioning state, which no longer participates.
+	AgentOnline bool
+
 	// CurrentHiveID is what the host reports today. Nil is the only acceptable
 	// value; anything else is a refusal.
 	CurrentHiveID *uuid.UUID
@@ -95,6 +100,10 @@ func BootstrapHive(ctx context.Context, d BootstrapDeps, in BootstrapInput) erro
 		CurrentHiveID:     snap.CurrentHiveID,
 		HiveNodeCount:     snap.HiveNodeCount,
 		ProvisioningState: snap.ProvisioningState,
+		// The job re-checks because state moves between the handler and here. It
+		// gates on the same thing: the agent creates the cluster, so a live agent
+		// is the precondition and the control plane's own SSH state is not.
+		AgentOnline: snap.AgentOnline,
 	})
 	if len(refusals) > 0 {
 		return fmt.Errorf("%w: %w", ErrBootstrapRefused, tenant.BootstrapRefusalsError(refusals))
