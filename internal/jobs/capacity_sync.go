@@ -185,9 +185,29 @@ func SyncHiveCapacity(ctx context.Context, d CapacitySyncDeps, orgID, hiveID uui
 		// Machines belonging to no hive: onboarded but never joined, or departed
 		// and cleared. These are the candidates for ADOPTION — see the merge
 		// comment below.
+		// The adoption pool is every machine that has no NODE NAME yet, not only
+		// every machine that has no hive.
+		//
+		// Under convergence an arrival records membership as an INTENTION — a
+		// hive_id with no name, because a node name does not exist until the
+		// machine joins — and the host joins on its own afterwards. Between those
+		// two moments the machine is in this hive by the record and unnamed, so a
+		// pool of `hive_id IS NULL` excluded it, nothing matched when it appeared
+		// under its node name, and the sync created a SECOND record for a machine
+		// already in the table.
+		//
+		// That is not hypothetical: .12 was assigned to lab-a, joined as pve2, and
+		// the next sync produced a duplicate row carrying no machine id, no agent
+		// and none of its onboarding history. Worse, the duplicate then held
+		// (hive_id, name) under ux_hypervisor_hive_name, so the real row could
+		// never be given its name and stayed NULL permanently.
+		//
+		// Restricted to THIS hive for the named case, because a machine assigned
+		// to another hive is not ours to adopt.
 		var unclustered []tenant.Hypervisor
-		if err := tx.Where("hive_id IS NULL").Find(&unclustered).Error; err != nil {
-			return fmt.Errorf("load unclustered machines: %w", err)
+		if err := tx.Where("name IS NULL AND (hive_id IS NULL OR hive_id = ?)", hiveID).
+			Find(&unclustered).Error; err != nil {
+			return fmt.Errorf("load adoptable machines: %w", err)
 		}
 
 		// THE LEDGER, READ IN THE SAME TRANSACTION AS THE WRITE, and the fold
