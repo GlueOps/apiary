@@ -140,3 +140,30 @@ func (s *FleetService) RecordObservedNodeName(
 	}
 	return repo.RecordObservedNodeName(ctx, db, sess.Bee.ID, node)
 }
+
+// FinaliseDepartures clears the machines this bee's hive has actually dropped.
+//
+// Driven from the heartbeat because that is when the evidence arrives: a quorate
+// member reporting a composition that no longer lists a departing node is the
+// authority. The departing node itself is not — after `pvecm delnode` it still
+// believes it is a member, which is precisely why it must not be powered back
+// on.
+func (s *FleetService) FinaliseDepartures(ctx context.Context, sess *BeeSession) error {
+	if sess == nil || sess.Bee == nil {
+		return repo.ErrBeeNotFound
+	}
+	db, err := s.dbFor(ctx, sess.OrganizationID.String())
+	if err != nil {
+		return err
+	}
+	var row struct{ HiveID *uuid.UUID }
+	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+		Select("hive_id").Where("bee_id = ?", sess.Bee.ID).Scan(&row).Error; err != nil {
+		return err
+	}
+	if row.HiveID == nil {
+		return nil
+	}
+	_, err = repo.FinaliseDepartures(ctx, db, *row.HiveID)
+	return err
+}
