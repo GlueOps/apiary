@@ -23,6 +23,21 @@ var disarmStepTimeout = 2 * time.Minute
 // can point it at a temporary tree, as the other paths already allow.
 var PVEDir = "/etc/pve"
 
+// PVECorosyncConf is the CLUSTER's copy of the corosync configuration, on
+// pmxcfs.
+//
+// Distinct from CorosyncConf, which is the local file corosync actually reads —
+// and derived from this one: `systemctl start pve-cluster` copies this into
+// /etc/corosync on start. Removing only the local copy therefore achieves
+// nothing, because a later step in this very sequence starts pve-cluster and
+// puts it straight back.
+//
+// That is exactly what happened. The disarm removed /etc/corosync/corosync.conf,
+// started pve-cluster, and the proof then refused with "still exists, so this
+// node is not standalone" — correctly, on a node that had been left carrying the
+// configuration of a cluster it had left.
+var PVECorosyncConf = "/etc/pve/corosync.conf"
+
 // KindDisarm converts a node the cluster has already dropped into a standalone
 // host, and destroys the hive secrets it is still carrying.
 //
@@ -98,6 +113,9 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		// longer has and is never getting back.
 		"pmxcfs -l",
 		"sleep 2",
+		// BOTH copies. The pmxcfs one is the source; the local one is a copy that
+		// pve-cluster remakes from it on start.
+		"rm -f " + PVECorosyncConf,
 		"rm -f " + CorosyncConf,
 		"rm -rf /etc/corosync/*",
 	}
@@ -197,8 +215,13 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 // prevent: the node is detached, looks departed, and still authenticates against
 // the fleet it left.
 func proveDisarmed(_ context.Context, before map[string]string, e *Env) error {
-	if _, err := os.Stat(CorosyncConf); err == nil {
-		return fmt.Errorf("%s still exists, so this node is not standalone", CorosyncConf)
+	// Both are checked, because either one left behind means this node still
+	// carries the configuration of a cluster it has left — and the pmxcfs copy
+	// will recreate the local one the next time pve-cluster starts.
+	for _, f := range []string{PVECorosyncConf, CorosyncConf} {
+		if _, err := os.Stat(f); err == nil {
+			return fmt.Errorf("%s still exists, so this node is not standalone", f)
+		}
 	}
 	// /etc/pve must be writable, or everything above ran against a read-only
 	// filesystem and silently did nothing.
