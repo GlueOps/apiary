@@ -674,6 +674,14 @@ export type DepartResponseBody = {
     queued: boolean;
 };
 
+export type DisarmView = {
+    detail?: string;
+    disarmed: boolean;
+    disposition?: 'accept-exposure' | 'rotate';
+    held_secrets: number;
+    rotated?: boolean;
+};
+
 export type EnrolRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -796,6 +804,7 @@ export type FleetlessHostView = {
     address: string;
     arrival_refusals: Array<RefusalView> | null;
     bee_id?: string;
+    disarm?: DisarmView;
     hypervisor_id: string;
     last_seen_at?: string;
     provisioning_error?: string;

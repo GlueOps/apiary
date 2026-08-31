@@ -430,7 +430,11 @@ func FinaliseDepartures(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (int
 			Where("id = ?", h.ID).
 			Updates(map[string]any{
 				"hive_id": nil, "swarm_id": nil, "name": nil, "departing_at": nil,
-				"credential_disposition": "",
+				// credential_disposition is deliberately KEPT. It is the record of
+				// what an operator asked for, and the disarm verdict needs it to
+				// know whether a rotation was owed — clearing it here left every
+				// departed machine unjudgeable on the one disposition that has an
+				// observable consequence.
 			}).Error; err != nil {
 			return done, fmt.Errorf("finalise the departure of %s: %w", h.ID, err)
 		}

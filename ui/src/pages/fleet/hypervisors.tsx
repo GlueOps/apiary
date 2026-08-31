@@ -128,6 +128,54 @@ export function LastOperationBadge({ hv }: { hv: HypervisorView }) {
   );
 }
 
+// DisarmBadge says whether a machine that LEFT a cluster still holds its
+// secrets.
+//
+// A departed host carrying them still authenticates against the fleet it left,
+// which is the exposure the whole departure sequence exists to close — and until
+// now it was only visible by querying the database.
+//
+// Judged from what the host reports, never from the disarm task's exit status. A
+// task reporting success is the agent's account of its own work, and the point
+// of a disarm is that certain files stop existing.
+export function DisarmBadge({ disarm }: { disarm: FleetlessHostView['disarm'] }) {
+  // Absent for a machine that was never in a cluster. There is nothing to have
+  // disarmed, and badging every freshly onboarded host would train an operator
+  // to ignore the one that matters.
+  if (!disarm) return null;
+
+  // The rotation was asked for and did not happen: the secrets went, the
+  // identity the operator chose to replace did not. Distinct from "still armed"
+  // because the remedy is different.
+  if (disarm.disarmed && disarm.rotated === false) {
+    return (
+      <span className="block space-y-1">
+        <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400">not rotated</Badge>
+        <span className="block max-w-[18rem] text-xs text-muted-foreground">{disarm.detail}</span>
+      </span>
+    );
+  }
+
+  if (disarm.disarmed) {
+    return (
+      <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+        disarmed{disarm.disposition === 'rotate' ? ' · rotated' : ''}
+      </Badge>
+    );
+  }
+
+  return (
+    <span className="block space-y-1">
+      <Badge variant="destructive">
+        {disarm.held_secrets > 0
+          ? `holds ${disarm.held_secrets} cluster secrets`
+          : 'disarm unknown'}
+      </Badge>
+      <span className="block max-w-[18rem] text-xs text-muted-foreground">{disarm.detail}</span>
+    </span>
+  );
+}
+
 function ProvisioningBadge({ hv }: { hv: HypervisorView }) {
   switch (hv.provisioning_state) {
     case 'pending':
@@ -668,6 +716,7 @@ export const Hypervisors = () => {
                     <TableCell className="font-medium">
                       {h.address}
                       <RefusalBadges refusals={refusalsByMachine.get(h.hypervisor_id) ?? []} />
+                      <DisarmBadge disarm={h.disarm} />
                     </TableCell>
                     <TableCell>
                       {/* Absent status is not offline: it means no agent is enrolled on

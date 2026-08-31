@@ -240,6 +240,7 @@ Class | Method | HTTP request | Description
  - [DeletedResponseBody](docs/DeletedResponseBody.md)
  - [DepartRequestBody](docs/DepartRequestBody.md)
  - [DepartResponseBody](docs/DepartResponseBody.md)
+ - [DisarmView](docs/DisarmView.md)
  - [EnrolRequestBody](docs/EnrolRequestBody.md)
  - [EnrolResponseBody](docs/EnrolResponseBody.md)
  - [ErrorDetail](docs/ErrorDetail.md)

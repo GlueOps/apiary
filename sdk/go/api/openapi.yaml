@@ -5562,6 +5562,32 @@ components:
       required:
       - detail
       - queued
+    DisarmView:
+      additionalProperties: false
+      example:
+        detail: detail
+        disarmed: true
+        disposition: accept-exposure
+        held_secrets: 0
+        rotated: true
+      properties:
+        detail:
+          type: string
+        disarmed:
+          type: boolean
+        disposition:
+          enum:
+          - accept-exposure
+          - rotate
+          type: string
+        held_secrets:
+          format: int64
+          type: integer
+        rotated:
+          type: boolean
+      required:
+      - disarmed
+      - held_secrets
     EnrolRequestBody:
       additionalProperties: false
       example:
@@ -5777,6 +5803,12 @@ components:
           remedy: remedy
           summary: summary
         bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        disarm:
+          detail: detail
+          disarmed: true
+          disposition: accept-exposure
+          held_secrets: 0
+          rotated: true
         hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         last_seen_at: 2000-01-23T04:56:07.000+00:00
         provisioning_error: provisioning_error
@@ -5794,6 +5826,8 @@ components:
         bee_id:
           format: uuid
           type: string
+        disarm:
+          $ref: "#/components/schemas/DisarmView"
         hypervisor_id:
           format: uuid
           type: string
@@ -6729,6 +6763,12 @@ components:
             remedy: remedy
             summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          disarm:
+            detail: detail
+            disarmed: true
+            disposition: accept-exposure
+            held_secrets: 0
+            rotated: true
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
           provisioning_error: provisioning_error
@@ -6745,6 +6785,12 @@ components:
             remedy: remedy
             summary: summary
           bee_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          disarm:
+            detail: detail
+            disarmed: true
+            disposition: accept-exposure
+            held_secrets: 0
+            rotated: true
           hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           last_seen_at: 2000-01-23T04:56:07.000+00:00
           provisioning_error: provisioning_error
