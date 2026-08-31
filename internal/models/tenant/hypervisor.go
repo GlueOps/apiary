@@ -161,6 +161,20 @@ type Hypervisor struct {
 	// hive_id, name and swarm_id are cleared together as they always were.
 	DepartingAt *time.Time `gorm:"type:timestamptz;index" json:"departing_at,omitempty"`
 
+	// CredentialDisposition is what an operator chose for a departing machine's
+	// secrets: accept-exposure or rotate.
+	//
+	// Recorded rather than acted on immediately, because the act belongs AFTER
+	// the cluster has dropped the node — disarming a node that is still a member
+	// destroys secrets it is still using. It is carried to the departed host on a
+	// task once a remaining member confirms the removal.
+	//
+	// It is also the one part of a departure that no observation implies. Every
+	// other step is derivable from desired against observed state; this is a
+	// decision with a security consequence, and six months later this column is
+	// the only record that somebody made it.
+	CredentialDisposition string `gorm:"type:varchar(32);not null;default:''" json:"credential_disposition,omitempty"`
+
 	// SwarmID is the named group this hypervisor belongs to, or nil for spare
 	// capacity.
 	//

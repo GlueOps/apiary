@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"gorm.io/datatypes"
 	"testing"
@@ -19,7 +20,8 @@ var membershipTestSchema = testsupport.SchemaName("apiary_repo_membership_test")
 func membershipDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return testsupport.OpenSchema(t, membershipTestSchema,
-		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{}, &tenant.MembershipSnapshot{})
+		&tenant.Hive{}, &tenant.Bee{}, &tenant.Hypervisor{}, &tenant.MembershipSnapshot{},
+		&tenant.FleetTask{})
 }
 
 func seedMembershipHive(t *testing.T, db *gorm.DB) tenant.Hive {
@@ -417,7 +419,7 @@ func TestADepartingMachineIsNamedSoAPeerCanEvictIt(t *testing.T) {
 	stay := seedNode(t, db, &hive, "pve1")
 	leave := seedNode(t, db, &hive, "pve2")
 
-	if err := MarkDeparting(ctx, db, leave.ID); err != nil {
+	if err := MarkDeparting(ctx, db, leave.ID, "accept-exposure"); err != nil {
 		t.Fatalf("mark departing: %v", err)
 	}
 
@@ -462,7 +464,7 @@ func TestADepartureIsFinalisedOnlyOnAPeersObservation(t *testing.T) {
 		Update("bee_id", bee.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := MarkDeparting(ctx, db, leave.ID); err != nil {
+	if err := MarkDeparting(ctx, db, leave.ID, "accept-exposure"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -501,5 +503,75 @@ func TestADepartureIsFinalisedOnlyOnAPeersObservation(t *testing.T) {
 	if done.HiveID != nil || done.Name != nil || done.DepartingAt != nil {
 		t.Fatalf("row not cleared: hive=%v name=%v departing=%v",
 			done.HiveID, done.Name, done.DepartingAt)
+	}
+}
+
+// THE DISARM IS QUEUED WHEN THE CLUSTER HAS ACTUALLY DROPPED THE NODE, carrying
+// the disposition the operator chose and the peers whose configuration the host
+// is still holding.
+//
+// Not before: disarming a machine that is still a member destroys secrets it is
+// still using. And not over SSH — writing files and restarting services on a
+// host is local work, and doing it from the control plane made its own
+// reachability a precondition of closing a credential exposure.
+func TestFinalisingADepartureQueuesTheDisarm(t *testing.T) {
+	db := membershipDB(t)
+	ctx := context.Background()
+	hive := seedMembershipHive(t, db)
+	stay := seedNode(t, db, &hive, "pve1")
+	leave := seedNode(t, db, &hive, "pve2")
+
+	witness := tenant.Bee{ID: uuid.New(), APIKeyID: uuid.New()}
+	departing := tenant.Bee{ID: uuid.New(), APIKeyID: uuid.New()}
+	for _, b := range []tenant.Bee{witness, departing} {
+		if err := db.Create(&b).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", stay.ID).
+		Update("bee_id", witness.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", leave.ID).
+		Update("bee_id", departing.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MarkDeparting(ctx, db, leave.ID, "rotate"); err != nil {
+		t.Fatal(err)
+	}
+	// The peer no longer lists it: the cluster has dropped it.
+	if err := db.Model(&tenant.Bee{}).Where("id = ?", witness.ID).Updates(map[string]any{
+		"observed_members":       datatypes.NewJSONType([]string{"pve1"}),
+		"observed_quorate":       true,
+		"observed_membership_at": time.Now(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n, err := FinaliseDepartures(ctx, db, hive.ID); err != nil || n != 1 {
+		t.Fatalf("finalised %d (%v), want 1", n, err)
+	}
+
+	var task tenant.FleetTask
+	if err := db.Where("bee_id = ? AND kind = ?", departing.ID, KindDisarm).
+		First(&task).Error; err != nil {
+		t.Fatalf("no disarm was queued for the departed host, so it keeps the hive's "+
+			"secrets: %v", err)
+	}
+	// Decoded rather than string-matched: jsonb normalises whitespace, so the
+	// text form is not the contract.
+	var spec struct {
+		Disposition string   `json:"disposition"`
+		Peers       []string `json:"peers"`
+	}
+	if err := json.Unmarshal(task.Spec, &spec); err != nil {
+		t.Fatalf("spec %s: %v", task.Spec, err)
+	}
+	if spec.Disposition != "rotate" {
+		t.Fatalf("disposition = %q, want the operator's chosen one", spec.Disposition)
+	}
+	if len(spec.Peers) != 1 || spec.Peers[0] != "pve1" {
+		t.Fatalf("peers = %v, want the peer whose configuration this host still carries",
+			spec.Peers)
 	}
 }
