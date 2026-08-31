@@ -55,7 +55,7 @@ func (s *FleetService) DesiredMembershipFor(
 // invent an observation nobody made and hand it to a loop that acts on it.
 func (s *FleetService) RecordObservedMembership(
 	ctx context.Context, sess *BeeSession, obs *tenant.Observed,
-	fingerprint string, hostKeys []string, rootKey string, secrets *int,
+	fingerprint string, hostKeys []string, rootKey string, secrets *int, carriesConfig *bool,
 ) error {
 	if sess == nil || sess.Bee == nil {
 		return repo.ErrBeeNotFound
@@ -67,7 +67,7 @@ func (s *FleetService) RecordObservedMembership(
 	if err != nil {
 		return err
 	}
-	return repo.RecordObservedMembership(ctx, db, sess.Bee.ID, *obs, fingerprint, hostKeys, rootKey, secrets)
+	return repo.RecordObservedMembership(ctx, db, sess.Bee.ID, *obs, fingerprint, hostKeys, rootKey, secrets, carriesConfig)
 }
 
 // RecordAppliedMembership stores the composition a bee reports it has converged

@@ -283,3 +283,24 @@ func HeldClusterSecrets() int {
 	}
 	return n
 }
+
+// CarriesClusterConfig reports whether this host still holds a corosync
+// configuration for a cluster.
+//
+// Reported separately from the secret count because they answer different
+// questions and can disagree. A node whose secrets are destroyed no longer
+// AUTHENTICATES against the fleet it left — that is the exposure closed — but
+// one still carrying the configuration is not finished being detached, and will
+// keep trying to be a member of something.
+//
+// Both paths, because /etc/pve/corosync.conf is the cluster's copy and
+// pve-cluster remakes the local one from it on start. Either present means the
+// conversion did not complete.
+func CarriesClusterConfig() bool {
+	for _, f := range []string{PVECorosyncConf, CorosyncConf} {
+		if _, err := os.Stat(f); err == nil {
+			return true
+		}
+	}
+	return false
+}

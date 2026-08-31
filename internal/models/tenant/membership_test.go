@@ -215,12 +215,12 @@ func TestVerifyDisarm(t *testing.T) {
 	}
 
 	// Silence is not evidence.
-	if v := VerifyDisarm(false, 0, "rotate", "", ""); v.Disarmed {
+	if v := VerifyDisarm(DisarmInputs{Disposition: "rotate"}); v.Disarmed {
 		t.Fatal("a host that has never reported was judged disarmed")
 	}
 
 	// Still holding the hive's secrets: not disarmed, whatever the task said.
-	v := VerifyDisarm(true, 3, "accept-exposure", "", "")
+	v := VerifyDisarm(DisarmInputs{Reported: true, HeldSecrets: 3, Disposition: "accept-exposure"})
 	if v.Disarmed {
 		t.Fatal("a host still holding the cluster's secrets was judged disarmed")
 	}
@@ -229,24 +229,117 @@ func TestVerifyDisarm(t *testing.T) {
 	}
 
 	// Secrets gone, no rotation asked for.
-	v = VerifyDisarm(true, 0, "accept-exposure", "ssh-ed25519 SAME", "ssh-ed25519 SAME")
+	v = VerifyDisarm(DisarmInputs{Reported: true, Disposition: "accept-exposure",
+		ObservedRootKey: "ssh-ed25519 SAME", DepartingKey: "ssh-ed25519 SAME"})
 	if !v.Disarmed || v.Rotated != nil {
 		t.Fatalf("disarmed=%v rotated=%s, want disarmed with rotation not applicable",
 			v.Disarmed, rotated(v))
 	}
 
 	// Rotation asked for and the key changed.
-	v = VerifyDisarm(true, 0, "rotate", "ssh-ed25519 NEW", "ssh-ed25519 OLD")
+	v = VerifyDisarm(DisarmInputs{Reported: true, Disposition: "rotate",
+		ObservedRootKey: "ssh-ed25519 NEW", DepartingKey: "ssh-ed25519 OLD"})
 	if !v.Disarmed || v.Rotated == nil || !*v.Rotated {
 		t.Fatalf("disarmed=%v rotated=%s, want both", v.Disarmed, rotated(v))
 	}
 
 	// Rotation asked for and the key did NOT change — the case worth catching.
-	v = VerifyDisarm(true, 0, "rotate", "ssh-ed25519 SAME", "ssh-ed25519 SAME")
+	v = VerifyDisarm(DisarmInputs{Reported: true, Disposition: "rotate",
+		ObservedRootKey: "ssh-ed25519 SAME", DepartingKey: "ssh-ed25519 SAME"})
 	if v.Rotated == nil || *v.Rotated {
 		t.Fatalf("rotated=%s, want no — the host kept the key it left with", rotated(v))
 	}
 	if !strings.Contains(v.Detail, "did not happen") {
 		t.Fatalf("detail = %q, want it to say the rotation did not happen", v.Detail)
+	}
+}
+
+// SECRETS GONE IS NOT THE WHOLE OF IT.
+//
+// A node still carrying a corosync configuration is detached but not converted,
+// and it will keep trying to be a member of something. Judging on the secret
+// count alone showed a host as "disarmed · rotated" in green while its own
+// disarm task had failed saying it was not standalone — the two measuring
+// different things, and the operator seeing only the flattering one.
+func TestVerifyDisarmAccountsForAnUnfinishedConversion(t *testing.T) {
+	v := VerifyDisarm(DisarmInputs{
+		Reported: true, HeldSecrets: 0, CarriesClusterConfig: true,
+		Disposition: "rotate", ObservedRootKey: "new", DepartingKey: "old",
+	})
+	if v.Disarmed {
+		t.Fatal("a host still carrying a corosync configuration was judged disarmed")
+	}
+	if !strings.Contains(v.Detail, "corosync") {
+		t.Fatalf("detail = %q, want it to name what is left behind", v.Detail)
+	}
+}
+
+// A FAILED ATTEMPT IS NOT OVERRIDDEN BY LOOKING FINE. The agent's account of what
+// stopped it is more specific than anything derivable from state.
+func TestVerifyDisarmSurfacesAFailedAttempt(t *testing.T) {
+	v := VerifyDisarm(DisarmInputs{
+		Reported: true, HeldSecrets: 0,
+		LastAttemptFailed: true, LastAttemptError: "corosync.conf still exists",
+		Disposition: "accept-exposure",
+	})
+	if v.Disarmed {
+		t.Fatal("a host whose last disarm failed was judged disarmed")
+	}
+	if !strings.Contains(v.Detail, "corosync.conf still exists") {
+		t.Fatalf("detail = %q, want the agent's own reason", v.Detail)
+	}
+
+	// And a subsequent success supersedes it: the flag is about the LAST attempt.
+	v = VerifyDisarm(DisarmInputs{Reported: true, HeldSecrets: 0, Disposition: "accept-exposure"})
+	if !v.Disarmed {
+		t.Fatalf("a clean host was not judged disarmed: %q", v.Detail)
+	}
+}
+
+// THE SECRET COUNT STOPS MEANING WHAT IT APPEARS TO ONCE A DISARM SUCCEEDS.
+//
+// A disarm ends with `pvecm updatecerts --force`, which regenerates this node's
+// OWN certificate authority and ticket key. So the count drops to zero and comes
+// straight back up — observed live as a host that "comes back green, then picks
+// up 4 credentials again", flapping between disarmed and a false exposure.
+//
+// The distinction cannot be recovered afterwards: only the disarm sees both the
+// before and after bytes, which is why it fingerprints them and refuses on a
+// match. That comparison is the proof. Reporting digests instead was rejected
+// deliberately — a digest is a stable identifier for the very bytes the disarm
+// exists to destroy.
+func TestSecretCountIsNotReadAfterASuccessfulDisarm(t *testing.T) {
+	// Before any disarm, the files ARE the ones the node left with.
+	v := VerifyDisarm(DisarmInputs{
+		Reported: true, HeldSecrets: 4, Disposition: "rotate",
+	})
+	if v.Disarmed {
+		t.Fatal("a host that has not been disarmed was judged disarmed")
+	}
+	if !strings.Contains(v.Detail, "still authenticates") {
+		t.Fatalf("detail = %q, want the exposure named", v.Detail)
+	}
+
+	// After one succeeds, the same count is this node's own regenerated material.
+	v = VerifyDisarm(DisarmInputs{
+		Reported: true, HeldSecrets: 4, LastAttemptSucceeded: true,
+		Disposition: "rotate", ObservedRootKey: "new", DepartingKey: "old",
+	})
+	if !v.Disarmed {
+		t.Fatalf("a disarmed host was reported as exposed because updatecerts regenerated its "+
+			"own credentials: %q", v.Detail)
+	}
+	if v.Rotated == nil || !*v.Rotated {
+		t.Fatalf("rotation was not recognised: %+v", v)
+	}
+
+	// And a leftover cluster config still outranks a successful attempt: that is
+	// a state fact, not a count that changed meaning.
+	v = VerifyDisarm(DisarmInputs{
+		Reported: true, HeldSecrets: 4, LastAttemptSucceeded: true,
+		CarriesClusterConfig: true, Disposition: "rotate",
+	})
+	if v.Disarmed {
+		t.Fatal("a host still carrying a corosync configuration was judged disarmed")
 	}
 }

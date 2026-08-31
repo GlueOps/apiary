@@ -1150,6 +1150,38 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			}
 		}
 
+		// The most recent disarm per bee, so a failed one is not silently
+		// overridden by a host that merely looks fine. DISTINCT ON is the cheapest
+		// way to say "the latest per bee" without a second round trip.
+		type disarmOutcome struct {
+			failed    bool
+			succeeded bool
+			err       string
+		}
+		lastDisarm := map[uuid.UUID]disarmOutcome{}
+		if len(beeIDs) > 0 {
+			var rows []struct {
+				BeeID  uuid.UUID
+				Status string
+				Error  string
+			}
+			if err := db.WithContext(ctx).Raw(`
+				SELECT DISTINCT ON (bee_id) bee_id, status, COALESCE(error, '') AS error
+				  FROM fleet_tasks
+				 WHERE kind = ? AND bee_id IN ?
+				 ORDER BY bee_id, created_at DESC`, repo.KindDisarm, beeIDs).
+				Scan(&rows).Error; err != nil {
+				return nil, mapErr(ctx, err)
+			}
+			for _, r := range rows {
+				lastDisarm[r.BeeID] = disarmOutcome{
+					failed:    r.Status == tenant.FleetTaskFailed,
+					succeeded: r.Status == tenant.FleetTaskSucceeded,
+					err:       r.Error,
+				}
+			}
+		}
+
 		now := time.Now().UTC()
 		out := &ListFleetlessResponse{}
 		out.Body.Hosts = make([]FleetlessHostView, 0, len(machines))
@@ -1183,22 +1215,26 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			// disarmed, and badging every freshly onboarded host "unknown" would
 			// train an operator to ignore the one that matters.
 			if m.CredentialDisposition != "" {
-				var (
-					reported bool
-					held     int
-					rootKey  string
-					before   string
-				)
+				inputs := tenant.DisarmInputs{Disposition: m.CredentialDisposition}
 				if m.BeeID != nil {
 					if b, ok := bees[*m.BeeID]; ok {
-						reported = b.ObservedMembershipAt != nil
-						held = b.ObservedClusterSecrets
-						rootKey = b.ObservedRootKey
-						before = b.DepartingRootKey
+						inputs.Reported = b.ObservedMembershipAt != nil
+						inputs.HeldSecrets = b.ObservedClusterSecrets
+						inputs.CarriesClusterConfig = b.ObservedClusterConfig
+						inputs.ObservedRootKey = b.ObservedRootKey
+						inputs.DepartingKey = b.DepartingRootKey
+					}
+					// The agent's own account of what stopped the last attempt is
+					// more specific than anything derivable from state, and it is
+					// what an operator needs in order to act.
+					if f, ok := lastDisarm[*m.BeeID]; ok {
+						inputs.LastAttemptFailed = f.failed
+						inputs.LastAttemptError = f.err
+						inputs.LastAttemptSucceeded = f.succeeded
 					}
 				}
-				verdict := tenant.VerifyDisarm(reported, held, m.CredentialDisposition,
-					rootKey, before)
+				verdict := tenant.VerifyDisarm(inputs)
+				held := inputs.HeldSecrets
 				v.Disarm = &DisarmView{
 					Disarmed:    verdict.Disarmed,
 					HeldSecrets: held,
