@@ -162,6 +162,19 @@ type FleetlessHostView struct {
 
 	LastSeenAt string `json:"last_seen_at,omitempty" format:"date-time"`
 
+	// THE DISARM AXIS. A machine that left a cluster and still holds its secrets
+	// authenticates against a fleet it is no longer part of, and until now that
+	// was only visible by querying the database.
+	//
+	// Judged from what the HOST reports, never from the disarm task's exit
+	// status: a task reporting success is the agent's account of its own work,
+	// and the point of a disarm is that certain files stop existing.
+	//
+	// Absent for a machine that was never in a cluster — there is nothing to have
+	// disarmed, and an "unknown" badge on every freshly onboarded host would
+	// train an operator to ignore the one that matters.
+	Disarm *DisarmView `json:"disarm,omitempty"`
+
 	// ArrivalRefusals answers "could this join a hive right now" without naming
 	// one, so the list can be rendered before a target is chosen. Refusals that
 	// depend on the target — an empty destination — are reported when the arrival
@@ -237,6 +250,28 @@ type CorosyncLinkInput struct {
 	Number   int    `json:"number" minimum:"0" maximum:"7" doc:"Ring number. Proxmox supports link0-link7."`
 	Address  string `json:"address" required:"true" minLength:"1" doc:"This node's address on that ring."`
 	Priority *int   `json:"priority,omitempty" minimum:"0" doc:"knet link preference; higher wins. Absent leaves corosync's default, which is not the same as zero."`
+}
+
+// DisarmView is what reported state says about a departed machine's secrets.
+type DisarmView struct {
+	// Disarmed is true only when the cluster's secrets are demonstrably gone.
+	// False with an empty Detail never happens: something is always said.
+	Disarmed bool `json:"disarmed"`
+
+	// HeldSecrets is how many of the old cluster's secret files the host still
+	// reports holding. A count, never contents.
+	HeldSecrets int `json:"held_secrets"`
+
+	// Disposition is what the operator chose, so the page can say whether a
+	// rotation was owed at all.
+	Disposition string `json:"disposition,omitempty" enum:"accept-exposure,rotate"`
+
+	// Rotated is absent unless rotation was chosen AND there is a before value to
+	// compare against. Present and false is the case worth seeing: the secrets
+	// went, and the identity the operator asked to replace did not.
+	Rotated *bool `json:"rotated,omitempty"`
+
+	Detail string `json:"detail,omitempty"`
 }
 
 type ArriveRequest struct {
@@ -1044,6 +1079,38 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			// sync zeroes the observations when it clears a machine's membership,
 			// so any non-zero value here would be describing a cluster the machine
 			// has left. The arrival path re-asks the host itself before joining.
+			// The disarm axis, for a machine that has actually left a cluster.
+			//
+			// Keyed on the disposition having been recorded, which only a departure
+			// does. A machine that was never in a cluster has nothing to have
+			// disarmed, and badging every freshly onboarded host "unknown" would
+			// train an operator to ignore the one that matters.
+			if m.CredentialDisposition != "" {
+				var (
+					reported bool
+					held     int
+					rootKey  string
+					before   string
+				)
+				if m.BeeID != nil {
+					if b, ok := bees[*m.BeeID]; ok {
+						reported = b.ObservedMembershipAt != nil
+						held = b.ObservedClusterSecrets
+						rootKey = b.ObservedRootKey
+						before = b.DepartingRootKey
+					}
+				}
+				verdict := tenant.VerifyDisarm(reported, held, m.CredentialDisposition,
+					rootKey, before)
+				v.Disarm = &DisarmView{
+					Disarmed:    verdict.Disarmed,
+					HeldSecrets: held,
+					Disposition: m.CredentialDisposition,
+					Rotated:     verdict.Rotated,
+					Detail:      verdict.Detail,
+				}
+			}
+
 			v.ArrivalRefusals = arrivalRefusalViews(tenant.CheckArrival(tenant.ArrivalRequest{
 				TargetHive:      tenant.Hive{Name: "(unspecified)"},
 				CurrentHiveID:   m.HiveID,

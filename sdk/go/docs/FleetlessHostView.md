@@ -7,6 +7,7 @@ Name | Type | Description | Notes
 **Address** | **string** |  | 
 **ArrivalRefusals** | [**[]RefusalView**](RefusalView.md) |  | 
 **BeeId** | Pointer to **string** |  | [optional] 
+**Disarm** | Pointer to [**DisarmView**](DisarmView.md) |  | [optional] 
 **HypervisorId** | **string** |  | 
 **LastSeenAt** | Pointer to **time.Time** |  | [optional] 
 **ProvisioningError** | Pointer to **string** |  | [optional] 
@@ -106,6 +107,31 @@ SetBeeId sets BeeId field to given value.
 `func (o *FleetlessHostView) HasBeeId() bool`
 
 HasBeeId returns a boolean if a field has been set.
+
+### GetDisarm
+
+`func (o *FleetlessHostView) GetDisarm() DisarmView`
+
+GetDisarm returns the Disarm field if non-nil, zero value otherwise.
+
+### GetDisarmOk
+
+`func (o *FleetlessHostView) GetDisarmOk() (*DisarmView, bool)`
+
+GetDisarmOk returns a tuple with the Disarm field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetDisarm
+
+`func (o *FleetlessHostView) SetDisarm(v DisarmView)`
+
+SetDisarm sets Disarm field to given value.
+
+### HasDisarm
+
+`func (o *FleetlessHostView) HasDisarm() bool`
+
+HasDisarm returns a boolean if a field has been set.
 
 ### GetHypervisorId
 

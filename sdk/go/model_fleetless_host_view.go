@@ -25,6 +25,7 @@ type FleetlessHostView struct {
 	Address string `json:"address"`
 	ArrivalRefusals []RefusalView `json:"arrival_refusals"`
 	BeeId *string `json:"bee_id,omitempty"`
+	Disarm *DisarmView `json:"disarm,omitempty"`
 	HypervisorId string `json:"hypervisor_id"`
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 	ProvisioningError *string `json:"provisioning_error,omitempty"`
@@ -135,6 +136,38 @@ func (o *FleetlessHostView) HasBeeId() bool {
 // SetBeeId gets a reference to the given string and assigns it to the BeeId field.
 func (o *FleetlessHostView) SetBeeId(v string) {
 	o.BeeId = &v
+}
+
+// GetDisarm returns the Disarm field value if set, zero value otherwise.
+func (o *FleetlessHostView) GetDisarm() DisarmView {
+	if o == nil || IsNil(o.Disarm) {
+		var ret DisarmView
+		return ret
+	}
+	return *o.Disarm
+}
+
+// GetDisarmOk returns a tuple with the Disarm field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *FleetlessHostView) GetDisarmOk() (*DisarmView, bool) {
+	if o == nil || IsNil(o.Disarm) {
+		return nil, false
+	}
+	return o.Disarm, true
+}
+
+// HasDisarm returns a boolean if a field has been set.
+func (o *FleetlessHostView) HasDisarm() bool {
+	if o != nil && !IsNil(o.Disarm) {
+		return true
+	}
+
+	return false
+}
+
+// SetDisarm gets a reference to the given DisarmView and assigns it to the Disarm field.
+func (o *FleetlessHostView) SetDisarm(v DisarmView) {
+	o.Disarm = &v
 }
 
 // GetHypervisorId returns the HypervisorId field value
@@ -297,6 +330,9 @@ func (o FleetlessHostView) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.BeeId) {
 		toSerialize["bee_id"] = o.BeeId
+	}
+	if !IsNil(o.Disarm) {
+		toSerialize["disarm"] = o.Disarm
 	}
 	toSerialize["hypervisor_id"] = o.HypervisorId
 	if !IsNil(o.LastSeenAt) {

@@ -164,6 +164,25 @@ func (l *localCluster) NodeNames() []string {
 	return out
 }
 
+// OnlineNodeNames is the members corosync currently counts as present.
+//
+// Read from the same .members snapshot as everything else, so it describes the
+// same moment. A node configured but down appears in NodeNames and not here,
+// which is the distinction quorum turns on.
+func (l *localCluster) OnlineNodeNames() []string {
+	if l.members == nil {
+		return nil
+	}
+	out := make([]string, 0, len(l.members.NodeList))
+	for n, e := range l.members.NodeList {
+		if e.Online == 1 {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // GuestsOn lists the VMs and containers registered to a node.
 //
 // From /etc/pve, which pmxcfs replicates, so this answers for ANY node in the

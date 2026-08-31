@@ -24,6 +24,20 @@ var secretShapedProperty = regexp.MustCompile(`(?i)secret|password|passwd|privat
 // Adding an entry here must be a deliberate edit with a reason, which is the
 // whole mechanism: an accidental new field cannot be in this map.
 var allowedSecretShapedProperties = map[string]bool{
+	// NOT SECRET MATERIAL — a COUNT of how many of its old cluster's secret files
+	// a departed machine still reports holding.
+	//
+	// It exists precisely so that exposure is visible: a host that left a cluster
+	// and still carries its secrets authenticates against a fleet it is no longer
+	// part of, and the number is how an operator sees that without querying the
+	// database. It carries no contents and no digests — a digest would be a stable
+	// identifier for the very bytes the disarm exists to destroy, which is why the
+	// agent reports a count instead.
+	//
+	// It trips the tripwire on the word "secrets" in the name, which is the name
+	// being accurate rather than the value being sensitive.
+	"DisarmView.held_secrets": true,
+
 	// The login/refresh/registration family: the caller's own session tokens,
 	// returned to the caller who just proved who they are.
 	"LoginResponseBody.access_token":  true,
