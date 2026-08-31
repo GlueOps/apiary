@@ -219,6 +219,32 @@ type ReprovisionRequest struct {
 
 type ReprovisionResponse struct{ Body HypervisorView }
 
+// DisarmRequest re-runs the disarm on a machine that has already left a
+// cluster.
+//
+// It exists because a FAILED disarm was the one thing an operator could not act
+// on. The fleet view shows a departed host still holding its old cluster's
+// secrets, and until now seeing that came with no way to do anything about it —
+// the task kind was not even in the enum, so retrying meant writing SQL.
+type DisarmRequest struct {
+	ID string `path:"id" format:"uuid"`
+
+	Body struct {
+		// Defaults to what the departure recorded, which is almost always what
+		// is wanted: this is a RETRY of a decision already made. It can be
+		// overridden, because an operator who has since decided the host is not
+		// trusted should not have to depart it again to say so.
+		CredentialDisposition string `json:"credential_disposition,omitempty" enum:"rotate,accept-exposure" doc:"Omit to reuse the disposition recorded when this host was departed."`
+	}
+}
+
+type DisarmResponse struct {
+	Body struct {
+		Queued bool   `json:"queued"`
+		Detail string `json:"detail"`
+	}
+}
+
 type DepartRequest struct {
 	ID string `path:"id" format:"uuid"`
 
@@ -896,6 +922,77 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, mapErr(ctx, err)
 		}
 		return &ReprovisionResponse{Body: views[0]}, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID:   "fleet-hypervisors-disarm",
+		Method:        http.MethodPost,
+		Path:          "/fleet/hypervisors/{id}/disarm",
+		Summary:       "Destroy the cluster secrets a departed machine still holds",
+		DefaultStatus: http.StatusAccepted,
+		Description: "Queues the disarm as an agent task. The host destroys its copy of the " +
+			"hive's secrets, optionally rotates its own identity, and proves it — the control " +
+			"plane opens no connection.\n\n" +
+			"For a machine that has ALREADY LEFT a cluster. Disarming a node that is still a " +
+			"member would destroy secrets it is still using, so this refuses one that is in a " +
+			"hive.\n\n" +
+			"Ordinarily a departure queues this itself. This exists for the case where that one " +
+			"failed, which is exactly when a host is left holding credentials for a fleet it is " +
+			"no longer part of — and was, until now, the one outcome an operator could see in " +
+			"the fleet view and not act on.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *DisarmRequest) (*DisarmResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(in.ID)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid hypervisor id")
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		var hv tenant.Hypervisor
+		if err := db.WithContext(ctx).First(&hv, "id = ?", id).Error; err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		// A MEMBER IS NOT DISARMABLE. The secrets it holds are the ones it is
+		// using; destroying them would break the node rather than detach it.
+		if hv.HiveID != nil {
+			auditRefused(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor,
+				&id, "still_in_hive", nil)
+			return nil, huma.Error409Conflict("this host is still a member of a cluster; the " +
+				"secrets it holds are the ones it is using. Depart it first")
+		}
+		if hv.BeeID == nil {
+			return nil, huma.Error409Conflict("this host has no agent, so nothing can destroy " +
+				"the secrets it holds. The disarm runs ON the host")
+		}
+
+		disposition := in.Body.CredentialDisposition
+		if disposition == "" {
+			disposition = hv.CredentialDisposition
+		}
+		if disposition == "" {
+			return nil, huma.Error422UnprocessableEntity("no credential disposition was given " +
+				"and none was recorded for this host, so it is not known whether its own " +
+				"identity should be rotated")
+		}
+
+		if err := repo.QueueDisarm(ctx, db, hv, disposition); err != nil {
+			return nil, mapErr(ctx, err)
+		}
+		auditOK(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor, &id,
+			map[string]any{"credential_disposition": disposition, "retry": true})
+
+		out := &DisarmResponse{}
+		out.Body.Queued = true
+		out.Body.Detail = "the host will destroy the cluster secrets it holds on its next check-in"
+		return out, nil
 	})
 
 	huma.Register(hapi, huma.Operation{

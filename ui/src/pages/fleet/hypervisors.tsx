@@ -50,6 +50,7 @@ import {
   fleetHostsFleetlessQueryKey,
   fleetHypervisorsCordonMutation,
   fleetHypervisorsDepartMutation,
+  fleetHypervisorsDisarmMutation,
   fleetHypervisorsListOptions,
   fleetHypervisorsListQueryKey,
   fleetHypervisorsReprovisionMutation,
@@ -296,6 +297,23 @@ export const Hypervisors = () => {
     // A refused departure is not a failure of the system; it is the gate saying
     // the hypervisor is not ready. The reasons are what the operator needs.
     onError: (e) => toast.error(refusalMessage(e, 'This hypervisor cannot leave its cluster yet')),
+  });
+
+  // Re-runs the disarm on a machine that has already left a cluster.
+  //
+  // The departure queues this itself; this is for when that one FAILED, which is
+  // exactly when a host is left holding credentials for a fleet it is no longer
+  // part of. Until it existed the fleet view could show that and offer nothing
+  // to do about it.
+  const disarm = useMutation({
+    ...fleetHypervisorsDisarmMutation(),
+    onSuccess: () => {
+      toast.success(
+        'Disarm queued — the host destroys the cluster secrets it holds on its ' + 'next check-in',
+      );
+      invalidate();
+    },
+    onError: (e) => toast.error(refusalMessage(e, 'This host cannot be disarmed')),
   });
 
   const sync = useMutation({
@@ -749,6 +767,26 @@ export const Hypervisors = () => {
                       >
                         Join a cluster
                       </Button>
+                      {/* Only where the verdict says there is something to close: a host that
+                          left a cluster and still holds its secrets. Offering it on every
+                          fleetless machine would make the one that matters indistinguishable
+                          from the ones that do not. */}
+                      {h.disarm && !h.disarm.disarmed ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="ml-2"
+                          disabled={disarm.isPending || !h.bee_id}
+                          title={
+                            h.bee_id
+                              ? "Destroys this host's copy of its old cluster's secrets. The agent does it locally and proves it."
+                              : 'No agent is enrolled on this machine, and the disarm runs on the host.'
+                          }
+                          onClick={() => disarm.mutate({ path: { id: h.hypervisor_id }, body: {} })}
+                        >
+                          Disarm
+                        </Button>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

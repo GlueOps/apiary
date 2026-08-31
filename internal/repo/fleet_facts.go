@@ -446,6 +446,27 @@ func FinaliseDepartures(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (int
 	return done, nil
 }
 
+// QueueDisarm asks a departed host to destroy the hive secrets it is carrying,
+// on an operator's explicit request.
+//
+// The automatic path runs at finalisation and swallows its own failures, because
+// a departure that has happened must not be reported as unfinished. This one is
+// asked for, so a failure to queue is returned: the operator is waiting on an
+// answer and "it did not work" is the answer.
+func QueueDisarm(ctx context.Context, db *gorm.DB, h tenant.Hypervisor, disposition string) error {
+	if h.BeeID == nil {
+		return fmt.Errorf("this host has no agent, so nothing can destroy the secrets it holds")
+	}
+	spec, err := json.Marshal(map[string]any{"disposition": disposition, "peers": []string{}})
+	if err != nil {
+		return err
+	}
+	return NewFleetRepoGorm(db).CreateTask(ctx, &tenant.FleetTask{
+		BeeID: *h.BeeID, Kind: KindDisarm,
+		Spec: datatypes.JSON(spec), Status: tenant.FleetTaskPending,
+	})
+}
+
 // queueDisarm asks a departed host to destroy the hive secrets it is carrying.
 //
 // A TASK rather than a convergence, because the disposition is an operator's

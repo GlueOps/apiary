@@ -28,6 +28,7 @@ Method | HTTP request | Description
 [**FleetHypervisorsCordon**](FleetAPI.md#FleetHypervisorsCordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
 [**FleetHypervisorsDeclare**](FleetAPI.md#FleetHypervisorsDeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 [**FleetHypervisorsDepart**](FleetAPI.md#FleetHypervisorsDepart) | **Post** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
+[**FleetHypervisorsDisarm**](FleetAPI.md#FleetHypervisorsDisarm) | **Post** /api/v1/fleet/hypervisors/{id}/disarm | Destroy the cluster secrets a departed machine still holds
 [**FleetHypervisorsGet**](FleetAPI.md#FleetHypervisorsGet) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 [**FleetHypervisorsList**](FleetAPI.md#FleetHypervisorsList) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
 [**FleetHypervisorsReprovision**](FleetAPI.md#FleetHypervisorsReprovision) | **Post** /api/v1/fleet/hypervisors/{id}/reprovision | Redrive a machine&#39;s onboarding
@@ -1646,6 +1647,78 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**DepartResponseBody**](DepartResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetHypervisorsDisarm
+
+> DisarmResponseBody FleetHypervisorsDisarm(ctx, id).DisarmRequestBody(disarmRequestBody).Execute()
+
+Destroy the cluster secrets a departed machine still holds
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	disarmRequestBody := *openapiclient.NewDisarmRequestBody() // DisarmRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetHypervisorsDisarm(context.Background(), id).DisarmRequestBody(disarmRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetHypervisorsDisarm``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetHypervisorsDisarm`: DisarmResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetHypervisorsDisarm`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetHypervisorsDisarmRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **disarmRequestBody** | [**DisarmRequestBody**](DisarmRequestBody.md) |  | 
+
+### Return type
+
+[**DisarmResponseBody**](DisarmResponseBody.md)
 
 ### Authorization
 

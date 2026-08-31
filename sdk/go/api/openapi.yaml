@@ -2904,6 +2904,51 @@ paths:
       summary: Remove a hypervisor from its hive
       tags:
       - Fleet
+  /api/v1/fleet/hypervisors/{id}/disarm:
+    post:
+      description: |-
+        Queues the disarm as an agent task. The host destroys its copy of the hive's secrets, optionally rotates its own identity, and proves it — the control plane opens no connection.
+
+        For a machine that has ALREADY LEFT a cluster. Disarming a node that is still a member would destroy secrets it is still using, so this refuses one that is in a hive.
+
+        Ordinarily a departure queues this itself. This exists for the case where that one failed, which is exactly when a host is left holding credentials for a fleet it is no longer part of — and was, until now, the one outcome an operator could see in the fleet view and not act on.
+      operationId: fleet-hypervisors-disarm
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisarmRequestBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisarmResponseBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Destroy the cluster secrets a departed machine still holds
+      tags:
+      - Fleet
   /api/v1/fleet/hypervisors/{id}/reprovision:
     post:
       description: |-
@@ -5123,6 +5168,7 @@ components:
           - fleet.host.agent-upgrade
           - fleet.datacenter.join
           - fleet.datacenter.evict
+          - fleet.datacenter.disarm
           type: string
         spec: {}
       required:
@@ -5544,6 +5590,42 @@ components:
       required:
       - credential_disposition
     DepartResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        detail: detail
+        queued: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          type: string
+        queued:
+          type: boolean
+      required:
+      - detail
+      - queued
+    DisarmRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        credential_disposition: rotate
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        credential_disposition:
+          description: Omit to reuse the disposition recorded when this host was departed.
+          enum:
+          - rotate
+          - accept-exposure
+          type: string
+    DisarmResponseBody:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech

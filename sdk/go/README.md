@@ -149,6 +149,7 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHypervisorsCordon**](docs/FleetAPI.md#fleethypervisorscordon) | **Post** /api/v1/fleet/hypervisors/{id}/cordon | Cordon or uncordon a hypervisor
 *FleetAPI* | [**FleetHypervisorsDeclare**](docs/FleetAPI.md#fleethypervisorsdeclare) | **Post** /api/v1/fleet/hypervisors | Bring hosts into the fleet by address
 *FleetAPI* | [**FleetHypervisorsDepart**](docs/FleetAPI.md#fleethypervisorsdepart) | **Post** /api/v1/fleet/hypervisors/{id}/depart | Remove a hypervisor from its hive
+*FleetAPI* | [**FleetHypervisorsDisarm**](docs/FleetAPI.md#fleethypervisorsdisarm) | **Post** /api/v1/fleet/hypervisors/{id}/disarm | Destroy the cluster secrets a departed machine still holds
 *FleetAPI* | [**FleetHypervisorsGet**](docs/FleetAPI.md#fleethypervisorsget) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetAPI* | [**FleetHypervisorsList**](docs/FleetAPI.md#fleethypervisorslist) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
 *FleetAPI* | [**FleetHypervisorsReprovision**](docs/FleetAPI.md#fleethypervisorsreprovision) | **Post** /api/v1/fleet/hypervisors/{id}/reprovision | Redrive a machine&#39;s onboarding
@@ -240,6 +241,8 @@ Class | Method | HTTP request | Description
  - [DeletedResponseBody](docs/DeletedResponseBody.md)
  - [DepartRequestBody](docs/DepartRequestBody.md)
  - [DepartResponseBody](docs/DepartResponseBody.md)
+ - [DisarmRequestBody](docs/DisarmRequestBody.md)
+ - [DisarmResponseBody](docs/DisarmResponseBody.md)
  - [DisarmView](docs/DisarmView.md)
  - [EnrolRequestBody](docs/EnrolRequestBody.md)
  - [EnrolResponseBody](docs/EnrolResponseBody.md)

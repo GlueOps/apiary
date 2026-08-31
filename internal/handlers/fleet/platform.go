@@ -143,7 +143,7 @@ type DeleteBeeResponse struct {
 type CreateTaskRequest struct {
 	Body struct {
 		BeeID string          `json:"bee_id" required:"true" format:"uuid"`
-		Kind  string          `json:"kind" required:"true" enum:"fleet.host.ping,fleet.host.dist-upgrade,fleet.host.agent-upgrade,fleet.datacenter.join,fleet.datacenter.evict" doc:"What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing."`
+		Kind  string          `json:"kind" required:"true" enum:"fleet.host.ping,fleet.host.dist-upgrade,fleet.host.agent-upgrade,fleet.datacenter.join,fleet.datacenter.evict,fleet.datacenter.disarm" doc:"What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing."`
 		Spec  json.RawMessage `json:"spec,omitempty" doc:"Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host."`
 	}
 }
