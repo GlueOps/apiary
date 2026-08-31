@@ -575,3 +575,67 @@ func TestCheckDepartureDoesNotAskAboutCredentialsWhileStateRefuses(t *testing.T)
 		t.Fatalf("the credential question must wait until the cluster is ready; got %v", codes(rs))
 	}
 }
+
+// A HOST NOBODY IS WATCHING AND A HOST WHOSE WATCHER FELL BEHIND NEED DIFFERENT
+// ADVICE.
+//
+// Both reach the gate as one stale timestamp, so the refusal used to report
+// every silence as a stale capacity sync and tell the operator to run one. On a
+// freshly rebuilt node that is unfollowable — there is no agent on it to sync,
+// and the age quoted is simply how long the machine has stood there unobserved.
+// Observed on a lab fleet rebuilt from scratch, where every node refused citing
+// a sync it had never had.
+func TestADepartureSaysWhichKindOfSilenceStoppedIt(t *testing.T) {
+	base := DepartureRequest{
+		Hive:                  Hive{Name: "lab-a", MinimumNodes: 1},
+		HiveNodeCount:         3,
+		CredentialDisposition: CredentialsRotate,
+		Drain: DrainStatus{
+			Cordoned: true, State: DrainStateUnknown, ObservationAge: 15*time.Minute + 22*time.Second,
+		},
+	}
+
+	hiveID := uuid.New()
+	beeID := uuid.New()
+
+	// Never observed: no agent has ever enrolled on the machine.
+	unwatched := base
+	unwatched.Hypervisor = Hypervisor{HiveID: &hiveID}
+	got := findRefusal(CheckDeparture(unwatched), RefuseDrainUnknown)
+	if got == nil {
+		t.Fatal("a host nothing observes was allowed to depart")
+	}
+	if !strings.Contains(got.Remedy, "Onboard") {
+		t.Fatalf("remedy = %q, want the operator sent to onboard it — there is no agent on "+
+			"this host to run a sync with", got.Remedy)
+	}
+	if strings.Contains(got.Detail, "15m22s") {
+		t.Fatalf("detail = %q quotes an observation age for a host that has never been "+
+			"observed, which reads as a lapsed agent rather than an absent one", got.Detail)
+	}
+
+	// Lapsed: an agent is linked, and it has stopped reporting.
+	lapsed := base
+	lapsed.Hypervisor = Hypervisor{HiveID: &hiveID, BeeID: &beeID}
+	got = findRefusal(CheckDeparture(lapsed), RefuseDrainUnknown)
+	if got == nil {
+		t.Fatal("a host with a lapsed agent was allowed to depart")
+	}
+	if !strings.Contains(got.Detail, "15m22s") {
+		t.Fatalf("detail = %q, want the actual age named so the operator can judge it",
+			got.Detail)
+	}
+	if strings.Contains(got.Remedy, "Onboard") {
+		t.Fatalf("remedy = %q tells the operator to onboard a host that is already onboarded",
+			got.Remedy)
+	}
+}
+
+func findRefusal(rs []DepartureRefusal, code string) *DepartureRefusal {
+	for i := range rs {
+		if rs[i].Code == code {
+			return &rs[i]
+		}
+	}
+	return nil
+}
