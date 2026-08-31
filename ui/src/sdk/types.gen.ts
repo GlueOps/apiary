@@ -490,7 +490,7 @@ export type CreateTaskRequestBody = {
     /**
      * What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing.
      */
-    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
+    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict' | 'fleet.datacenter.disarm';
     /**
      * Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host.
      */
@@ -666,6 +666,26 @@ export type DepartRequestBody = {
 };
 
 export type DepartResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    detail: string;
+    queued: boolean;
+};
+
+export type DisarmRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Omit to reuse the disposition recorded when this host was departed.
+     */
+    credential_disposition?: 'rotate' | 'accept-exposure';
+};
+
+export type DisarmResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
      */
@@ -2516,7 +2536,7 @@ export type CreateTaskRequestBodyWritable = {
     /**
      * What the agent should do. An agent handed a kind it does not implement fails the task naming its version, rather than silently doing nothing.
      */
-    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict';
+    kind: 'fleet.host.ping' | 'fleet.host.dist-upgrade' | 'fleet.host.agent-upgrade' | 'fleet.datacenter.join' | 'fleet.datacenter.evict' | 'fleet.datacenter.disarm';
     /**
      * Desired state, not a script. NEVER put a credential here — specs are stored as jsonb and retained after the task completes; the agent reads secrets such as the cluster join password from its own host.
      */
@@ -2605,6 +2625,18 @@ export type DepartRequestBodyWritable = {
 };
 
 export type DepartResponseBodyWritable = {
+    detail: string;
+    queued: boolean;
+};
+
+export type DisarmRequestBodyWritable = {
+    /**
+     * Omit to reuse the disposition recorded when this host was departed.
+     */
+    credential_disposition?: 'rotate' | 'accept-exposure';
+};
+
+export type DisarmResponseBodyWritable = {
     detail: string;
     queued: boolean;
 };
@@ -5667,6 +5699,33 @@ export type FleetHypervisorsDepartResponses = {
 };
 
 export type FleetHypervisorsDepartResponse = FleetHypervisorsDepartResponses[keyof FleetHypervisorsDepartResponses];
+
+export type FleetHypervisorsDisarmData = {
+    body: DisarmRequestBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/hypervisors/{id}/disarm';
+};
+
+export type FleetHypervisorsDisarmErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetHypervisorsDisarmError = FleetHypervisorsDisarmErrors[keyof FleetHypervisorsDisarmErrors];
+
+export type FleetHypervisorsDisarmResponses = {
+    /**
+     * Accepted
+     */
+    202: DisarmResponseBody;
+};
+
+export type FleetHypervisorsDisarmResponse = FleetHypervisorsDisarmResponses[keyof FleetHypervisorsDisarmResponses];
 
 export type FleetHypervisorsReprovisionData = {
     body?: never;

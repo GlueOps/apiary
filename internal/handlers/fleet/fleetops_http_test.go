@@ -437,3 +437,30 @@ func TestDepartingDispatchesNoJob(t *testing.T) {
 			"can evict")
 	}
 }
+
+// A DISARM CAN BE RETRIED, AND ONLY ON A MACHINE THAT HAS LEFT.
+//
+// A failed disarm was the one outcome the fleet view could show and an operator
+// could not act on — the task kind was not even in the enum, so retrying it
+// meant writing SQL against the tenant database.
+//
+// Refused for a machine still IN a hive, because the secrets it holds are the
+// ones it is using: destroying them would break the node rather than detach it.
+func TestDisarmIsRetryableOnlyForADepartedMachine(t *testing.T) {
+	src, err := os.ReadFile("fleetops.go")
+	if err != nil {
+		t.Fatalf("read handler: %v", err)
+	}
+	body := string(src)
+	if !strings.Contains(body, `Path:          "/fleet/hypervisors/{id}/disarm"`) {
+		t.Fatal("no disarm endpoint; a failed disarm is only actionable through SQL")
+	}
+	if !strings.Contains(body, "still a member of a cluster") {
+		t.Fatal("the endpoint does not refuse a machine that is still in a hive, whose secrets " +
+			"are the ones it is using")
+	}
+	if !strings.Contains(body, "has no agent") {
+		t.Fatal("the endpoint does not refuse a machine with no agent, and the disarm runs ON " +
+			"the host")
+	}
+}

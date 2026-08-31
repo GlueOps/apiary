@@ -72,6 +72,8 @@ docs/DeleteResponseBody2.md
 docs/DeletedResponseBody.md
 docs/DepartRequestBody.md
 docs/DepartResponseBody.md
+docs/DisarmRequestBody.md
+docs/DisarmResponseBody.md
 docs/DisarmView.md
 docs/EnrolRequestBody.md
 docs/EnrolResponseBody.md
@@ -265,6 +267,8 @@ model_delete_response_body2.go
 model_deleted_response_body.go
 model_depart_request_body.go
 model_depart_response_body.go
+model_disarm_request_body.go
+model_disarm_response_body.go
 model_disarm_view.go
 model_enrol_request_body.go
 model_enrol_response_body.go
