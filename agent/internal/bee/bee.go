@@ -328,6 +328,12 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 	// and no longer in the cluster is a standing exposure however it got there —
 	// including a disarm that never ran because the host had no agent.
 	body.SetObservedClusterSecrets(int64(fleetops.HeldClusterSecrets()))
+	// Whether a corosync configuration is still on disk, which is a DIFFERENT
+	// question from whether the hive's secrets are. A node with neither is
+	// finished; a node with no secrets but a config left is detached and not
+	// converted, and the control plane could not tell those apart from a count
+	// alone.
+	body.SetObservedClusterConfig(fleetops.CarriesClusterConfig())
 	if rev, digest := b.membership.get(); rev > 0 && digest != "" {
 		body.SetAppliedMembershipRevision(int64(rev))
 		body.SetAppliedMembershipDigest(digest)

@@ -34,6 +34,7 @@ type HeartbeatRequestBody struct {
 	Back *bool `json:"back,omitempty"`
 	// The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
 	ObservedCluster *string `json:"observed_cluster,omitempty"`
+	ObservedClusterConfig *bool `json:"observed_cluster_config,omitempty"`
 	ObservedClusterSecrets *int64 `json:"observed_cluster_secrets,omitempty"`
 	ObservedFingerprint *string `json:"observed_fingerprint,omitempty"`
 	// VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
@@ -356,6 +357,38 @@ func (o *HeartbeatRequestBody) HasObservedCluster() bool {
 // SetObservedCluster gets a reference to the given string and assigns it to the ObservedCluster field.
 func (o *HeartbeatRequestBody) SetObservedCluster(v string) {
 	o.ObservedCluster = &v
+}
+
+// GetObservedClusterConfig returns the ObservedClusterConfig field value if set, zero value otherwise.
+func (o *HeartbeatRequestBody) GetObservedClusterConfig() bool {
+	if o == nil || IsNil(o.ObservedClusterConfig) {
+		var ret bool
+		return ret
+	}
+	return *o.ObservedClusterConfig
+}
+
+// GetObservedClusterConfigOk returns a tuple with the ObservedClusterConfig field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *HeartbeatRequestBody) GetObservedClusterConfigOk() (*bool, bool) {
+	if o == nil || IsNil(o.ObservedClusterConfig) {
+		return nil, false
+	}
+	return o.ObservedClusterConfig, true
+}
+
+// HasObservedClusterConfig returns a boolean if a field has been set.
+func (o *HeartbeatRequestBody) HasObservedClusterConfig() bool {
+	if o != nil && !IsNil(o.ObservedClusterConfig) {
+		return true
+	}
+
+	return false
+}
+
+// SetObservedClusterConfig gets a reference to the given bool and assigns it to the ObservedClusterConfig field.
+func (o *HeartbeatRequestBody) SetObservedClusterConfig(v bool) {
+	o.ObservedClusterConfig = &v
 }
 
 // GetObservedClusterSecrets returns the ObservedClusterSecrets field value if set, zero value otherwise.
@@ -748,6 +781,9 @@ func (o HeartbeatRequestBody) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.ObservedCluster) {
 		toSerialize["observed_cluster"] = o.ObservedCluster
+	}
+	if !IsNil(o.ObservedClusterConfig) {
+		toSerialize["observed_cluster_config"] = o.ObservedClusterConfig
 	}
 	if !IsNil(o.ObservedClusterSecrets) {
 		toSerialize["observed_cluster_secrets"] = o.ObservedClusterSecrets

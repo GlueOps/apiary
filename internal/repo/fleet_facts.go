@@ -183,12 +183,39 @@ func RecordObservedGuestsIfFleetless(
 	// useful signal rather than a race — it is how a node that has silently
 	// fallen out of its cluster becomes visible.
 	_ = inACluster
-	return db.WithContext(ctx).Model(&tenant.Hypervisor{}).
+	res := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("bee_id = ?", beeID).
 		Updates(map[string]any{
 			"observed_guests": guests,
 			"last_synced_at":  gorm.Expr("now()"),
-		}).Error
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	// MATCHING NOTHING IS NOT SUCCESS, and it is the failure this whole function
+	// exists to prevent, wearing the other hat.
+	//
+	// The predicate is the agent's identity, but the row is the MACHINE, and the
+	// link between them is set during onboarding. A machine whose bee_id was
+	// never set — or was set to a bee that has since been re-enrolled, which a
+	// rebuilt host does — matches zero rows. GORM reports no error for that: the
+	// statement ran and updated nothing. So the agent reports every twenty-five
+	// seconds, every write "succeeds", last_synced_at never moves, and the
+	// departure gate refuses with drain_unknown citing an observation age that
+	// only ever grows.
+	//
+	// Deliberately not an error return: failing the heartbeat over it would take
+	// out convergence, membership and liveness for a host whose only real problem
+	// is a missing link — and the gate already fails closed on the stale
+	// observation, which is the safe direction. What was missing is any signal
+	// saying WHY, which is what this logs.
+	if res.RowsAffected == 0 {
+		slog.ErrorContext(ctx, "an agent reported its guests and no machine claimed the "+
+			"observation, so this host's drain freshness will never advance and every "+
+			"departure from it refuses as drain_unknown",
+			"bee_id", beeID, "observed_guests", guests)
+	}
+	return nil
 }
 
 // RecordHostKeys stores a machine's own SSH host public keys.

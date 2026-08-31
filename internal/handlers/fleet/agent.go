@@ -175,6 +175,11 @@ type HeartbeatRequest struct {
 		// no material.
 		ObservedClusterSecrets *int `json:"observed_cluster_secrets,omitempty" minimum:"0" maximum:"64"`
 
+		// ObservedClusterConfig is whether a corosync configuration is still on
+		// disk. A different question from the secret count, and they disagree on a
+		// node that is detached but not converted.
+		ObservedClusterConfig *bool `json:"observed_cluster_config,omitempty"`
+
 		AppliedMembershipRevision int    `json:"applied_membership_revision,omitempty" minimum:"0" doc:"The cluster composition this host has converged on. Omit or zero if it has converged on none."`
 		AppliedMembershipDigest   string `json:"applied_membership_digest,omitempty" maxLength:"71"`
 	}
@@ -432,7 +437,8 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 			}
 			if err := svc.RecordObservedMembership(ctx, sess, &obs,
 				in.Body.ObservedFingerprint, in.Body.ObservedHostKeys,
-				in.Body.ObservedRootKey, in.Body.ObservedClusterSecrets); err != nil {
+				in.Body.ObservedRootKey, in.Body.ObservedClusterSecrets,
+				in.Body.ObservedClusterConfig); err != nil {
 				slog.WarnContext(ctx, "could not record a bee's observed cluster membership",
 					"bee_id", sess.Bee.ID, "error", err)
 			}

@@ -6066,6 +6066,7 @@ components:
         applied_membership_revision: 0
         back: true
         observed_cluster: observed_cluster
+        observed_cluster_config: true
         observed_cluster_secrets: 9
         observed_fingerprint: observed_fingerprint
         observed_guests: 59621
@@ -6128,6 +6129,8 @@ components:
             \ look."
           maxLength: 100
           type: string
+        observed_cluster_config:
+          type: boolean
         observed_cluster_secrets:
           format: int64
           maximum: 64

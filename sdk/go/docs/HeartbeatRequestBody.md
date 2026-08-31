@@ -13,6 +13,7 @@ Name | Type | Description | Notes
 **AppliedMembershipRevision** | Pointer to **int64** | The cluster composition this host has converged on. Omit or zero if it has converged on none. | [optional] 
 **Back** | Pointer to **bool** | Withdraws a standing declaration: the host has returned. | [optional] 
 **ObservedCluster** | Pointer to **string** | The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look. | [optional] 
+**ObservedClusterConfig** | Pointer to **bool** |  | [optional] 
 **ObservedClusterSecrets** | Pointer to **int64** |  | [optional] 
 **ObservedFingerprint** | Pointer to **string** |  | [optional] 
 **ObservedGuests** | Pointer to **int64** | VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy. | [optional] 
@@ -268,6 +269,31 @@ SetObservedCluster sets ObservedCluster field to given value.
 `func (o *HeartbeatRequestBody) HasObservedCluster() bool`
 
 HasObservedCluster returns a boolean if a field has been set.
+
+### GetObservedClusterConfig
+
+`func (o *HeartbeatRequestBody) GetObservedClusterConfig() bool`
+
+GetObservedClusterConfig returns the ObservedClusterConfig field if non-nil, zero value otherwise.
+
+### GetObservedClusterConfigOk
+
+`func (o *HeartbeatRequestBody) GetObservedClusterConfigOk() (*bool, bool)`
+
+GetObservedClusterConfigOk returns a tuple with the ObservedClusterConfig field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetObservedClusterConfig
+
+`func (o *HeartbeatRequestBody) SetObservedClusterConfig(v bool)`
+
+SetObservedClusterConfig sets ObservedClusterConfig field to given value.
+
+### HasObservedClusterConfig
+
+`func (o *HeartbeatRequestBody) HasObservedClusterConfig() bool`
+
+HasObservedClusterConfig returns a boolean if a field has been set.
 
 ### GetObservedClusterSecrets
 

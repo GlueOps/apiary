@@ -329,6 +329,16 @@ type Bee struct {
 	// carrying nothing that would be worth reading.
 	ObservedClusterSecrets int `gorm:"not null;default:0" json:"observed_cluster_secrets"`
 
+	// ObservedClusterConfig is whether this host still carries a corosync
+	// configuration for a cluster.
+	//
+	// A different question from ObservedClusterSecrets, and they can disagree: a
+	// node whose secrets are gone no longer AUTHENTICATES against the fleet it
+	// left, but one still holding the configuration is not finished being
+	// detached. Judging a disarm on the secret count alone reported a host as
+	// disarmed while its own task had failed saying it was not standalone.
+	ObservedClusterConfig bool `gorm:"not null;default:false" json:"observed_cluster_config"`
+
 	// DepartingRootKey is the root key a machine held when its departure was
 	// recorded, kept so a ROTATION can be checked afterwards.
 	//
