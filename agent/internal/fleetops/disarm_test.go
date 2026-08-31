@@ -135,3 +135,45 @@ func TestDisarmDoesNotWaitForTheServiceRestart(t *testing.T) {
 			"service that may not come back on a node whose cluster was just dismantled", restart)
 	}
 }
+
+// BOTH COPIES OF THE COROSYNC CONFIG MUST GO.
+//
+// /etc/pve/corosync.conf is the cluster's, on pmxcfs; /etc/corosync/corosync.conf
+// is the local file corosync reads, and pve-cluster REMAKES it from the pmxcfs
+// copy on start. Removing only the local one therefore achieves nothing, because
+// a later step in this very sequence starts pve-cluster and puts it straight
+// back.
+//
+// That is what happened on pve5: the disarm removed the local copy, started
+// pve-cluster, and the proof refused with "still exists, so this node is not
+// standalone" — correctly, on a node left carrying the configuration of a
+// cluster it had left.
+func TestDisarmRemovesTheClusterCopyOfCorosyncConfToo(t *testing.T) {
+	dir := t.TempDir()
+	oldCoro, oldPVEConf, oldSecrets, oldPVE := CorosyncConf, PVECorosyncConf, clusterSecretFiles, PVEDir
+	CorosyncConf = filepath.Join(dir, "corosync.conf")
+	PVECorosyncConf = filepath.Join(dir, "pve-corosync.conf")
+	clusterSecretFiles = nil
+	PVEDir = dir
+	t.Cleanup(func() {
+		CorosyncConf, PVECorosyncConf, clusterSecretFiles, PVEDir = oldCoro, oldPVEConf, oldSecrets, oldPVE
+	})
+
+	r := &recordingRunner{}
+	var phases []string
+	if err := Disarm(context.Background(), Deps{Runner: r},
+		testEnv(&phases, nil, nil), `{"disposition":"accept-exposure"}`); err != nil {
+		t.Fatalf("disarm: %v", err)
+	}
+
+	var sawPVECopy bool
+	for _, c := range r.cmds {
+		if strings.Contains(strings.Join(c, " "), PVECorosyncConf) {
+			sawPVECopy = true
+		}
+	}
+	if !sawPVECopy {
+		t.Fatalf("the cluster's own copy at %s was never removed, so pve-cluster would remake "+
+			"the local one on start: %v", PVECorosyncConf, r.cmds)
+	}
+}
