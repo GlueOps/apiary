@@ -95,3 +95,43 @@ func TestDisarmRunsTheConversionAndProvesIt(t *testing.T) {
 		t.Fatalf("rotate was chosen but no keypair was regenerated: %v", r.cmds)
 	}
 }
+
+// THE SERVICE RESTART IS QUEUED, NOT WAITED ON.
+//
+// `systemctl restart pveproxy pvedaemon` hung for minutes on pve5 with the
+// disarm waiting on it: the task never terminated, was re-delivered on every
+// heartbeat past attempt 1200, and held the bee's only task slot — which also
+// stopped that host being upgraded.
+//
+// Nothing needs the restart to have finished. The hive's secrets are destroyed
+// before it, and the proof reads files rather than the API.
+func TestDisarmDoesNotWaitForTheServiceRestart(t *testing.T) {
+	dir := t.TempDir()
+	oldCoro, oldSecrets, oldPVE := CorosyncConf, clusterSecretFiles, PVEDir
+	CorosyncConf = filepath.Join(dir, "corosync.conf")
+	clusterSecretFiles = nil
+	PVEDir = dir
+	t.Cleanup(func() { CorosyncConf, clusterSecretFiles, PVEDir = oldCoro, oldSecrets, oldPVE })
+
+	r := &recordingRunner{}
+	var phases []string
+	if err := Disarm(context.Background(), Deps{Runner: r},
+		testEnv(&phases, nil, nil), `{"disposition":"accept-exposure"}`); err != nil {
+		t.Fatalf("disarm: %v", err)
+	}
+
+	var restart string
+	for _, c := range r.cmds {
+		joined := strings.Join(c, " ")
+		if strings.Contains(joined, "pveproxy") {
+			restart = joined
+		}
+	}
+	if restart == "" {
+		t.Fatalf("the service restart never ran: %v", r.cmds)
+	}
+	if !strings.Contains(restart, "--no-block") {
+		t.Fatalf("restart = %q, want --no-block — waiting on it donates the disarm's fate to a "+
+			"service that may not come back on a node whose cluster was just dismantled", restart)
+	}
+}

@@ -145,8 +145,19 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		// pveproxy and pvedaemon hold the OLD CA in memory. Without this the API
 		// refuses its own certificate — observed as "certificate signed by unknown
 		// authority" while the files on disk verified against each other perfectly.
-		"systemctl restart pveproxy pvedaemon 2>&1 || true",
-		"sleep 3",
+		//
+		// --no-block, because this HUNG. Caught in the act on pve5: `systemctl
+		// restart pveproxy pvedaemon` sat for minutes with the disarm waiting on
+		// it, so the task never terminated, was re-delivered on every heartbeat
+		// past attempt 1200, and held the bee's only task slot — which also
+		// stopped that host being upgraded.
+		//
+		// Nothing here needs the restart to have finished. The hive's secrets are
+		// already destroyed by this point and the proof below reads files, not the
+		// API. Queuing it is the whole requirement; waiting on it only donated the
+		// disarm's fate to a service that may not come back promptly on a node
+		// whose cluster membership was just dismantled underneath it.
+		"systemctl restart --no-block pveproxy pvedaemon 2>&1 || true",
 	)
 
 	// EVERY STEP IS BOUNDED. `|| true` on some of these catches a bad exit code
