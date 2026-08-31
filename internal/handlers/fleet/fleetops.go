@@ -941,13 +941,24 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		if err := repo.MarkDeparting(ctx, db, id, in.Body.CredentialDisposition); err != nil {
 			return nil, mapErr(ctx, err)
 		}
-		if err := deps.Jobs.EnqueueDepartHypervisor(ctx, &workflow.DepartHypervisorArgs{
-			OrganizationID:        p.OrganizationID.String(),
-			HypervisorID:          id.String(),
-			CredentialDisposition: in.Body.CredentialDisposition,
-		}); err != nil {
-			return nil, mapErr(ctx, err)
-		}
+		// NOTHING IS DISPATCHED. The whole departure is convergent now.
+		//
+		// MarkDeparting above publishes the node into the composition's Departing
+		// list; a remaining member evicts it and restores its own quorum; the
+		// finalisation that follows queues the disarm as an agent task carrying
+		// the disposition. Every step runs on the host that can perform it.
+		//
+		// The SSH job was the last thing racing that, and it raced it in three
+		// separate ways before this: it ran delnode itself, it cleared membership
+		// on success, and — last — it converted the departing node to standalone
+		// immediately. That last one is the subtlest and the most damaging: it
+		// stops the departing node's corosync BEFORE a peer has removed it, which
+		// drops the survivor below quorum, and a non-quorate peer refuses to
+		// evict. lab-b was left with pve3 alone and unable to remove a pve4 that
+		// had already made itself standalone.
+		//
+		// The job still exists for a host whose agent is dead, which is the one
+		// case convergence cannot cover. It is no longer reached by departing.
 
 		// The credential disposition is recorded because it is a decision with a
 		// security consequence: accepting exposure leaves the departed host
@@ -1614,10 +1625,14 @@ func departureRefusals(
 			Count(&held).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&tenant.Hypervisor{}).
-			Where("hive_id = ?", *hv.HiveID).Count(&nodes).Error; err != nil {
+		// OBSERVED members, not rows. A machine assigned to a hive and not yet
+		// joined is not a node of that cluster, and counting it let a departure
+		// take lab-b from two real members to one.
+		observed, err := repo.ObservedHiveNodeCount(ctx, tx, *hv.HiveID, hive.Name)
+		if err != nil {
 			return err
 		}
+		nodes = int64(observed)
 		drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), th)
 		result = tenant.CheckDepartureState(tenant.DepartureRequest{
 			Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: int(nodes),

@@ -495,3 +495,37 @@ func queueDisarm(ctx context.Context, db *gorm.DB, h tenant.Hypervisor, members 
 
 // KindDisarm matches the agent's fleetops.KindDisarm.
 const KindDisarm = "fleet.datacenter.disarm"
+
+// ObservedHiveNodeCount is how many of a hive's machines are actually IN its
+// cluster, as their own agents report.
+//
+// NOT A ROW COUNT. Under convergence a machine is given a hive_id as an
+// INTENTION and joins on its own afterwards, so the rows include hosts that are
+// not members yet — and the departure gate, which exists to stop a cluster being
+// taken below its minimum, was counting them.
+//
+// lab-b showed 3 nodes and had 2: pve5 had been assigned back and never joined.
+// A departure was allowed on that basis and took the cluster from two real
+// members to one, leaving the survivor below quorum and unable to evict the node
+// that had just left. The gate protecting the minimum was reading a number that
+// did not describe the cluster.
+//
+// Counts the DEPARTING machine too, which is the documented meaning of the
+// value: how many nodes the hive has right now, including the one about to
+// leave.
+//
+// A host whose agent has not reported recently is NOT counted. That direction is
+// deliberate: an uncounted node makes the gate refuse more readily, and refusing
+// a departure costs a retry while allowing one below the minimum costs quorum.
+func ObservedHiveNodeCount(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (int, error) {
+	var n int64
+	err := db.WithContext(ctx).Raw(`
+		SELECT count(*)
+		  FROM hypervisors h
+		  JOIN bees b ON b.id = h.bee_id
+		 WHERE h.hive_id = ?
+		   AND lower(b.observed_cluster) = lower(?)
+		   AND b.observed_membership_at > now() - interval '5 minutes'`,
+		hiveID, hiveName).Scan(&n).Error
+	return int(n), err
+}
