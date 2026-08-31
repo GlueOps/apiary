@@ -318,6 +318,16 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 	if rk, err := fleetops.LocalRootKey(); err == nil {
 		body.SetObservedRootKey(rk)
 	}
+	// How many of the HIVE's secrets this host still holds.
+	//
+	// Reported so a disarm can be VERIFIED rather than trusted: the task's exit
+	// status is this agent's own account of its work, and the whole purpose of
+	// the step is that these files stop existing. A count carries no material.
+	//
+	// Sent every heartbeat, not only after a disarm, because a node holding them
+	// and no longer in the cluster is a standing exposure however it got there —
+	// including a disarm that never ran because the host had no agent.
+	body.SetObservedClusterSecrets(int64(fleetops.HeldClusterSecrets()))
 	if rev, digest := b.membership.get(); rev > 0 && digest != "" {
 		body.SetAppliedMembershipRevision(int64(rev))
 		body.SetAppliedMembershipDigest(digest)

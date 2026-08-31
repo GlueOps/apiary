@@ -197,3 +197,56 @@ func TestAMachineWithNoNodeNameStillRecognisesItself(t *testing.T) {
 		}
 	}
 }
+
+// A DISARM IS JUDGED FROM REPORTED STATE, not from the task's exit status.
+//
+// A task reporting success is the agent's own account of its own work, and the
+// whole purpose of a disarm is that certain files stop existing — a claim about
+// state is exactly the kind of thing that should be checked against the state.
+func TestVerifyDisarm(t *testing.T) {
+	rotated := func(v DisarmVerdict) string {
+		if v.Rotated == nil {
+			return "n/a"
+		}
+		if *v.Rotated {
+			return "yes"
+		}
+		return "no"
+	}
+
+	// Silence is not evidence.
+	if v := VerifyDisarm(false, 0, "rotate", "", ""); v.Disarmed {
+		t.Fatal("a host that has never reported was judged disarmed")
+	}
+
+	// Still holding the hive's secrets: not disarmed, whatever the task said.
+	v := VerifyDisarm(true, 3, "accept-exposure", "", "")
+	if v.Disarmed {
+		t.Fatal("a host still holding the cluster's secrets was judged disarmed")
+	}
+	if !strings.Contains(v.Detail, "authenticates") {
+		t.Fatalf("detail = %q, want it to say what the exposure actually is", v.Detail)
+	}
+
+	// Secrets gone, no rotation asked for.
+	v = VerifyDisarm(true, 0, "accept-exposure", "ssh-ed25519 SAME", "ssh-ed25519 SAME")
+	if !v.Disarmed || v.Rotated != nil {
+		t.Fatalf("disarmed=%v rotated=%s, want disarmed with rotation not applicable",
+			v.Disarmed, rotated(v))
+	}
+
+	// Rotation asked for and the key changed.
+	v = VerifyDisarm(true, 0, "rotate", "ssh-ed25519 NEW", "ssh-ed25519 OLD")
+	if !v.Disarmed || v.Rotated == nil || !*v.Rotated {
+		t.Fatalf("disarmed=%v rotated=%s, want both", v.Disarmed, rotated(v))
+	}
+
+	// Rotation asked for and the key did NOT change — the case worth catching.
+	v = VerifyDisarm(true, 0, "rotate", "ssh-ed25519 SAME", "ssh-ed25519 SAME")
+	if v.Rotated == nil || *v.Rotated {
+		t.Fatalf("rotated=%s, want no — the host kept the key it left with", rotated(v))
+	}
+	if !strings.Contains(v.Detail, "did not happen") {
+		t.Fatalf("detail = %q, want it to say the rotation did not happen", v.Detail)
+	}
+}

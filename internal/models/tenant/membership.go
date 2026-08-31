@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"sort"
@@ -471,3 +472,64 @@ type MembershipSnapshot struct {
 }
 
 func (MembershipSnapshot) TableName() string { return "membership_snapshots" }
+
+// DisarmVerdict is what reported state says about a departed machine's
+// disarming, independently of what its task claimed.
+type DisarmVerdict struct {
+	// Disarmed is true only when the hive's secrets are demonstrably gone.
+	Disarmed bool
+
+	// Rotated is meaningful only when rotate was chosen. Nil means the question
+	// does not apply.
+	Rotated *bool
+
+	// Detail says what is still wrong, for an operator who has to act on it.
+	Detail string
+}
+
+// VerifyDisarm judges a departed machine from what its host reports.
+//
+// NOT FROM THE TASK. A task reporting success is the agent's own account of its
+// own work, and the whole purpose of a disarm is that certain files stop
+// existing — a claim about state is exactly the kind of thing that should be
+// checked against the state. This is the same discipline that turned "pvecm
+// exited 0" into a verified membership read.
+//
+// heldSecrets is what the host last reported. observedRootKey and departingKey
+// are its current and pre-departure root keys.
+//
+// A machine that has never reported is NOT judged disarmed. Silence is not
+// evidence, and the cost of the other reading is a host quietly holding a
+// cluster's credentials while a dashboard says otherwise.
+func VerifyDisarm(
+	reported bool, heldSecrets int, disposition, observedRootKey, departingKey string,
+) DisarmVerdict {
+	if !reported {
+		return DisarmVerdict{Detail: "this host has not reported since it was departed, so " +
+			"whether it still holds the cluster's secrets is unknown"}
+	}
+	if heldSecrets > 0 {
+		return DisarmVerdict{Detail: fmt.Sprintf(
+			"this host still holds %d of the cluster's secret files, so it still authenticates "+
+				"against the fleet it left", heldSecrets)}
+	}
+
+	v := DisarmVerdict{Disarmed: true}
+	if !strings.EqualFold(disposition, "rotate") {
+		return v
+	}
+	// Rotation is the one disposition with an observable consequence. Judged only
+	// where there is a before value: without one there is nothing to compare
+	// against, and reporting "rotated" on that basis would be the trust this
+	// function exists to remove.
+	if departingKey == "" || observedRootKey == "" {
+		return v
+	}
+	rotated := observedRootKey != departingKey
+	v.Rotated = &rotated
+	if !rotated {
+		v.Detail = "the cluster's secrets are gone, but this host's root key is unchanged from " +
+			"the one it left with, so the rotation it was asked for did not happen"
+	}
+	return v
+}

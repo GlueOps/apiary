@@ -168,6 +168,13 @@ type HeartbeatRequest struct {
 		// captured.
 		ObservedRootKey string `json:"observed_root_key,omitempty" maxLength:"1024" doc:"Public material only."`
 
+		// ObservedClusterSecrets is how many of its hive's secret files this host
+		// still holds. It is how a disarm is VERIFIED rather than trusted: a task
+		// reporting success is the agent's account of its own work, and this is
+		// the state that account was about, arriving separately. A count carries
+		// no material.
+		ObservedClusterSecrets *int `json:"observed_cluster_secrets,omitempty" minimum:"0" maximum:"64"`
+
 		AppliedMembershipRevision int    `json:"applied_membership_revision,omitempty" minimum:"0" doc:"The cluster composition this host has converged on. Omit or zero if it has converged on none."`
 		AppliedMembershipDigest   string `json:"applied_membership_digest,omitempty" maxLength:"71"`
 	}
@@ -425,7 +432,7 @@ func RegisterBeeProtected(hapi huma.API, deps *app.Deps) error {
 			}
 			if err := svc.RecordObservedMembership(ctx, sess, &obs,
 				in.Body.ObservedFingerprint, in.Body.ObservedHostKeys,
-				in.Body.ObservedRootKey); err != nil {
+				in.Body.ObservedRootKey, in.Body.ObservedClusterSecrets); err != nil {
 				slog.WarnContext(ctx, "could not record a bee's observed cluster membership",
 					"bee_id", sess.Bee.ID, "error", err)
 			}

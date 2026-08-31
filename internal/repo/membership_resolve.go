@@ -151,7 +151,7 @@ func DesiredMembershipForBee(ctx context.Context, db *gorm.DB, beeID uuid.UUID) 
 // RecordObservedMembership stores a host's own report of the cluster it sees.
 func RecordObservedMembership(
 	ctx context.Context, db *gorm.DB, beeID uuid.UUID, obs tenant.Observed,
-	fingerprint string, hostKeys []string, rootKey string,
+	fingerprint string, hostKeys []string, rootKey string, secrets *int,
 ) error {
 	// Named columns, never a struct: an Updates over a Bee struct would write
 	// every zero-valued field on the model and blank the agent version, the
@@ -177,6 +177,13 @@ func RecordObservedMembership(
 	// blank the value a cluster needs in order to admit it.
 	if rootKey != "" {
 		fields["observed_root_key"] = rootKey
+	}
+	// Pointer, so "did not say" stays distinct from "said none". An older agent
+	// omits the field, and reading that as zero would report a host as disarmed
+	// on the strength of an observation nobody made — which is exactly the claim
+	// this exists to stop taking on trust.
+	if secrets != nil {
+		fields["observed_cluster_secrets"] = *secrets
 	}
 	return db.WithContext(ctx).Model(&tenant.Bee{}).Where("id = ?", beeID).
 		Updates(fields).Error

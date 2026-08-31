@@ -314,7 +314,29 @@ type Bee struct {
 	// key lab-a had never seen while lab-a still trusted the one it had thrown
 	// away, and no join could succeed until the cluster was told about the new
 	// one.
-	ObservedRootKey      string     `gorm:"type:varchar(1024);not null;default:''" json:"observed_root_key,omitempty"`
+	ObservedRootKey string `gorm:"type:varchar(1024);not null;default:''" json:"observed_root_key,omitempty"`
+
+	// ObservedClusterSecrets is how many of its hive's secret files this host
+	// still holds.
+	//
+	// This is how a disarm is VERIFIED rather than trusted. A task reporting
+	// success is the agent's own account of its work; this is the state that
+	// account was about, arriving separately and continuously. A departed machine
+	// with a non-zero count still authenticates against the cluster it left —
+	// which is the exposure the whole departure sequence exists to close.
+	//
+	// A count, never contents or digests: enough to answer the question, and
+	// carrying nothing that would be worth reading.
+	ObservedClusterSecrets int `gorm:"not null;default:0" json:"observed_cluster_secrets"`
+
+	// DepartingRootKey is the root key a machine held when its departure was
+	// recorded, kept so a ROTATION can be checked afterwards.
+	//
+	// Rotation is the one disposition with an observable consequence, and without
+	// a before value there is nothing to compare the after against — the control
+	// plane would be taking the agent's word that it replaced a key nobody else
+	// ever saw.
+	DepartingRootKey     string     `gorm:"type:varchar(1024);not null;default:''" json:"-"`
 	ObservedMembershipAt *time.Time `gorm:"type:timestamptz" json:"observed_membership_at,omitempty"`
 
 	// AppliedMembershipRevision is the composition this agent has converged on.
