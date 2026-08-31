@@ -5950,8 +5950,9 @@ components:
         applied_membership_revision: 0
         back: true
         observed_cluster: observed_cluster
+        observed_cluster_secrets: 9
         observed_fingerprint: observed_fingerprint
-        observed_guests: 14658
+        observed_guests: 59621
         observed_host_keys:
         - observed_host_keys
         - observed_host_keys
@@ -5967,9 +5968,9 @@ components:
         observed_node: observed_node
         observed_quorate: true
         observed_root_key: observed_root_key
-        unavailable_for_seconds: 51512
+        unavailable_for_seconds: 48706
         unavailable_reason: unavailable_reason
-        wait_seconds: 14
+        wait_seconds: 5
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -6011,6 +6012,11 @@ components:
             \ look."
           maxLength: 100
           type: string
+        observed_cluster_secrets:
+          format: int64
+          maximum: 64
+          minimum: 0
+          type: integer
         observed_fingerprint:
           maxLength: 200
           type: string

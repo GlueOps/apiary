@@ -104,6 +104,14 @@ func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 		fleetops.KindEvict: func(ctx context.Context, t store.Task, e *bee.Env) error {
 			return fleetops.Evict(ctx, d, adapt(e), t.Spec)
 		},
+		// Disarming a departed node is a TASK rather than a convergence, because
+		// the disposition — accept the exposure, or rotate this node's own
+		// identity — is an operator's decision that no observation implies. The
+		// WORK is still local: writing files and restarting services on this host
+		// never needed the control plane to dial in.
+		fleetops.KindDisarm: func(ctx context.Context, t store.Task, e *bee.Env) error {
+			return fleetops.Disarm(ctx, d, adapt(e), t.Spec)
+		},
 		// Not routed through fleetops: it touches no hypervisor and needs the
 		// agent's own configuration and credential, which fleetops.Deps has no
 		// business carrying.

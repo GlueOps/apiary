@@ -938,7 +938,7 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		// member learns in one step both that it should no longer be there and
 		// that removing it is authorised. The row is cleared once a quorate peer
 		// observes it actually gone.
-		if err := repo.MarkDeparting(ctx, db, id); err != nil {
+		if err := repo.MarkDeparting(ctx, db, id, in.Body.CredentialDisposition); err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		if err := deps.Jobs.EnqueueDepartHypervisor(ctx, &workflow.DepartHypervisorArgs{

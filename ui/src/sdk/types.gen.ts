@@ -872,6 +872,7 @@ export type HeartbeatRequestBody = {
      * The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
      */
     observed_cluster?: string;
+    observed_cluster_secrets?: number;
     observed_fingerprint?: string;
     /**
      * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.
@@ -2724,6 +2725,7 @@ export type HeartbeatRequestBodyWritable = {
      * The corosync cluster this host is in. EMPTY STRING means standalone, which is an observation; omitting the field means this agent did not look.
      */
     observed_cluster?: string;
+    observed_cluster_secrets?: number;
     observed_fingerprint?: string;
     /**
      * VMs and containers registered to this host, stopped ones included. Counted from /etc/pve rather than the Proxmox API, so it survives a broken pveproxy.

@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -330,7 +331,7 @@ func isUniqueViolation(err error) bool {
 // The machine leaves the member list and enters Departing in the same
 // publication, so every remaining member learns in one step both that it should
 // no longer be there and that removing it is authorised.
-func MarkDeparting(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) error {
+func MarkDeparting(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID, disposition string) error {
 	var row struct{ HiveID *uuid.UUID }
 	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Select("hive_id").Where("id = ?", hypervisorID).Scan(&row).Error; err != nil {
@@ -340,12 +341,31 @@ func MarkDeparting(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) err
 		Where("id = ?", hypervisorID).
 		Updates(map[string]any{
 			"departing_at": time.Now().UTC(),
+			// Recorded now, acted on AFTER the cluster drops the node: disarming a
+			// machine that is still a member destroys secrets it is still using.
+			"credential_disposition": disposition,
+
 			// Unschedulable immediately: a node on its way out must not be given
 			// new work while it waits for a peer to remove it.
 			"schedulable": false,
 		}).Error; err != nil {
 		return fmt.Errorf("mark %s departing: %w", hypervisorID, err)
 	}
+	// SNAPSHOT THE ROOT KEY THIS MACHINE HOLDS RIGHT NOW, so a rotation can be
+	// checked afterwards. Without a before value there is nothing to compare the
+	// after against, and the control plane would be taking the agent's word that
+	// it replaced a key nobody else ever saw.
+	//
+	// Stored on the bee, which is where the observed key lives. Best effort: a
+	// departure must not fail because a verification aid could not be recorded,
+	// and its absence makes the rotation unjudged rather than judged wrong.
+	if err := db.WithContext(ctx).Exec(`
+		UPDATE bees SET departing_root_key = observed_root_key
+		 WHERE id = (SELECT bee_id FROM hypervisors WHERE id = ?)`, hypervisorID).Error; err != nil {
+		slog.WarnContext(ctx, "could not snapshot a departing host's root key, so a rotation "+
+			"cannot be verified afterwards", "hypervisor_id", hypervisorID, "error", err)
+	}
+
 	publishMembership(ctx, db, row.HiveID)
 	return nil
 }
@@ -400,10 +420,17 @@ func FinaliseDepartures(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (int
 		if h.Name != nil && present[strings.ToLower(*h.Name)] {
 			continue // still in the cluster; the eviction has not happened yet
 		}
+		// THE DISARM IS QUEUED BEFORE THE ROW IS CLEARED, and deliberately so.
+		// The task names the peers whose configuration this host is still
+		// carrying, and once hive_id is gone there is nothing left to derive them
+		// from.
+		queueDisarm(ctx, db, h, witness.Members.Data())
+
 		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 			Where("id = ?", h.ID).
 			Updates(map[string]any{
 				"hive_id": nil, "swarm_id": nil, "name": nil, "departing_at": nil,
+				"credential_disposition": "",
 			}).Error; err != nil {
 			return done, fmt.Errorf("finalise the departure of %s: %w", h.ID, err)
 		}
@@ -414,3 +441,57 @@ func FinaliseDepartures(ctx context.Context, db *gorm.DB, hiveID uuid.UUID) (int
 	}
 	return done, nil
 }
+
+// queueDisarm asks a departed host to destroy the hive secrets it is carrying.
+//
+// A TASK rather than a convergence, because the disposition is an operator's
+// decision that no observation implies — accept the exposure, or rotate this
+// node's own identity. The WORK is local: writing files and restarting services
+// on a host never needed the control plane to dial in, and running it over SSH
+// made the control plane's own reachability a precondition of closing a
+// credential exposure.
+//
+// Queued only once the cluster has actually dropped the node. Disarming a
+// machine that is still a member destroys secrets it is still using.
+//
+// NEVER FAILS THE FINALISATION. The record is correct either way, and a
+// departure that has happened must not be reported as unfinished because a
+// follow-up could not be queued — that invites a retry of work already done. A
+// host that never gets the task keeps the hive's secrets, which is what the
+// error says.
+func queueDisarm(ctx context.Context, db *gorm.DB, h tenant.Hypervisor, members []string) {
+	if h.BeeID == nil {
+		slog.WarnContext(ctx, "a departed host has no agent, so its copy of the hive's secrets "+
+			"cannot be destroyed; it still authenticates against the cluster it left",
+			"hypervisor_id", h.ID)
+		return
+	}
+	peers := make([]string, 0, len(members))
+	for _, n := range members {
+		if n = strings.TrimSpace(n); n != "" {
+			peers = append(peers, n)
+		}
+	}
+	spec, err := json.Marshal(map[string]any{
+		"disposition": h.CredentialDisposition,
+		"peers":       peers,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "could not build a disarm task", "hypervisor_id", h.ID, "error", err)
+		return
+	}
+	task := tenant.FleetTask{
+		BeeID:  *h.BeeID,
+		Kind:   KindDisarm,
+		Spec:   datatypes.JSON(spec),
+		Status: tenant.FleetTaskPending,
+	}
+	if err := NewFleetRepoGorm(db).CreateTask(ctx, &task); err != nil {
+		slog.WarnContext(ctx, "could not queue the disarm for a departed host; it still holds "+
+			"the hive's secrets until one runs",
+			"hypervisor_id", h.ID, "error", err)
+	}
+}
+
+// KindDisarm matches the agent's fleetops.KindDisarm.
+const KindDisarm = "fleet.datacenter.disarm"
