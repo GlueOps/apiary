@@ -25,6 +25,15 @@ type Cluster interface {
 	MemberCount() int
 	NodeNames() []string
 
+	// OnlineNodeNames is the members that are actually VOTING.
+	//
+	// Distinct from NodeNames, which lists what corosync is CONFIGURED with —
+	// including a node that is down. Quorum is about votes present, so a check
+	// that reads the configured list to decide whether a departing node still
+	// votes gets the opposite answer: its entry stays in the config until it is
+	// removed, which is the very thing being decided.
+	OnlineNodeNames() []string
+
 	// ClusterName is the cluster this host is in, EMPTY when it is standalone.
 	//
 	// Empty is an observation rather than a missing one: a standalone node's

@@ -471,8 +471,24 @@ func Evict(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		return fmt.Errorf("read cluster status: %w", err)
 	}
 	if !d.Cluster.Quorate() {
-		r.blocked("the cluster is not quorate; removing a node now cannot be agreed on and may " +
-			"not converge")
+		// QUORUM IS RESTORED BEFORE THE REMOVAL, NOT ONLY AFTER, and the ordering
+		// is load-bearing.
+		//
+		// `pvecm delnode` rewrites corosync.conf, which needs a writable /etc/pve
+		// — and a non-quorate node has neither. So a cluster that has ALREADY lost
+		// quorum cannot be repaired by removing the node that cost it: the removal
+		// is the thing that is blocked. `pvecm expected` lowers the runtime
+		// expectation without writing anything, which is the only way back in.
+		//
+		// Only when every absent member is one the control plane has recorded as
+		// DEPARTING. That is the whole safety argument: lowering the expectation
+		// while a node that should still be there is merely unreachable would let
+		// this side of a partition declare itself quorate and act. A departing
+		// node is not coming back, so its vote is not one to keep waiting for.
+		if err := restoreQuorumBeforeRemoval(ctx, d, e, spec.Node); err != nil {
+			r.blocked("the cluster is not quorate and quorum could not be restored first, so "+
+				"removing a node cannot be agreed on: %v", err)
+		}
 	}
 	members := d.Cluster.MemberCount()
 	if !quorumSurvivesLosing(members, 1) {
@@ -632,5 +648,50 @@ func restoreQuorumAfterRemoval(ctx context.Context, d Deps, e *Env, expect int) 
 			"so /etc/pve stays read-only and the cluster cannot be managed", expect)
 	}
 	e.Logf("agent", "quorum restored")
+	return nil
+}
+
+// restoreQuorumBeforeRemoval makes /etc/pve writable again so a removal can
+// proceed.
+//
+// The node being removed is passed in because it is the one absence this is
+// allowed to discount. Any OTHER missing member means the cluster is degraded
+// for a reason a departure does not explain, and lowering the expectation there
+// would let a minority act.
+func restoreQuorumBeforeRemoval(ctx context.Context, d Deps, e *Env, departing string) error {
+	// ONLINE members, not configured ones. A departing node's entry stays in
+	// corosync.conf until it is removed — which is the very thing being decided —
+	// so reading the configured list here answers the opposite question.
+	present := d.Cluster.OnlineNodeNames()
+	for _, n := range present {
+		if strings.EqualFold(n, departing) {
+			// It is still voting, so the cluster is non-quorate for some other
+			// reason and this is not ours to override.
+			return fmt.Errorf("%q is still a voting member, so the lost quorum is not explained "+
+				"by its departure", departing)
+		}
+	}
+	// CLUSTER CONFIG MINUS ONE, not the number of nodes currently online.
+	//
+	// The two agree when the departing node is the only absence, and diverge
+	// exactly where it matters: with three configured, one departing and one
+	// merely down, the online count is 1 and would let a single node declare
+	// itself quorate. Config minus one is 2, which correctly still demands a
+	// majority of what remains.
+	votes := d.Cluster.MemberCount() - 1
+	if votes < 1 {
+		return fmt.Errorf("removing %q would leave no configured nodes", departing)
+	}
+	e.Logf("agent", "the cluster is not quorate and %s has stopped voting; lowering expected "+
+		"votes to %d — the cluster's configured node count less the one leaving — so the "+
+		"removal can be written", departing, votes)
+	if err := d.Cluster.Expected(ctx, votes); err != nil {
+		return fmt.Errorf("lower expected votes to %d: %w", votes, err)
+	}
+	if err := d.Cluster.Status(ctx); err != nil || !d.Cluster.Quorate() {
+		return fmt.Errorf("expected votes were lowered to %d and this node is still not quorate",
+			votes)
+	}
+	e.Logf("agent", "quorum restored; the removal can proceed")
 	return nil
 }

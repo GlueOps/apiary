@@ -22,6 +22,7 @@ type fakeCluster struct {
 	joinErr      error
 	name         string
 	self         string
+	online       []string
 	created      *proxmoxCreateOptions
 	createErr    error
 	joinAttempts int
@@ -70,6 +71,13 @@ func (f *fakeCluster) Status(context.Context) error {
 func (f *fakeCluster) Quorate() bool       { return f.quorate }
 func (f *fakeCluster) MemberCount() int    { return f.members }
 func (f *fakeCluster) NodeNames() []string { return f.names }
+
+func (f *fakeCluster) OnlineNodeNames() []string {
+	if f.online != nil {
+		return f.online
+	}
+	return f.names
+}
 func (f *fakeCluster) GuestsOn(_ context.Context, node string) ([]Guest, error) {
 	return f.guests[node], f.guestsErr
 }
@@ -669,6 +677,93 @@ func TestEvictLeavesQuorumAloneWhenItSurvives(t *testing.T) {
 	}
 	if cl.expected != 0 {
 		t.Fatalf("expected votes were lowered to %d on a cluster that stayed quorate",
+			cl.expected)
+	}
+}
+
+// QUORUM IS RESTORED BEFORE THE REMOVAL, not only after.
+//
+// `pvecm delnode` rewrites corosync.conf, which needs a writable /etc/pve — and
+// a non-quorate node has neither. So a cluster that has ALREADY lost quorum
+// cannot be repaired by removing the node that cost it: the removal is the thing
+// that is blocked, and the eviction refused in a loop.
+//
+// This ordering existed in the departure job and was lost when the removal moved
+// to the agent; restoring quorum only afterwards is no use to a delnode that
+// cannot run.
+func TestEvictRestoresQuorumBeforeRemovingWhenAlreadyDegraded(t *testing.T) {
+	// One member left, already below quorum, and the departing node has stopped
+	// voting — exactly the state a half-finished departure leaves behind.
+	cl := &fakeCluster{
+		// Configured with both, but only pve is voting — which is exactly what a
+		// half-finished departure leaves behind.
+		name: "lab-a", members: 2, names: []string{"pve", "pve2"},
+		online:  []string{"pve"},
+		quorate: false, guests: map[string][]Guest{},
+	}
+	var phases []string
+	if err := Evict(context.Background(),
+		Deps{Cluster: cl, Node: "pve"},
+		testEnv(&phases, nil, nil), `{"node":"pve2"}`); err != nil {
+		t.Fatalf("evict: %v", err)
+	}
+	if cl.expected != 1 {
+		t.Fatalf("expected votes set to %d, want 1 before the removal — delnode cannot write "+
+			"corosync.conf on a read-only /etc/pve", cl.expected)
+	}
+	if len(cl.deleted) != 1 || cl.deleted[0] != "pve2" {
+		t.Fatalf("deleted = %v, want [pve2]", cl.deleted)
+	}
+}
+
+// It must NOT lower the expectation while a node that should still be there is
+// merely unreachable — that would let this side of a partition declare itself
+// quorate and act.
+func TestEvictWillNotForceQuorumWhileTheTargetStillVotes(t *testing.T) {
+	cl := &fakeCluster{
+		name: "lab-a", members: 2, names: []string{"pve", "pve2"},
+		online:  []string{"pve", "pve2"},
+		quorate: false, guests: map[string][]Guest{},
+	}
+	var phases []string
+	err := Evict(context.Background(),
+		Deps{Cluster: cl, Node: "pve"},
+		testEnv(&phases, nil, nil), `{"node":"pve2"}`)
+	if err == nil {
+		t.Fatal("quorum was forced while the node being removed was still voting")
+	}
+	if cl.expected != 0 {
+		t.Fatalf("expected votes were lowered to %d on a cluster whose lost quorum is not "+
+			"explained by the departure", cl.expected)
+	}
+	if len(cl.deleted) != 0 {
+		t.Fatalf("a refused eviction removed %v", cl.deleted)
+	}
+}
+
+// THE VALUE IS CLUSTER CONFIG MINUS ONE, not the number of nodes online.
+//
+// The two agree when the departing node is the only absence. They diverge
+// exactly where it matters: three configured, one departing and one merely down
+// gives an online count of 1, which would let a single node declare itself
+// quorate. Config minus one is 2, which still demands a majority of what
+// remains.
+func TestQuorumIsLoweredToConfiguredNodesLessTheOneLeaving(t *testing.T) {
+	cl := &fakeCluster{
+		name: "lab-b", members: 3, names: []string{"pve3", "pve4", "pve5"},
+		// pve5 is departing and pve4 happens to be down.
+		online:  []string{"pve3"},
+		quorate: false, guests: map[string][]Guest{},
+	}
+	var phases []string
+	if err := Evict(context.Background(),
+		Deps{Cluster: cl, Node: "pve3"},
+		testEnv(&phases, nil, nil), `{"node":"pve5"}`); err != nil {
+		t.Fatalf("evict: %v", err)
+	}
+	if cl.expected != 2 {
+		t.Fatalf("expected votes set to %d, want 2 — three configured less the one leaving. "+
+			"Using the online count would have set 1 and let a single node call itself quorate",
 			cl.expected)
 	}
 }
