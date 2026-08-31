@@ -598,3 +598,55 @@ func TestObservedNodeCountIgnoresAssignedButUnjoinedMachines(t *testing.T) {
 		t.Fatalf("precondition: %d rows, want 4", rows)
 	}
 }
+
+// AN OBSERVATION THAT MATCHES NO MACHINE MUST NOT REPORT SUCCESS.
+//
+// The predicate is the agent's identity; the row is the machine; onboarding
+// links them. A machine whose bee_id was never set — or points at a bee that has
+// since been re-enrolled, which is what a rebuilt host produces — matches zero
+// rows, and GORM calls that a successful statement. So the agent reports every
+// twenty-five seconds, every write "succeeds", last_synced_at never advances,
+// and the departure gate refuses with drain_unknown citing an observation age
+// that only ever grows. Observed as a fleet reporting a two-hour-old sync while
+// every one of its agents was heartbeating normally.
+func TestAnObservationThatClaimsNoMachineIsNotSilentlyLost(t *testing.T) {
+	db := factsDB(t)
+
+	// A bee no machine has ever been linked to.
+	orphan := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&orphan).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// A properly linked machine, so the assertion below is about THIS write
+	// landing nowhere rather than about the function never writing at all.
+	other := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	control := tenant.Hypervisor{BeeID: &other.ID, Address: "192.0.2.31"}
+	if err := db.Create(&control).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Still not an error: failing the heartbeat here would take out convergence,
+	// membership and liveness for a host whose only fault is a missing link.
+	if err := RecordObservedGuestsIfFleetless(context.Background(), db, orphan.ID, 4, false); err != nil {
+		t.Fatalf("an unclaimed observation failed the heartbeat: %v", err)
+	}
+
+	// And it must not have written itself onto somebody else's row. Checked
+	// against a named control rather than a count over the table: the suite shares
+	// one database, so every other test's machines are in it too.
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", control.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncedAt != nil {
+		t.Fatal("an observation from an unrelated agent stamped this machine's drain freshness, " +
+			"which would let a departure act on another host's emptiness")
+	}
+	if got.ObservedGuests != 0 {
+		t.Fatalf("observed_guests = %d, want 0 — this machine reported nothing", got.ObservedGuests)
+	}
+}
