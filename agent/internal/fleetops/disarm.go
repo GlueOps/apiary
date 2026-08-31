@@ -7,8 +7,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
+
+// disarmStepTimeout bounds each command of the standalone conversion.
+//
+// Generous per step — stopping and starting pve-cluster and restarting pveproxy
+// are seconds, not minutes — but finite, which is the point. A var so a test can
+// shorten it.
+var disarmStepTimeout = 2 * time.Minute
+
+// PVEDir is the pmxcfs mount the writability probe writes into. A var so a test
+// can point it at a temporary tree, as the other paths already allow.
+var PVEDir = "/etc/pve"
 
 // KindDisarm converts a node the cluster has already dropped into a standalone
 // host, and destroys the hive secrets it is still carrying.
@@ -136,8 +149,28 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		"sleep 3",
 	)
 
+	// EVERY STEP IS BOUNDED. `|| true` on some of these catches a bad exit code
+	// and not a hang, and nothing else here has a deadline.
+	//
+	// `pvecm updatecerts --force` is the one that showed it: on a node with no
+	// cluster it can block indefinitely, so the disarm never returned. The task
+	// stayed claimed, was re-delivered on every heartbeat, and climbed past
+	// attempt 700 — while holding the bee's only task slot, which is why that
+	// host also reported "already has an outstanding task" and could not be
+	// upgraded.
+	//
+	// A disarm that cannot finish must FAIL and say which step it was on. That is
+	// recoverable — the operator can look at the host — where hanging forever is
+	// not, and quietly blocks everything else the agent would do.
 	for _, cmd := range steps {
-		if err := d.Runner.Run(ctx, discard, "sh", "-c", cmd); err != nil {
+		stepCtx, cancel := context.WithTimeout(ctx, disarmStepTimeout)
+		err := d.Runner.Run(stepCtx, discard, "sh", "-c", cmd)
+		cancel()
+		if err != nil {
+			if stepCtx.Err() != nil && ctx.Err() == nil {
+				return fmt.Errorf("standalone conversion stalled at %q after %s; the host needs "+
+					"looking at directly", cmd, disarmStepTimeout)
+			}
 			return fmt.Errorf("standalone conversion at %q: %w", cmd, err)
 		}
 	}
@@ -158,9 +191,10 @@ func proveDisarmed(_ context.Context, before map[string]string, e *Env) error {
 	}
 	// /etc/pve must be writable, or everything above ran against a read-only
 	// filesystem and silently did nothing.
-	probe := "/etc/pve/.apiary-disarm-probe"
+	probe := filepath.Join(PVEDir, ".apiary-disarm-probe")
 	if err := os.WriteFile(probe, []byte("x"), 0o600); err != nil {
-		return fmt.Errorf("the standalone conversion left /etc/pve unwritable: %w", err)
+		return fmt.Errorf("the standalone conversion left %s unwritable, so every command above "+
+			"ran against a read-only filesystem and silently did nothing: %w", PVEDir, err)
 	}
 	_ = os.Remove(probe)
 
