@@ -380,6 +380,20 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 		b.desiredMembership.Store(&desiredMembership{
 			revision: int(m.GetRevision()), digest: m.GetDigest(),
 		})
+	} else {
+		// ABSENT MEANS HOLD, AND HOLDING MEANS FORGETTING WHAT WAS ASKED FOR.
+		//
+		// This branch did not exist, so a revision once advertised was stored
+		// forever. When a machine is departed its hive_id goes and the control
+		// plane rightly stops advertising anything — but the agent kept the last
+		// value, kept deciding it was diverged, kept fetching a composition that
+		// was now empty, and logged "named a revision but returned no
+		// composition" in a tight loop. Observed on pve5 at roughly one line every
+		// two seconds, indefinitely.
+		//
+		// Clearing is what HOLD actually means here: do nothing, rather than keep
+		// acting on an instruction that has been withdrawn.
+		b.desiredMembership.Store((*desiredMembership)(nil))
 	}
 
 	task, ok := res.GetTaskOk()
