@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -412,5 +414,26 @@ func TestUnbindingACredentialSurvivesSchemaValidation(t *testing.T) {
 		t.Fatalf("credential_id declares format %v, so the empty string is rejected during "+
 			"schema validation and a cluster with no credential cannot be saved at all; the "+
 			"handler validates the id itself and returns a 422 that names the field", f)
+	}
+}
+
+// A DEPARTURE DISPATCHES NOTHING. The whole sequence is convergent.
+//
+// The SSH job raced it in three separate ways before this: it ran delnode
+// itself, it cleared membership on success, and it converted the departing node
+// to standalone immediately. The last is the subtlest and the most damaging — it
+// stops the departing node's corosync BEFORE a peer has removed it, dropping the
+// survivor below quorum, and a non-quorate peer refuses to evict. lab-b was left
+// with pve3 alone and unable to remove a pve4 that had already made itself
+// standalone.
+func TestDepartingDispatchesNoJob(t *testing.T) {
+	src, err := os.ReadFile("fleetops.go")
+	if err != nil {
+		t.Fatalf("read handler: %v", err)
+	}
+	if strings.Contains(string(src), "EnqueueDepartHypervisor") {
+		t.Fatal("the departure handler still enqueues the SSH job; it races every convergent " +
+			"step and its standalone conversion drops the survivor below quorum before a peer " +
+			"can evict")
 	}
 }

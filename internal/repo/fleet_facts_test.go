@@ -531,3 +531,70 @@ func TestAFleetlessMachineDoesNotReclaimItsNodeName(t *testing.T) {
 			*got.Name)
 	}
 }
+
+// THE DEPARTURE GATE MUST COUNT MEMBERS, NOT ROWS.
+//
+// Under convergence a machine is given a hive_id as an INTENTION and joins on
+// its own afterwards, so the rows include hosts that are not members yet. lab-b
+// showed 3 nodes and had 2 — pve5 had been assigned back and never joined — and
+// a departure allowed on that basis took the cluster from two real members to
+// one, leaving the survivor below quorum and unable to evict the node that had
+// just left.
+func TestObservedNodeCountIgnoresAssignedButUnjoinedMachines(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+
+	hive := tenant.Hive{Name: "lab-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	add := func(node, observes string, fresh bool) {
+		t.Helper()
+		bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+		if err := db.Create(&bee).Error; err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now()
+		if !fresh {
+			at = at.Add(-time.Hour)
+		}
+		if err := db.Model(&tenant.Bee{}).Where("id = ?", bee.ID).Updates(map[string]any{
+			"observed_cluster":       observes,
+			"observed_membership_at": at,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		n := node
+		if err := db.Create(&tenant.Hypervisor{
+			BeeID: &bee.ID, HiveID: &hive.ID, Name: &n, Address: "192.0.2." + node,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	add("1", hive.Name, true)  // a real member
+	add("2", hive.Name, true)  // a real member
+	add("3", "", true)         // assigned, standalone — NOT a member
+	add("4", hive.Name, false) // a member whose agent has gone quiet
+
+	got, err := ObservedHiveNodeCount(ctx, db, hive.ID, hive.Name)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("observed nodes = %d, want 2 — four rows, but only two hosts report being in "+
+			"this cluster and reported recently", got)
+	}
+
+	// A plain row count would have said four, which is the number the gate used
+	// to read.
+	var rows int64
+	if err := db.Model(&tenant.Hypervisor{}).Where("hive_id = ?", hive.ID).
+		Count(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rows != 4 {
+		t.Fatalf("precondition: %d rows, want 4", rows)
+	}
+}
