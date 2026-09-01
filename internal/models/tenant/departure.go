@@ -270,13 +270,42 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 		// denies. Here the cost of the other choice is concrete — dismantling the
 		// cluster membership of a node that turns out to have been running
 		// workloads all along.
+		//
+		// WHY it cannot decide is a separate question from THAT it cannot, and
+		// they have different fixes. An old observation and no observation at all
+		// arrive here identically, because both are read off one timestamp — so
+		// this used to report every silence as a stale sync and send the operator
+		// to run one. On a freshly rebuilt host that advice is unfollowable: there
+		// is no agent on it to sync, and the age it quotes is just how long the
+		// machine has been standing there unobserved. Seen on a lab fleet rebuilt
+		// from scratch, where every node refused with a stale sync it had never
+		// had.
+		//
+		// The distinction is already in hand: the agent is what observes a host,
+		// and a machine with no agent linked has never had an observer rather than
+		// a lapsed one.
+		//
+		// Same code either way. It is a stable string that a client switches on,
+		// and this is one rule with two causes, not two rules.
+		if req.Hypervisor.BeeID == nil {
+			out = append(out, DepartureRefusal{
+				Code:    RefuseDrainUnknown,
+				Summary: "no agent is observing the host, so nothing can say whether it is empty",
+				Detail: "no agent has enrolled on this node, so nothing has ever reported " +
+					"whether it is empty",
+				Remedy: "Onboard it, so it has an agent to report with. Refusing rather than " +
+					"assuming: a node nothing is watching is not the same as an empty one.",
+			})
+			break
+		}
 		out = append(out, DepartureRefusal{
 			Code:    RefuseDrainUnknown,
-			Summary: "the last capacity sync is too stale to tell whether the host is empty",
-			Detail: fmt.Sprintf("the last capacity sync for this node is %s old, too stale to "+
-				"tell whether it is empty", req.Drain.ObservationAge.Truncate(time.Second)),
-			Remedy: "Run a sync and retry. Refusing rather than assuming: a node that looks " +
-				"empty in a stale observation may not be.",
+			Summary: "the host's agent has not reported recently enough to tell whether it is empty",
+			Detail: fmt.Sprintf("this node's last report is %s old, too stale to tell whether "+
+				"it is empty", req.Drain.ObservationAge.Truncate(time.Second)),
+			Remedy: "Check the agent is running and reaching the control plane, then retry. " +
+				"Refusing rather than assuming: a node that looks empty in a stale " +
+				"observation may not be.",
 		})
 	default:
 		// Reported separately even though both mean "not empty". They are
