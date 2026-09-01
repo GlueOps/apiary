@@ -75,7 +75,30 @@ func MarkFleetless(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID) err
 
 	if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
 		Where("id = ?", hypervisorID).
-		Updates(map[string]any{"hive_id": nil, "swarm_id": nil, "name": nil}).Error; err != nil {
+		Updates(map[string]any{
+			"hive_id": nil, "swarm_id": nil, "name": nil,
+			// THIS IS THE MOMENT A DEPARTURE SUCCEEDED, so a stored departure
+			// failure stops being true here.
+			//
+			// The capacity sync clears a stale JOIN outcome on the same
+			// reasoning, and deliberately leaves a departure alone: a node that
+			// failed to leave and is still a member has an accurate failure
+			// beside it, and erasing it would delete a true statement about a
+			// machine somebody is waiting on. That holds right up to the point
+			// the node actually leaves — which is here, and which the sync never
+			// sees, because a departed host is no longer in the cluster it
+			// syncs.
+			//
+			// Nothing else can clear it. RecordOperationOutcome cleared it on the
+			// success path, but it was called from the departure JOB, and the
+			// departure moved to agent convergence and dispatches no job — so it
+			// has no callers at all and the field is now written by nothing. A
+			// failure recorded before that migration stayed on the row forever:
+			// 192.168.240.12 sat in lab-a showing a 22-hour-old drain_unknown
+			// refusal, having departed and rejoined twice since.
+			"last_operation_error": gorm.Expr(
+				"CASE WHEN last_operation = 'depart' THEN '' ELSE last_operation_error END"),
+		}).Error; err != nil {
 		return err
 	}
 	publishMembership(ctx, db, leaving.HiveID)
@@ -142,6 +165,12 @@ func MarkJoined(ctx context.Context, db *gorm.DB, hypervisorID, hiveID uuid.UUID
 			"hive_id":     hiveID,
 			"name":        nodeName,
 			"schedulable": false,
+			// The join succeeded, so a stored join failure is spent. The capacity
+			// sync clears this too, on its next tick and only for a node it can
+			// see; doing it at the moment of truth means a machine is never
+			// rendered with a contradiction it has already resolved.
+			"last_operation_error": gorm.Expr(
+				"CASE WHEN last_operation = 'join' THEN '' ELSE last_operation_error END"),
 		}).Error; err != nil {
 		return err
 	}

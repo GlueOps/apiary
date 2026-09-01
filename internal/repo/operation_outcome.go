@@ -28,6 +28,19 @@ const operationErrorLimit = 1000
 // The success path clears rather than leaves. A stale failure beside a machine
 // that has since succeeded sends an operator to investigate something that is
 // already fixed, which is worse than saying nothing.
+//
+// HAS NO CALLERS. It was called from the departure and arrival JOBS, and both
+// moved to agent convergence — the handlers now record intent and dispatch
+// nothing, so neither job is enqueued and this never runs. Nothing else writes
+// last_operation_error either, which means the column holds only values written
+// before that migration.
+//
+// Left in place rather than deleted because the clearing behaviour it describes
+// is still needed and now lives at the observation points — MarkFleetless and
+// MarkJoined clear a spent outcome at the moment the operation it describes
+// actually completes. What is missing is a WRITER: a convergence that fails
+// repeatedly records the reason nowhere, and the fleet view has no way to say
+// so. Wiring one is a deliberate piece of work, not a line to add here.
 func RecordOperationOutcome(
 	ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID, operation string, err error,
 ) error {
