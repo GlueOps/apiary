@@ -43,7 +43,7 @@ const failedDisarm = {
     '/etc/pve/priv/pve-root-ca.srl is still byte-identical to the copy this node left the hive with',
   attempt: 1,
   created_at: '2026-08-31T07:26:54Z',
-  started_at: '2026-08-31T07:26:54Z',
+  claimed_at: '2026-08-31T07:26:54Z',
   finished_at: '2026-08-31T07:26:56Z',
 };
 
@@ -80,6 +80,30 @@ describe('FleetActivity', () => {
 
   // An empty list must not read as "nothing ever ran" — the record starts when
   // it was added, and anything before that is simply not here.
+  // started_at is null on every row the control plane has ever written — a bee
+  // never reports "running" — so a duration read from it showed a dash on every
+  // task in the fleet. claimed_at is when the work was actually picked up.
+  it('times the work from when an agent picked it up', async () => {
+    stubApi([failedDisarm]);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('2.0s')).toBeTruthy();
+    });
+  });
+
+  // The counter increments on every claim, including a re-claim after a lease
+  // expiry, so labelling it "attempt" reported retries that never happened.
+  it('does not call a re-claim an attempt', async () => {
+    stubApi([{ ...failedDisarm, attempt: 9 }]);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/picked up 9/i)).toBeTruthy();
+    });
+    expect(screen.queryByText(/attempt 9/i)).toBeNull();
+  });
+
   it('does not claim an empty trail means nothing happened', async () => {
     stubApi([]);
     renderPage();

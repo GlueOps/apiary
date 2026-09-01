@@ -23,8 +23,10 @@ var _ MappedNullable = &FleetActivityView{}
 // FleetActivityView struct for FleetActivityView
 type FleetActivityView struct {
 	Address *string `json:"address,omitempty"`
+	// How many times an agent claimed this task. A re-claim after a lease expiry counts, so this is not a count of executions.
 	Attempt int64 `json:"attempt"`
 	BeeId string `json:"bee_id"`
+	ClaimedAt *time.Time `json:"claimed_at,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	// The agent's own account of what stopped it. Empty unless it failed.
 	Error *string `json:"error,omitempty"`
@@ -144,6 +146,38 @@ func (o *FleetActivityView) GetBeeIdOk() (*string, bool) {
 // SetBeeId sets field value
 func (o *FleetActivityView) SetBeeId(v string) {
 	o.BeeId = v
+}
+
+// GetClaimedAt returns the ClaimedAt field value if set, zero value otherwise.
+func (o *FleetActivityView) GetClaimedAt() time.Time {
+	if o == nil || IsNil(o.ClaimedAt) {
+		var ret time.Time
+		return ret
+	}
+	return *o.ClaimedAt
+}
+
+// GetClaimedAtOk returns a tuple with the ClaimedAt field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *FleetActivityView) GetClaimedAtOk() (*time.Time, bool) {
+	if o == nil || IsNil(o.ClaimedAt) {
+		return nil, false
+	}
+	return o.ClaimedAt, true
+}
+
+// HasClaimedAt returns a boolean if a field has been set.
+func (o *FleetActivityView) HasClaimedAt() bool {
+	if o != nil && !IsNil(o.ClaimedAt) {
+		return true
+	}
+
+	return false
+}
+
+// SetClaimedAt gets a reference to the given time.Time and assigns it to the ClaimedAt field.
+func (o *FleetActivityView) SetClaimedAt(v time.Time) {
+	o.ClaimedAt = &v
 }
 
 // GetCreatedAt returns the CreatedAt field value
@@ -481,6 +515,9 @@ func (o FleetActivityView) ToMap() (map[string]interface{}, error) {
 	}
 	toSerialize["attempt"] = o.Attempt
 	toSerialize["bee_id"] = o.BeeId
+	if !IsNil(o.ClaimedAt) {
+		toSerialize["claimed_at"] = o.ClaimedAt
+	}
 	toSerialize["created_at"] = o.CreatedAt
 	if !IsNil(o.Error) {
 		toSerialize["error"] = o.Error

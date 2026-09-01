@@ -36,17 +36,26 @@ const (
 // exactly when the agent has since been replaced, which is when the history
 // matters most.
 type FleetActivityRow struct {
-	ID         uuid.UUID
-	BeeID      uuid.UUID
-	Address    string
-	NodeName   string
-	HiveName   string
-	Kind       string
-	Status     string
-	Phase      string
-	Error      string
-	Attempt    int
-	CreatedAt  time.Time
+	ID        uuid.UUID
+	BeeID     uuid.UUID
+	Address   string
+	NodeName  string
+	HiveName  string
+	Kind      string
+	Status    string
+	Phase     string
+	Error     string
+	Attempt   int
+	CreatedAt time.Time
+
+	// ClaimedAt is when an agent actually picked the task up, and it is the only
+	// usable start time.
+	//
+	// StartedAt is written only when a bee reports status "running", and no bee
+	// does: the agent tracks that state in its own local store and reports the
+	// terminal outcome. So started_at is null on every row ever written, and a
+	// duration computed from it is null on every row ever read.
+	ClaimedAt  *time.Time
 	StartedAt  *time.Time
 	FinishedAt *time.Time
 }
@@ -72,7 +81,7 @@ func ListFleetActivity(
 		Table("fleet_tasks AS t").
 		Select(`t.id, t.bee_id, t.kind, t.status, coalesce(t.phase,'') AS phase,
 		        coalesce(t.error,'') AS error, t.attempt, t.created_at,
-		        t.started_at, t.finished_at,
+		        t.claimed_at, t.started_at, t.finished_at,
 		        coalesce(h.address,'') AS address, coalesce(h.name,'') AS node_name,
 		        coalesce(v.name,'') AS hive_name`).
 		Joins("LEFT JOIN hypervisors h ON h.bee_id = t.bee_id").

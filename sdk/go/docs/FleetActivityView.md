@@ -5,8 +5,9 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Address** | Pointer to **string** |  | [optional] 
-**Attempt** | **int64** |  | 
+**Attempt** | **int64** | How many times an agent claimed this task. A re-claim after a lease expiry counts, so this is not a count of executions. | 
 **BeeId** | **string** |  | 
+**ClaimedAt** | Pointer to **time.Time** |  | [optional] 
 **CreatedAt** | **time.Time** |  | 
 **Error** | Pointer to **string** | The agent&#39;s own account of what stopped it. Empty unless it failed. | [optional] 
 **FinishedAt** | Pointer to **time.Time** |  | [optional] 
@@ -102,6 +103,31 @@ and a boolean to check if the value has been set.
 
 SetBeeId sets BeeId field to given value.
 
+
+### GetClaimedAt
+
+`func (o *FleetActivityView) GetClaimedAt() time.Time`
+
+GetClaimedAt returns the ClaimedAt field if non-nil, zero value otherwise.
+
+### GetClaimedAtOk
+
+`func (o *FleetActivityView) GetClaimedAtOk() (*time.Time, bool)`
+
+GetClaimedAtOk returns a tuple with the ClaimedAt field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetClaimedAt
+
+`func (o *FleetActivityView) SetClaimedAt(v time.Time)`
+
+SetClaimedAt sets ClaimedAt field to given value.
+
+### HasClaimedAt
+
+`func (o *FleetActivityView) HasClaimedAt() bool`
+
+HasClaimedAt returns a boolean if a field has been set.
 
 ### GetCreatedAt
 
