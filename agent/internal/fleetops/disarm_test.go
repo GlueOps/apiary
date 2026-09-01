@@ -62,14 +62,21 @@ func TestDisarmFailsRatherThanHangingOnAStalledStep(t *testing.T) {
 func TestDisarmRunsTheConversionAndProvesIt(t *testing.T) {
 	dir := t.TempDir()
 	oldCoro, oldSecrets, oldPVE := CorosyncConf, clusterSecretFiles, PVEDir
+	oldCap := capabilityBearingSecrets
 	CorosyncConf = filepath.Join(dir, "corosync.conf")
 	PVEDir = dir
 	secret := filepath.Join(dir, "token.cfg")
 	if err := os.WriteFile(secret, []byte("hive secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Both: one is what gets destroyed, the other is what gets proved. A stand-in
+	// secret that is only in the first is removed and never checked.
 	clusterSecretFiles = []string{secret}
-	t.Cleanup(func() { CorosyncConf, clusterSecretFiles, PVEDir = oldCoro, oldSecrets, oldPVE })
+	capabilityBearingSecrets = []string{secret}
+	t.Cleanup(func() {
+		CorosyncConf, clusterSecretFiles, PVEDir = oldCoro, oldSecrets, oldPVE
+		capabilityBearingSecrets = oldCap
+	})
 
 	// A runner that actually removes the secret, as the real commands would.
 	r := &recordingRunner{}
@@ -175,5 +182,51 @@ func TestDisarmRemovesTheClusterCopyOfCorosyncConfToo(t *testing.T) {
 	if !sawPVECopy {
 		t.Fatalf("the cluster's own copy at %s was never removed, so pve-cluster would remake "+
 			"the local one on start: %v", PVECorosyncConf, r.cmds)
+	}
+}
+
+// A SECOND DISARM ON AN ALREADY-DISARMED NODE MUST NOT FAIL ON A COUNTER.
+//
+// Observed on 192.168.240.12: two departures forty-nine seconds apart each
+// queued a disarm. The first succeeded. The second failed with
+// "/etc/pve/priv/pve-root-ca.srl is still byte-identical to the copy this node
+// left the hive with, so the cluster's secret went with it" — on a host whose
+// cluster secrets were provably already gone, and the failure is what the fleet
+// view then reported.
+//
+// The .srl is OpenSSL's serial counter for the CA, not a secret. `pvecm
+// updatecerts --force` regenerates the CA with the serial starting from the same
+// value, so on a re-run it is byte-identical by construction. A file that grants
+// nothing was able to veto the whole disarm.
+func TestTheCASerialCounterCannotVetoADisarm(t *testing.T) {
+	for _, f := range capabilityBearingSecrets {
+		if strings.HasSuffix(f, ".srl") {
+			t.Fatalf("%s is a serial counter, not a capability — it regenerates identically "+
+				"and will fail every repeated disarm", f)
+		}
+	}
+
+	// It is still destroyed; it just does not get a vote on the proof.
+	var destroyed bool
+	for _, f := range clusterSecretFiles {
+		if strings.HasSuffix(f, "pve-root-ca.srl") {
+			destroyed = true
+		}
+	}
+	if !destroyed {
+		t.Fatal("the CA serial is no longer destroyed; excluding it from the proof must not " +
+			"exclude it from the removal")
+	}
+
+	// Every file that DOES get a vote must be one whose possession authenticates.
+	for _, f := range capabilityBearingSecrets {
+		switch f {
+		case "/etc/pve/priv/token.cfg",
+			"/etc/pve/priv/authkey.key",
+			"/etc/pve/priv/pve-root-ca.key":
+		default:
+			t.Fatalf("%s proves rotation but does not mint or sign anything; a file PVE "+
+				"recreates on its own will fail disarms that actually worked", f)
+		}
 	}
 }
