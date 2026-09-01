@@ -155,6 +155,7 @@ func runServer() error {
 	orgPolicyRepo := repo.NewOrgPolicyRepoGorm(controlDB)
 	passkeyRepo := repo.NewUserPasskeyRepoGorm(controlDB)
 	policySvc := service.NewPolicyService(platformPolicyRepo, orgPolicyRepo, &userRepo, passkeyRepo)
+	flagSvc := service.NewFeatureFlagService(repo.NewFeatureFlagRepoGorm(controlDB))
 
 	// The estate service needs the master key to derive the per-tenant data key
 	// that seals credential material. It is constructed only when tenants are
@@ -201,6 +202,7 @@ func runServer() error {
 		Jobs:          jobEnqueuer,
 		TokenSessions: tokenSessions,
 		Policies:      policySvc,
+		Flags:         flagSvc,
 		APIKeys:       service.NewAPIKeyService(repo.NewAPIKeyRepoGorm(controlDB)),
 		Admission:     admissionSvc,
 		Estates:       estateSvc,

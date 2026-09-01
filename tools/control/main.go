@@ -42,6 +42,14 @@ func main() {
 
 		&control.PlatformPolicy{},
 		&control.OrgPolicy{},
+
+		// Feature flags are a SIBLING of the policy tables, not an extension.
+		// Policies merge with OR and only tighten; a flag's narrower level
+		// overrides in either direction. Two tables rather than one nullable
+		// organization_id, because the unique index that shape needs is partial
+		// and cannot be expressed in GORM tags — so Atlas would diff it away.
+		&control.PlatformFeatureFlag{},
+		&control.OrgFeatureFlag{},
 		&control.ImpersonationGrant{},
 
 		&control.DomainCohortFinding{},

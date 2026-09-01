@@ -20,8 +20,14 @@ type Deps struct {
 	Jobs          workflow.Enqueuer
 	TokenSessions *service.TokenSessionService
 	Policies      *service.PolicyService
-	Estates       *service.EstateService
-	Mail          service.EmailSender
+
+	// Flags is the feature flag registry's resolver. Distinct from Policies
+	// because the two merge in opposite directions: a policy can only tighten as
+	// it descends, and a flag's whole purpose is that the narrower level
+	// overrides — in either direction.
+	Flags   *service.FeatureFlagService
+	Estates *service.EstateService
+	Mail    service.EmailSender
 
 	// APIKeys verifies every key/secret credential, on every surface. One
 	// instance, because scope exclusion is only a boundary if the same code

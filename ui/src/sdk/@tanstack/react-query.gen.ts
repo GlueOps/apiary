@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { adminImpersonateEnd, adminImpersonateStart, apiKeysCreate, apiKeysList, apiKeysRevoke, auditEventsList, authForgotPassword, authLogin, authLogout, authMfaVerify, authPasskeyLoginBegin, authPasskeyLoginFinish, authPasskeyRegisterBegin, authPasskeyRegisterFinish, authPasskeysDelete, authPasskeysList, authRefresh, authRegister, authResendVerification, authResetPassword, authSocialCallback, authSocialStart, authTotpConfirm, authTotpDisable, authTotpSetup, authVerifyEmail, estatesCreate, estatesDelete, estatesGet, estatesList, estatesRotateCredential, firewallBindingsCreate, firewallBindingsDelete, firewallBindingsList, firewallBindingsUpdate, firewallPreview, firewallPublish, firewallRevert, firewallRulesCreate, firewallRulesDelete, firewallRulesetsCreate, firewallRulesetsDelete, firewallRulesetsList, firewallRulesetsUpdate, firewallRulesList, firewallRulesUpdate, firewallSetElementsAdd, firewallSetElementsDelete, firewallSetElementsList, firewallSetsCreate, firewallSetsDelete, firewallSetsList, firewallSetsUpdate, firewallSnapshotBody, firewallSnapshotsList, fleetActivityList, fleetAgentUpgrade, fleetBeeAgentBinary, fleetBeeAgentDist, fleetBeeAppendLogs, fleetBeeEnrol, fleetBeeFirewall, fleetBeeHeartbeat, fleetBeeMembership, fleetBeeReportTask, fleetBeesDelete, fleetBeesList, fleetEnrolmentTokensMint, fleetHivesCreate, fleetHivesDelete, fleetHivesList, fleetHivesSync, fleetHivesUpdate, fleetHostsArrive, fleetHostsBootstrap, fleetHostsFleetless, fleetHypervisorsCordon, fleetHypervisorsDeclare, fleetHypervisorsDepart, fleetHypervisorsDisarm, fleetHypervisorsGet, fleetHypervisorsList, fleetHypervisorsReprovision, fleetTasksCreate, fleetTasksLogs, invitationsAccept, invitationsPreview, meChangePassword, meDeleteAccount, meGet, meOrgsList, meSoleOwnerships, meUpdate, type Options, orgDelete, orgInvitationsCreate, orgInvitationsList, orgInvitationsRevoke, orgMembersList, orgMembersRemove, orgMembersUpdateRole, orgPoliciesClear, orgPoliciesImpact, orgPoliciesList, orgPoliciesSet, platformAccessRulesCreate, platformAccessRulesDelete, platformAccessRulesList, platformAccessRulesUpdate, platformPoliciesClear, platformPoliciesImpact, platformPoliciesList, platformPoliciesSet, sshKeysList, sshKeysMint, sshKeysRevoke } from '../sdk.gen';
-import type { AdminImpersonateEndData, AdminImpersonateEndError, AdminImpersonateEndResponse, AdminImpersonateStartData, AdminImpersonateStartError, AdminImpersonateStartResponse, ApiKeysCreateData, ApiKeysCreateError, ApiKeysCreateResponse, ApiKeysListData, ApiKeysListError, ApiKeysListResponse, ApiKeysRevokeData, ApiKeysRevokeError, ApiKeysRevokeResponse, AuditEventsListData, AuditEventsListError, AuditEventsListResponse, AuthForgotPasswordData, AuthForgotPasswordError, AuthForgotPasswordResponse, AuthLoginData, AuthLoginError, AuthLoginResponse, AuthLogoutData, AuthLogoutError, AuthLogoutResponse, AuthMfaVerifyData, AuthMfaVerifyError, AuthMfaVerifyResponse, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginError, AuthPasskeyLoginBeginResponse, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishError, AuthPasskeyLoginFinishResponse, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginError, AuthPasskeyRegisterBeginResponse, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishError, AuthPasskeyRegisterFinishResponse, AuthPasskeysDeleteData, AuthPasskeysDeleteError, AuthPasskeysDeleteResponse, AuthPasskeysListData, AuthPasskeysListError, AuthPasskeysListResponse, AuthRefreshData, AuthRefreshError, AuthRefreshResponse, AuthRegisterData, AuthRegisterError, AuthRegisterResponse, AuthResendVerificationData, AuthResendVerificationError, AuthResendVerificationResponse, AuthResetPasswordData, AuthResetPasswordError, AuthResetPasswordResponse, AuthSocialCallbackData, AuthSocialCallbackError, AuthSocialCallbackResponse, AuthSocialStartData, AuthSocialStartError, AuthSocialStartResponse, AuthTotpConfirmData, AuthTotpConfirmError, AuthTotpConfirmResponse, AuthTotpDisableData, AuthTotpDisableError, AuthTotpDisableResponse, AuthTotpSetupData, AuthTotpSetupError, AuthTotpSetupResponse, AuthVerifyEmailData, AuthVerifyEmailError, AuthVerifyEmailResponse, EstatesCreateData, EstatesCreateError, EstatesCreateResponse, EstatesDeleteData, EstatesDeleteError, EstatesDeleteResponse, EstatesGetData, EstatesGetError, EstatesGetResponse, EstatesListData, EstatesListError, EstatesListResponse, EstatesRotateCredentialData, EstatesRotateCredentialError, EstatesRotateCredentialResponse, FirewallBindingsCreateData, FirewallBindingsCreateError, FirewallBindingsCreateResponse, FirewallBindingsDeleteData, FirewallBindingsDeleteError, FirewallBindingsDeleteResponse, FirewallBindingsListData, FirewallBindingsListError, FirewallBindingsListResponse, FirewallBindingsUpdateData, FirewallBindingsUpdateError, FirewallBindingsUpdateResponse, FirewallPreviewData, FirewallPreviewError, FirewallPreviewResponse, FirewallPublishData, FirewallPublishError, FirewallPublishResponse, FirewallRevertData, FirewallRevertError, FirewallRevertResponse, FirewallRulesCreateData, FirewallRulesCreateError, FirewallRulesCreateResponse, FirewallRulesDeleteData, FirewallRulesDeleteError, FirewallRulesDeleteResponse, FirewallRulesetsCreateData, FirewallRulesetsCreateError, FirewallRulesetsCreateResponse, FirewallRulesetsDeleteData, FirewallRulesetsDeleteError, FirewallRulesetsDeleteResponse, FirewallRulesetsListData, FirewallRulesetsListError, FirewallRulesetsListResponse, FirewallRulesetsUpdateData, FirewallRulesetsUpdateError, FirewallRulesetsUpdateResponse, FirewallRulesListData, FirewallRulesListError, FirewallRulesListResponse, FirewallRulesUpdateData, FirewallRulesUpdateError, FirewallRulesUpdateResponse, FirewallSetElementsAddData, FirewallSetElementsAddError, FirewallSetElementsAddResponse, FirewallSetElementsDeleteData, FirewallSetElementsDeleteError, FirewallSetElementsDeleteResponse, FirewallSetElementsListData, FirewallSetElementsListError, FirewallSetElementsListResponse, FirewallSetsCreateData, FirewallSetsCreateError, FirewallSetsCreateResponse, FirewallSetsDeleteData, FirewallSetsDeleteError, FirewallSetsDeleteResponse, FirewallSetsListData, FirewallSetsListError, FirewallSetsListResponse, FirewallSetsUpdateData, FirewallSetsUpdateError, FirewallSetsUpdateResponse, FirewallSnapshotBodyData, FirewallSnapshotBodyError, FirewallSnapshotBodyResponse, FirewallSnapshotsListData, FirewallSnapshotsListError, FirewallSnapshotsListResponse, FleetActivityListData, FleetActivityListError, FleetActivityListResponse, FleetAgentUpgradeData, FleetAgentUpgradeError, FleetAgentUpgradeResponse, FleetBeeAgentBinaryData, FleetBeeAgentBinaryError, FleetBeeAgentBinaryResponse, FleetBeeAgentDistData, FleetBeeAgentDistError, FleetBeeAgentDistResponse, FleetBeeAppendLogsData, FleetBeeAppendLogsError, FleetBeeAppendLogsResponse, FleetBeeEnrolData, FleetBeeEnrolError, FleetBeeEnrolResponse, FleetBeeFirewallData, FleetBeeFirewallError, FleetBeeFirewallResponse, FleetBeeHeartbeatData, FleetBeeHeartbeatError, FleetBeeHeartbeatResponse, FleetBeeMembershipData, FleetBeeMembershipError, FleetBeeMembershipResponse, FleetBeeReportTaskData, FleetBeeReportTaskError, FleetBeeReportTaskResponse, FleetBeesDeleteData, FleetBeesDeleteError, FleetBeesDeleteResponse, FleetBeesListData, FleetBeesListError, FleetBeesListResponse, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintError, FleetEnrolmentTokensMintResponse, FleetHivesCreateData, FleetHivesCreateError, FleetHivesCreateResponse, FleetHivesDeleteData, FleetHivesDeleteError, FleetHivesDeleteResponse, FleetHivesListData, FleetHivesListError, FleetHivesListResponse, FleetHivesSyncData, FleetHivesSyncError, FleetHivesSyncResponse, FleetHivesUpdateData, FleetHivesUpdateError, FleetHivesUpdateResponse, FleetHostsArriveData, FleetHostsArriveError, FleetHostsArriveResponse, FleetHostsBootstrapData, FleetHostsBootstrapError, FleetHostsBootstrapResponse, FleetHostsFleetlessData, FleetHostsFleetlessError, FleetHostsFleetlessResponse, FleetHypervisorsCordonData, FleetHypervisorsCordonError, FleetHypervisorsCordonResponse, FleetHypervisorsDeclareData, FleetHypervisorsDeclareError, FleetHypervisorsDeclareResponse, FleetHypervisorsDepartData, FleetHypervisorsDepartError, FleetHypervisorsDepartResponse, FleetHypervisorsDisarmData, FleetHypervisorsDisarmError, FleetHypervisorsDisarmResponse, FleetHypervisorsGetData, FleetHypervisorsGetError, FleetHypervisorsGetResponse, FleetHypervisorsListData, FleetHypervisorsListError, FleetHypervisorsListResponse, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionError, FleetHypervisorsReprovisionResponse, FleetTasksCreateData, FleetTasksCreateError, FleetTasksCreateResponse, FleetTasksLogsData, FleetTasksLogsError, FleetTasksLogsResponse, InvitationsAcceptData, InvitationsAcceptError, InvitationsAcceptResponse, InvitationsPreviewData, InvitationsPreviewError, InvitationsPreviewResponse, MeChangePasswordData, MeChangePasswordError, MeChangePasswordResponse, MeDeleteAccountData, MeDeleteAccountError, MeDeleteAccountResponse, MeGetData, MeGetError, MeGetResponse, MeOrgsListData, MeOrgsListError, MeOrgsListResponse, MeSoleOwnershipsData, MeSoleOwnershipsError, MeSoleOwnershipsResponse, MeUpdateData, MeUpdateError, MeUpdateResponse, OrgDeleteData, OrgDeleteError, OrgDeleteResponse, OrgInvitationsCreateData, OrgInvitationsCreateError, OrgInvitationsCreateResponse, OrgInvitationsListData, OrgInvitationsListError, OrgInvitationsListResponse, OrgInvitationsRevokeData, OrgInvitationsRevokeError, OrgInvitationsRevokeResponse, OrgMembersListData, OrgMembersListError, OrgMembersListResponse, OrgMembersRemoveData, OrgMembersRemoveError, OrgMembersRemoveResponse, OrgMembersUpdateRoleData, OrgMembersUpdateRoleError, OrgMembersUpdateRoleResponse, OrgPoliciesClearData, OrgPoliciesClearError, OrgPoliciesClearResponse, OrgPoliciesImpactData, OrgPoliciesImpactError, OrgPoliciesImpactResponse, OrgPoliciesListData, OrgPoliciesListError, OrgPoliciesListResponse, OrgPoliciesSetData, OrgPoliciesSetError, OrgPoliciesSetResponse, PlatformAccessRulesCreateData, PlatformAccessRulesCreateError, PlatformAccessRulesCreateResponse, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteError, PlatformAccessRulesDeleteResponse, PlatformAccessRulesListData, PlatformAccessRulesListError, PlatformAccessRulesListResponse, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateError, PlatformAccessRulesUpdateResponse, PlatformPoliciesClearData, PlatformPoliciesClearError, PlatformPoliciesClearResponse, PlatformPoliciesImpactData, PlatformPoliciesImpactError, PlatformPoliciesImpactResponse, PlatformPoliciesListData, PlatformPoliciesListError, PlatformPoliciesListResponse, PlatformPoliciesSetData, PlatformPoliciesSetError, PlatformPoliciesSetResponse, SshKeysListData, SshKeysListError, SshKeysListResponse, SshKeysMintData, SshKeysMintError, SshKeysMintResponse, SshKeysRevokeData, SshKeysRevokeError, SshKeysRevokeResponse } from '../types.gen';
+import { adminImpersonateEnd, adminImpersonateStart, apiKeysCreate, apiKeysList, apiKeysRevoke, auditEventsList, authForgotPassword, authLogin, authLogout, authMfaVerify, authPasskeyLoginBegin, authPasskeyLoginFinish, authPasskeyRegisterBegin, authPasskeyRegisterFinish, authPasskeysDelete, authPasskeysList, authRefresh, authRegister, authResendVerification, authResetPassword, authSocialCallback, authSocialStart, authTotpConfirm, authTotpDisable, authTotpSetup, authVerifyEmail, estatesCreate, estatesDelete, estatesGet, estatesList, estatesRotateCredential, firewallBindingsCreate, firewallBindingsDelete, firewallBindingsList, firewallBindingsUpdate, firewallPreview, firewallPublish, firewallRevert, firewallRulesCreate, firewallRulesDelete, firewallRulesetsCreate, firewallRulesetsDelete, firewallRulesetsList, firewallRulesetsUpdate, firewallRulesList, firewallRulesUpdate, firewallSetElementsAdd, firewallSetElementsDelete, firewallSetElementsList, firewallSetsCreate, firewallSetsDelete, firewallSetsList, firewallSetsUpdate, firewallSnapshotBody, firewallSnapshotsList, flagsList, fleetActivityList, fleetAgentUpgrade, fleetBeeAgentBinary, fleetBeeAgentDist, fleetBeeAppendLogs, fleetBeeEnrol, fleetBeeFirewall, fleetBeeHeartbeat, fleetBeeMembership, fleetBeeReportTask, fleetBeesDelete, fleetBeesList, fleetEnrolmentTokensMint, fleetHivesCreate, fleetHivesDelete, fleetHivesList, fleetHivesSync, fleetHivesUpdate, fleetHostsArrive, fleetHostsBootstrap, fleetHostsFleetless, fleetHypervisorsCordon, fleetHypervisorsDeclare, fleetHypervisorsDepart, fleetHypervisorsDisarm, fleetHypervisorsGet, fleetHypervisorsList, fleetHypervisorsReprovision, fleetTasksCreate, fleetTasksLogs, invitationsAccept, invitationsPreview, meChangePassword, meDeleteAccount, meGet, meOrgsList, meSoleOwnerships, meUpdate, type Options, orgDelete, orgInvitationsCreate, orgInvitationsList, orgInvitationsRevoke, orgMembersList, orgMembersRemove, orgMembersUpdateRole, orgPoliciesClear, orgPoliciesImpact, orgPoliciesList, orgPoliciesSet, platformAccessRulesCreate, platformAccessRulesDelete, platformAccessRulesList, platformAccessRulesUpdate, platformFlagClear, platformFlagOverrides, platformFlagSet, platformFlagsList, platformOrgFlagClear, platformOrgFlagSet, platformPoliciesClear, platformPoliciesImpact, platformPoliciesList, platformPoliciesSet, sshKeysList, sshKeysMint, sshKeysRevoke } from '../sdk.gen';
+import type { AdminImpersonateEndData, AdminImpersonateEndError, AdminImpersonateEndResponse, AdminImpersonateStartData, AdminImpersonateStartError, AdminImpersonateStartResponse, ApiKeysCreateData, ApiKeysCreateError, ApiKeysCreateResponse, ApiKeysListData, ApiKeysListError, ApiKeysListResponse, ApiKeysRevokeData, ApiKeysRevokeError, ApiKeysRevokeResponse, AuditEventsListData, AuditEventsListError, AuditEventsListResponse, AuthForgotPasswordData, AuthForgotPasswordError, AuthForgotPasswordResponse, AuthLoginData, AuthLoginError, AuthLoginResponse, AuthLogoutData, AuthLogoutError, AuthLogoutResponse, AuthMfaVerifyData, AuthMfaVerifyError, AuthMfaVerifyResponse, AuthPasskeyLoginBeginData, AuthPasskeyLoginBeginError, AuthPasskeyLoginBeginResponse, AuthPasskeyLoginFinishData, AuthPasskeyLoginFinishError, AuthPasskeyLoginFinishResponse, AuthPasskeyRegisterBeginData, AuthPasskeyRegisterBeginError, AuthPasskeyRegisterBeginResponse, AuthPasskeyRegisterFinishData, AuthPasskeyRegisterFinishError, AuthPasskeyRegisterFinishResponse, AuthPasskeysDeleteData, AuthPasskeysDeleteError, AuthPasskeysDeleteResponse, AuthPasskeysListData, AuthPasskeysListError, AuthPasskeysListResponse, AuthRefreshData, AuthRefreshError, AuthRefreshResponse, AuthRegisterData, AuthRegisterError, AuthRegisterResponse, AuthResendVerificationData, AuthResendVerificationError, AuthResendVerificationResponse, AuthResetPasswordData, AuthResetPasswordError, AuthResetPasswordResponse, AuthSocialCallbackData, AuthSocialCallbackError, AuthSocialCallbackResponse, AuthSocialStartData, AuthSocialStartError, AuthSocialStartResponse, AuthTotpConfirmData, AuthTotpConfirmError, AuthTotpConfirmResponse, AuthTotpDisableData, AuthTotpDisableError, AuthTotpDisableResponse, AuthTotpSetupData, AuthTotpSetupError, AuthTotpSetupResponse, AuthVerifyEmailData, AuthVerifyEmailError, AuthVerifyEmailResponse, EstatesCreateData, EstatesCreateError, EstatesCreateResponse, EstatesDeleteData, EstatesDeleteError, EstatesDeleteResponse, EstatesGetData, EstatesGetError, EstatesGetResponse, EstatesListData, EstatesListError, EstatesListResponse, EstatesRotateCredentialData, EstatesRotateCredentialError, EstatesRotateCredentialResponse, FirewallBindingsCreateData, FirewallBindingsCreateError, FirewallBindingsCreateResponse, FirewallBindingsDeleteData, FirewallBindingsDeleteError, FirewallBindingsDeleteResponse, FirewallBindingsListData, FirewallBindingsListError, FirewallBindingsListResponse, FirewallBindingsUpdateData, FirewallBindingsUpdateError, FirewallBindingsUpdateResponse, FirewallPreviewData, FirewallPreviewError, FirewallPreviewResponse, FirewallPublishData, FirewallPublishError, FirewallPublishResponse, FirewallRevertData, FirewallRevertError, FirewallRevertResponse, FirewallRulesCreateData, FirewallRulesCreateError, FirewallRulesCreateResponse, FirewallRulesDeleteData, FirewallRulesDeleteError, FirewallRulesDeleteResponse, FirewallRulesetsCreateData, FirewallRulesetsCreateError, FirewallRulesetsCreateResponse, FirewallRulesetsDeleteData, FirewallRulesetsDeleteError, FirewallRulesetsDeleteResponse, FirewallRulesetsListData, FirewallRulesetsListError, FirewallRulesetsListResponse, FirewallRulesetsUpdateData, FirewallRulesetsUpdateError, FirewallRulesetsUpdateResponse, FirewallRulesListData, FirewallRulesListError, FirewallRulesListResponse, FirewallRulesUpdateData, FirewallRulesUpdateError, FirewallRulesUpdateResponse, FirewallSetElementsAddData, FirewallSetElementsAddError, FirewallSetElementsAddResponse, FirewallSetElementsDeleteData, FirewallSetElementsDeleteError, FirewallSetElementsDeleteResponse, FirewallSetElementsListData, FirewallSetElementsListError, FirewallSetElementsListResponse, FirewallSetsCreateData, FirewallSetsCreateError, FirewallSetsCreateResponse, FirewallSetsDeleteData, FirewallSetsDeleteError, FirewallSetsDeleteResponse, FirewallSetsListData, FirewallSetsListError, FirewallSetsListResponse, FirewallSetsUpdateData, FirewallSetsUpdateError, FirewallSetsUpdateResponse, FirewallSnapshotBodyData, FirewallSnapshotBodyError, FirewallSnapshotBodyResponse, FirewallSnapshotsListData, FirewallSnapshotsListError, FirewallSnapshotsListResponse, FlagsListData, FlagsListError, FlagsListResponse, FleetActivityListData, FleetActivityListError, FleetActivityListResponse, FleetAgentUpgradeData, FleetAgentUpgradeError, FleetAgentUpgradeResponse, FleetBeeAgentBinaryData, FleetBeeAgentBinaryError, FleetBeeAgentBinaryResponse, FleetBeeAgentDistData, FleetBeeAgentDistError, FleetBeeAgentDistResponse, FleetBeeAppendLogsData, FleetBeeAppendLogsError, FleetBeeAppendLogsResponse, FleetBeeEnrolData, FleetBeeEnrolError, FleetBeeEnrolResponse, FleetBeeFirewallData, FleetBeeFirewallError, FleetBeeFirewallResponse, FleetBeeHeartbeatData, FleetBeeHeartbeatError, FleetBeeHeartbeatResponse, FleetBeeMembershipData, FleetBeeMembershipError, FleetBeeMembershipResponse, FleetBeeReportTaskData, FleetBeeReportTaskError, FleetBeeReportTaskResponse, FleetBeesDeleteData, FleetBeesDeleteError, FleetBeesDeleteResponse, FleetBeesListData, FleetBeesListError, FleetBeesListResponse, FleetEnrolmentTokensMintData, FleetEnrolmentTokensMintError, FleetEnrolmentTokensMintResponse, FleetHivesCreateData, FleetHivesCreateError, FleetHivesCreateResponse, FleetHivesDeleteData, FleetHivesDeleteError, FleetHivesDeleteResponse, FleetHivesListData, FleetHivesListError, FleetHivesListResponse, FleetHivesSyncData, FleetHivesSyncError, FleetHivesSyncResponse, FleetHivesUpdateData, FleetHivesUpdateError, FleetHivesUpdateResponse, FleetHostsArriveData, FleetHostsArriveError, FleetHostsArriveResponse, FleetHostsBootstrapData, FleetHostsBootstrapError, FleetHostsBootstrapResponse, FleetHostsFleetlessData, FleetHostsFleetlessError, FleetHostsFleetlessResponse, FleetHypervisorsCordonData, FleetHypervisorsCordonError, FleetHypervisorsCordonResponse, FleetHypervisorsDeclareData, FleetHypervisorsDeclareError, FleetHypervisorsDeclareResponse, FleetHypervisorsDepartData, FleetHypervisorsDepartError, FleetHypervisorsDepartResponse, FleetHypervisorsDisarmData, FleetHypervisorsDisarmError, FleetHypervisorsDisarmResponse, FleetHypervisorsGetData, FleetHypervisorsGetError, FleetHypervisorsGetResponse, FleetHypervisorsListData, FleetHypervisorsListError, FleetHypervisorsListResponse, FleetHypervisorsReprovisionData, FleetHypervisorsReprovisionError, FleetHypervisorsReprovisionResponse, FleetTasksCreateData, FleetTasksCreateError, FleetTasksCreateResponse, FleetTasksLogsData, FleetTasksLogsError, FleetTasksLogsResponse, InvitationsAcceptData, InvitationsAcceptError, InvitationsAcceptResponse, InvitationsPreviewData, InvitationsPreviewError, InvitationsPreviewResponse, MeChangePasswordData, MeChangePasswordError, MeChangePasswordResponse, MeDeleteAccountData, MeDeleteAccountError, MeDeleteAccountResponse, MeGetData, MeGetError, MeGetResponse, MeOrgsListData, MeOrgsListError, MeOrgsListResponse, MeSoleOwnershipsData, MeSoleOwnershipsError, MeSoleOwnershipsResponse, MeUpdateData, MeUpdateError, MeUpdateResponse, OrgDeleteData, OrgDeleteError, OrgDeleteResponse, OrgInvitationsCreateData, OrgInvitationsCreateError, OrgInvitationsCreateResponse, OrgInvitationsListData, OrgInvitationsListError, OrgInvitationsListResponse, OrgInvitationsRevokeData, OrgInvitationsRevokeError, OrgInvitationsRevokeResponse, OrgMembersListData, OrgMembersListError, OrgMembersListResponse, OrgMembersRemoveData, OrgMembersRemoveError, OrgMembersRemoveResponse, OrgMembersUpdateRoleData, OrgMembersUpdateRoleError, OrgMembersUpdateRoleResponse, OrgPoliciesClearData, OrgPoliciesClearError, OrgPoliciesClearResponse, OrgPoliciesImpactData, OrgPoliciesImpactError, OrgPoliciesImpactResponse, OrgPoliciesListData, OrgPoliciesListError, OrgPoliciesListResponse, OrgPoliciesSetData, OrgPoliciesSetError, OrgPoliciesSetResponse, PlatformAccessRulesCreateData, PlatformAccessRulesCreateError, PlatformAccessRulesCreateResponse, PlatformAccessRulesDeleteData, PlatformAccessRulesDeleteError, PlatformAccessRulesDeleteResponse, PlatformAccessRulesListData, PlatformAccessRulesListError, PlatformAccessRulesListResponse, PlatformAccessRulesUpdateData, PlatformAccessRulesUpdateError, PlatformAccessRulesUpdateResponse, PlatformFlagClearData, PlatformFlagClearError, PlatformFlagClearResponse, PlatformFlagOverridesData, PlatformFlagOverridesError, PlatformFlagOverridesResponse, PlatformFlagSetData, PlatformFlagSetError, PlatformFlagSetResponse, PlatformFlagsListData, PlatformFlagsListError, PlatformFlagsListResponse, PlatformOrgFlagClearData, PlatformOrgFlagClearError, PlatformOrgFlagClearResponse, PlatformOrgFlagSetData, PlatformOrgFlagSetError, PlatformOrgFlagSetResponse, PlatformPoliciesClearData, PlatformPoliciesClearError, PlatformPoliciesClearResponse, PlatformPoliciesImpactData, PlatformPoliciesImpactError, PlatformPoliciesImpactResponse, PlatformPoliciesListData, PlatformPoliciesListError, PlatformPoliciesListResponse, PlatformPoliciesSetData, PlatformPoliciesSetError, PlatformPoliciesSetResponse, SshKeysListData, SshKeysListError, SshKeysListResponse, SshKeysMintData, SshKeysMintError, SshKeysMintResponse, SshKeysRevokeData, SshKeysRevokeError, SshKeysRevokeResponse } from '../types.gen';
 
 /**
  * Begin impersonating a user
@@ -1325,6 +1325,28 @@ export const firewallSetElementsDeleteMutation = (options?: Partial<Options<Fire
     return mutationOptions;
 };
 
+export const flagsListQueryKey = (options?: Options<FlagsListData>) => createQueryKey('flagsList', options);
+
+/**
+ * The feature flags in effect for this organization
+ *
+ * Read only. Flags are set by platform staff; this says what applies here and which level decided it.
+ *
+ * Every declared flag appears, including the ones nobody has overridden — a flag missing from this list would be indistinguishable from one that is switched off.
+ */
+export const flagsListOptions = (options?: Options<FlagsListData>) => queryOptions<FlagsListResponse, FlagsListError, FlagsListResponse, ReturnType<typeof flagsListQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await flagsList({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: flagsListQueryKey(options)
+});
+
 export const fleetActivityListQueryKey = (options?: Options<FleetActivityListData>) => createQueryKey('fleetActivityList', options);
 
 /**
@@ -2264,6 +2286,130 @@ export const platformAccessRulesUpdateMutation = (options?: Partial<Options<Plat
     const mutationOptions: UseMutationOptions<PlatformAccessRulesUpdateResponse, PlatformAccessRulesUpdateError, Options<PlatformAccessRulesUpdateData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await platformAccessRulesUpdate({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const platformFlagsListQueryKey = (options?: Options<PlatformFlagsListData>) => createQueryKey('platformFlagsList', options);
+
+/**
+ * List every declared feature flag
+ *
+ * Every flag this build declares, resolved as an organization with no override of its own would see it.
+ *
+ * Flags are declared IN CODE. The registry names the flag; the database supplies the organization — so a key is never per-tenant, and adding a tenant adds no flags.
+ */
+export const platformFlagsListOptions = (options?: Options<PlatformFlagsListData>) => queryOptions<PlatformFlagsListResponse, PlatformFlagsListError, PlatformFlagsListResponse, ReturnType<typeof platformFlagsListQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await platformFlagsList({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: platformFlagsListQueryKey(options)
+});
+
+/**
+ * Drop the installation-wide value, restoring the built-in default
+ *
+ * Removing a row is not the same as setting it false: the flag falls back to the default this build was written with, which is why an absent row never means off.
+ *
+ * Clearing a flag that was not set SUCCEEDS. The requested state is reached either way.
+ */
+export const platformFlagClearMutation = (options?: Partial<Options<PlatformFlagClearData>>): UseMutationOptions<PlatformFlagClearResponse, PlatformFlagClearError, Options<PlatformFlagClearData>> => {
+    const mutationOptions: UseMutationOptions<PlatformFlagClearResponse, PlatformFlagClearError, Options<PlatformFlagClearData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await platformFlagClear({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Set a flag for the whole installation
+ *
+ * Applies to every organization that has no override of its own.
+ *
+ * A key this build does not declare is REFUSED. That is the reason flags are registered: a free-form store accepts a mistyped key, reports success, and leaves the real flag exactly as it was.
+ */
+export const platformFlagSetMutation = (options?: Partial<Options<PlatformFlagSetData>>): UseMutationOptions<PlatformFlagSetResponse, PlatformFlagSetError, Options<PlatformFlagSetData>> => {
+    const mutationOptions: UseMutationOptions<PlatformFlagSetResponse, PlatformFlagSetError, Options<PlatformFlagSetData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await platformFlagSet({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const platformFlagOverridesQueryKey = (options: Options<PlatformFlagOverridesData>) => createQueryKey('platformFlagOverrides', options);
+
+/**
+ * Which organizations have set this flag themselves
+ *
+ * The question to ask before changing an installation-wide default: these are the organizations the change will NOT reach, because each has an opinion of its own.
+ */
+export const platformFlagOverridesOptions = (options: Options<PlatformFlagOverridesData>) => queryOptions<PlatformFlagOverridesResponse, PlatformFlagOverridesError, PlatformFlagOverridesResponse, ReturnType<typeof platformFlagOverridesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await platformFlagOverrides({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: platformFlagOverridesQueryKey(options)
+});
+
+/**
+ * Drop one organization's override
+ *
+ * The organization falls back to the installation-wide value, or to the built-in default.
+ */
+export const platformOrgFlagClearMutation = (options?: Partial<Options<PlatformOrgFlagClearData>>): UseMutationOptions<PlatformOrgFlagClearResponse, PlatformOrgFlagClearError, Options<PlatformOrgFlagClearData>> => {
+    const mutationOptions: UseMutationOptions<PlatformOrgFlagClearResponse, PlatformOrgFlagClearError, Options<PlatformOrgFlagClearData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await platformOrgFlagClear({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Set a flag for one organization
+ *
+ * This is how a flag is targeted at one tenant. The organization is the ROW, never part of the key — so a tenant rename rewrites nothing, and 'which tenants have this on' is a query rather than a pattern match.
+ *
+ * Refused for a platform-scoped flag: there is no per-tenant legacy login page.
+ */
+export const platformOrgFlagSetMutation = (options?: Partial<Options<PlatformOrgFlagSetData>>): UseMutationOptions<PlatformOrgFlagSetResponse, PlatformOrgFlagSetError, Options<PlatformOrgFlagSetData>> => {
+    const mutationOptions: UseMutationOptions<PlatformOrgFlagSetResponse, PlatformOrgFlagSetError, Options<PlatformOrgFlagSetData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await platformOrgFlagSet({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -2280,6 +2280,34 @@ paths:
       summary: Remove an address from a set
       tags:
       - Firewall
+  /api/v1/flags:
+    get:
+      description: |-
+        Read only. Flags are set by platform staff; this says what applies here and which level decided it.
+
+        Every declared flag appears, including the ones nobody has overridden — a flag missing from this list would be indistinguishable from one that is switched off.
+      operationId: flags-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponseBody3"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: The feature flags in effect for this organization
+      tags:
+      - Organization
   /api/v1/fleet/activity:
     get:
       description: |-
@@ -3768,7 +3796,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody4"
+                $ref: "#/components/schemas/ListResponseBody5"
           description: OK
         default:
           content:
@@ -3886,6 +3914,230 @@ paths:
       - BearerAuth: []
       - ApiKeyAuth: []
       summary: Change a rule's policy
+      tags:
+      - Platform
+  /api/v1/platform/flags:
+    get:
+      description: |-
+        Every flag this build declares, resolved as an organization with no override of its own would see it.
+
+        Flags are declared IN CODE. The registry names the flag; the database supplies the organization — so a key is never per-tenant, and adding a tenant adds no flags.
+      operationId: platform-flags-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: List every declared feature flag
+      tags:
+      - Platform
+  /api/v1/platform/flags/{key}:
+    delete:
+      description: |-
+        Removing a row is not the same as setting it false: the flag falls back to the default this build was written with, which is why an absent row never means off.
+
+        Clearing a flag that was not set SUCCEEDS. The requested state is reached either way.
+      operationId: platform-flag-clear
+      parameters:
+      - explode: false
+        in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 120
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: "Drop the installation-wide value, restoring the built-in default"
+      tags:
+      - Platform
+    put:
+      description: |-
+        Applies to every organization that has no override of its own.
+
+        A key this build does not declare is REFUSED. That is the reason flags are registered: a free-form store accepts a mistyped key, reports success, and leaves the real flag exactly as it was.
+      operationId: platform-flag-set
+      parameters:
+      - explode: false
+        in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 120
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetRequestBody1"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Set a flag for the whole installation
+      tags:
+      - Platform
+  /api/v1/platform/flags/{key}/overrides:
+    get:
+      description: "The question to ask before changing an installation-wide default:\
+        \ these are the organizations the change will NOT reach, because each has\
+        \ an opinion of its own."
+      operationId: platform-flag-overrides
+      parameters:
+      - explode: false
+        in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 120
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverridesResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Which organizations have set this flag themselves
+      tags:
+      - Platform
+  /api/v1/platform/organizations/{org_id}/flags/{key}:
+    delete:
+      description: "The organization falls back to the installation-wide value, or\
+        \ to the built-in default."
+      operationId: platform-org-flag-clear
+      parameters:
+      - explode: false
+        in: path
+        name: org_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 120
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Drop one organization's override
+      tags:
+      - Platform
+    put:
+      description: |-
+        This is how a flag is targeted at one tenant. The organization is the ROW, never part of the key — so a tenant rename rewrites nothing, and 'which tenants have this on' is a query rather than a pattern match.
+
+        Refused for a platform-scoped flag: there is no per-tenant legacy login page.
+      operationId: platform-org-flag-set
+      parameters:
+      - explode: false
+        in: path
+        name: org_id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: key
+        required: true
+        schema:
+          maxLength: 120
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetOrgRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: Set a flag for one organization
       tags:
       - Platform
   /api/v1/platform/policies:
@@ -4044,7 +4296,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody3"
+                $ref: "#/components/schemas/ListResponseBody4"
           description: OK
         default:
           content:
@@ -5950,6 +6202,44 @@ components:
       required:
       - digest
       - revision
+    FlagView:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        default: true
+        key: key
+        scope: scope
+        source: source
+        value: true
+        why: why
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        default:
+          description: What applies when neither level has a row.
+          type: boolean
+        key:
+          type: string
+        scope:
+          description: "platform: one value for the installation. tenant: a platform\
+            \ default that an organization row overrides."
+          type: string
+        source:
+          description: "default, platform or organization — which level decided."
+          type: string
+        value:
+          type: boolean
+        why:
+          type: string
+      required:
+      - default
+      - key
+      - scope
+      - source
+      - value
     FleetActivityResponseBody:
       additionalProperties: false
       example:
@@ -7386,6 +7676,39 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
+        flags:
+        - $schema: https://openapi-generator.tech
+          default: true
+          key: key
+          scope: scope
+          source: source
+          value: true
+          why: why
+        - $schema: https://openapi-generator.tech
+          default: true
+          key: key
+          scope: scope
+          source: source
+          value: true
+          why: why
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        flags:
+          items:
+            $ref: "#/components/schemas/FlagView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - flags
+    ListResponseBody4:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
         keys:
         - $schema: https://openapi-generator.tech
           created_at: 2000-01-23T04:56:07.000+00:00
@@ -7421,7 +7744,7 @@ components:
           default: null
       required:
       - keys
-    ListResponseBody4:
+    ListResponseBody5:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
@@ -8142,6 +8465,46 @@ components:
       required:
       - id
       - name
+    OverrideView:
+      additionalProperties: false
+      example:
+        organization_id: organization_id
+        value: true
+      properties:
+        organization_id:
+          type: string
+        value:
+          type: boolean
+      required:
+      - organization_id
+      - value
+    OverridesResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        key: key
+        overrides:
+        - organization_id: organization_id
+          value: true
+        - organization_id: organization_id
+          value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        overrides:
+          items:
+            $ref: "#/components/schemas/OverrideView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - key
+      - overrides
     PasskeyBeginLoginResponseBody:
       additionalProperties: false
       example:
@@ -9430,6 +9793,21 @@ components:
       required:
       - id
       - value
+    SetOrgRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          type: boolean
+      required:
+      - value
     SetRequestBody:
       additionalProperties: false
       example:
@@ -9458,6 +9836,21 @@ components:
           type: string
       required:
       - state
+    SetRequestBody1:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          type: boolean
+      required:
+      - value
     SetView:
       additionalProperties: false
       example:

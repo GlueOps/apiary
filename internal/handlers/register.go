@@ -8,6 +8,7 @@ import (
 	"github.com/glueops/apiary/internal/handlers/apikey"
 	"github.com/glueops/apiary/internal/handlers/auth"
 	"github.com/glueops/apiary/internal/handlers/estate"
+	"github.com/glueops/apiary/internal/handlers/featureflag"
 	"github.com/glueops/apiary/internal/handlers/firewall"
 	"github.com/glueops/apiary/internal/handlers/fleet"
 	"github.com/glueops/apiary/internal/handlers/invitation"
@@ -51,6 +52,11 @@ func RegisterUserProtected(api huma.API, deps *app.Deps) error {
 		return err
 	}
 	policy.RegisterOrgProtected(api, deps)
+	// Feature flags, READ ONLY. A tenant sees what applies to it and which level
+	// decided; setting one is platform work. There is no write route on this
+	// surface at all — not one that checks a role and refuses — because a route
+	// that does not exist cannot be reached through a hole in a role check.
+	featureflag.RegisterProtected(api, deps)
 	// Rule authoring. Membership-gated for the same reason the fleet is: whose
 	// hypervisors these rules protect is a different question from job title.
 	firewall.RegisterUserProtected(api, deps)
@@ -76,6 +82,11 @@ func RegisterAdminProtected(api huma.API, deps *app.Deps) {
 	// authenticate, found an organization or accept an invitation, for every
 	// tenant at once — a boundary no customer admin may reach.
 	accessrule.RegisterAdminProtected(api, deps)
+	// The THIRD platform-level configuration system, and deliberately not part of
+	// the first. A policy merges with OR and can only tighten as it descends; a
+	// flag's whole purpose is that the narrower level overrides, in either
+	// direction. Same two-table shape, opposite resolution rule.
+	featureflag.RegisterAdminProtected(api, deps)
 }
 
 // RegisterPreAuthz mounts the endpoints that must be reachable AFTER

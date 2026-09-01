@@ -4,6 +4,7 @@ All URIs are relative to *http://127.0.0.1:8080*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**FlagsList**](OrganizationAPI.md#FlagsList) | **Get** /api/v1/flags | The feature flags in effect for this organization
 [**OrgMembersList**](OrganizationAPI.md#OrgMembersList) | **Get** /api/v1/organization/members | List the members of this organization
 [**OrgMembersRemove**](OrganizationAPI.md#OrgMembersRemove) | **Delete** /api/v1/organization/members/{id} | Remove a member from this organization
 [**OrgMembersUpdateRole**](OrganizationAPI.md#OrgMembersUpdateRole) | **Patch** /api/v1/organization/members/{id} | Change a member&#39;s role
@@ -12,6 +13,67 @@ Method | HTTP request | Description
 [**OrgPoliciesList**](OrganizationAPI.md#OrgPoliciesList) | **Get** /api/v1/organization/policies | List this organization&#39;s policies
 [**OrgPoliciesSet**](OrganizationAPI.md#OrgPoliciesSet) | **Put** /api/v1/organization/policies/{kind} | Set a policy for this organization
 
+
+
+## FlagsList
+
+> ListResponseBody3 FlagsList(ctx).Execute()
+
+The feature flags in effect for this organization
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.OrganizationAPI.FlagsList(context.Background()).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `OrganizationAPI.FlagsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FlagsList`: ListResponseBody3
+	fmt.Fprintf(os.Stdout, "Response from `OrganizationAPI.FlagsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+This endpoint does not need any parameter.
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFlagsListRequest struct via the builder pattern
+
+
+### Return type
+
+[**ListResponseBody3**](ListResponseBody3.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
 
 
 ## OrgMembersList

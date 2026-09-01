@@ -166,6 +166,7 @@ Class | Method | HTTP request | Description
 *InvitationsAPI* | [**OrgInvitationsRevoke**](docs/InvitationsAPI.md#orginvitationsrevoke) | **Delete** /api/v1/invitations/{id} | Withdraw an invitation
 *MeAPI* | [**MeDeleteAccount**](docs/MeAPI.md#medeleteaccount) | **Delete** /api/v1/me | Delete your account
 *MeAPI* | [**MeSoleOwnerships**](docs/MeAPI.md#mesoleownerships) | **Get** /api/v1/me/sole-ownerships | Organizations this account solely owns
+*OrganizationAPI* | [**FlagsList**](docs/OrganizationAPI.md#flagslist) | **Get** /api/v1/flags | The feature flags in effect for this organization
 *OrganizationAPI* | [**OrgMembersList**](docs/OrganizationAPI.md#orgmemberslist) | **Get** /api/v1/organization/members | List the members of this organization
 *OrganizationAPI* | [**OrgMembersRemove**](docs/OrganizationAPI.md#orgmembersremove) | **Delete** /api/v1/organization/members/{id} | Remove a member from this organization
 *OrganizationAPI* | [**OrgMembersUpdateRole**](docs/OrganizationAPI.md#orgmembersupdaterole) | **Patch** /api/v1/organization/members/{id} | Change a member&#39;s role
@@ -178,6 +179,12 @@ Class | Method | HTTP request | Description
 *PlatformAPI* | [**PlatformAccessRulesDelete**](docs/PlatformAPI.md#platformaccessrulesdelete) | **Delete** /api/v1/platform/access-rules/{id} | Delete an auth access rule
 *PlatformAPI* | [**PlatformAccessRulesList**](docs/PlatformAPI.md#platformaccessruleslist) | **Get** /api/v1/platform/access-rules | List auth access rules
 *PlatformAPI* | [**PlatformAccessRulesUpdate**](docs/PlatformAPI.md#platformaccessrulesupdate) | **Put** /api/v1/platform/access-rules/{id} | Change a rule&#39;s policy
+*PlatformAPI* | [**PlatformFlagClear**](docs/PlatformAPI.md#platformflagclear) | **Delete** /api/v1/platform/flags/{key} | Drop the installation-wide value, restoring the built-in default
+*PlatformAPI* | [**PlatformFlagOverrides**](docs/PlatformAPI.md#platformflagoverrides) | **Get** /api/v1/platform/flags/{key}/overrides | Which organizations have set this flag themselves
+*PlatformAPI* | [**PlatformFlagSet**](docs/PlatformAPI.md#platformflagset) | **Put** /api/v1/platform/flags/{key} | Set a flag for the whole installation
+*PlatformAPI* | [**PlatformFlagsList**](docs/PlatformAPI.md#platformflagslist) | **Get** /api/v1/platform/flags | List every declared feature flag
+*PlatformAPI* | [**PlatformOrgFlagClear**](docs/PlatformAPI.md#platformorgflagclear) | **Delete** /api/v1/platform/organizations/{org_id}/flags/{key} | Drop one organization&#39;s override
+*PlatformAPI* | [**PlatformOrgFlagSet**](docs/PlatformAPI.md#platformorgflagset) | **Put** /api/v1/platform/organizations/{org_id}/flags/{key} | Set a flag for one organization
 *PlatformAPI* | [**PlatformPoliciesClear**](docs/PlatformAPI.md#platformpoliciesclear) | **Delete** /api/v1/platform/policies/{kind} | Return a platform policy to inherit
 *PlatformAPI* | [**PlatformPoliciesImpact**](docs/PlatformAPI.md#platformpoliciesimpact) | **Get** /api/v1/platform/policies/{kind}/impact | How many users this policy would lock out
 *PlatformAPI* | [**PlatformPoliciesList**](docs/PlatformAPI.md#platformpolicieslist) | **Get** /api/v1/platform/policies | List platform policies
@@ -251,6 +258,7 @@ Class | Method | HTTP request | Description
  - [ErrorModel](docs/ErrorModel.md)
  - [EstateView](docs/EstateView.md)
  - [FirewallDesiredView](docs/FirewallDesiredView.md)
+ - [FlagView](docs/FlagView.md)
  - [FleetActivityResponseBody](docs/FleetActivityResponseBody.md)
  - [FleetActivityView](docs/FleetActivityView.md)
  - [FleetlessHostView](docs/FleetlessHostView.md)
@@ -284,6 +292,7 @@ Class | Method | HTTP request | Description
  - [ListResponseBody2](docs/ListResponseBody2.md)
  - [ListResponseBody3](docs/ListResponseBody3.md)
  - [ListResponseBody4](docs/ListResponseBody4.md)
+ - [ListResponseBody5](docs/ListResponseBody5.md)
  - [ListRulesResponseBody](docs/ListRulesResponseBody.md)
  - [ListRulesetsResponseBody](docs/ListRulesetsResponseBody.md)
  - [ListSetElementsResponseBody](docs/ListSetElementsResponseBody.md)
@@ -306,6 +315,8 @@ Class | Method | HTTP request | Description
  - [MintTokenResponseBody](docs/MintTokenResponseBody.md)
  - [MyOrganizationView](docs/MyOrganizationView.md)
  - [OrganizationStruct](docs/OrganizationStruct.md)
+ - [OverrideView](docs/OverrideView.md)
+ - [OverridesResponseBody](docs/OverridesResponseBody.md)
  - [PasskeyBeginLoginResponseBody](docs/PasskeyBeginLoginResponseBody.md)
  - [PasskeyBeginRegisterResponseBody](docs/PasskeyBeginRegisterResponseBody.md)
  - [PasskeyDeleteResponseBody](docs/PasskeyDeleteResponseBody.md)
@@ -345,7 +356,9 @@ Class | Method | HTTP request | Description
  - [RuleView](docs/RuleView.md)
  - [RulesetView](docs/RulesetView.md)
  - [SetElementView](docs/SetElementView.md)
+ - [SetOrgRequestBody](docs/SetOrgRequestBody.md)
  - [SetRequestBody](docs/SetRequestBody.md)
+ - [SetRequestBody1](docs/SetRequestBody1.md)
  - [SetView](docs/SetView.md)
  - [SnapshotBodyResponseBody](docs/SnapshotBodyResponseBody.md)
  - [SnapshotView](docs/SnapshotView.md)
