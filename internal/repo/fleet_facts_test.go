@@ -650,3 +650,72 @@ func TestAnObservationThatClaimsNoMachineIsNotSilentlyLost(t *testing.T) {
 		t.Fatalf("observed_guests = %d, want 0 — this machine reported nothing", got.ObservedGuests)
 	}
 }
+
+// A DEPARTURE THAT SUCCEEDS RETIRES THE FAILURE OF THE ONE BEFORE IT.
+//
+// 192.168.240.12 sat in lab-a rendering "last departure failed" with a
+// 22-hour-old drain_unknown refusal, having departed and rejoined twice since it
+// was written. Nothing could clear it: RecordOperationOutcome cleared on
+// success, but it was called from the departure JOB, and the departure moved to
+// agent convergence and dispatches no job — so it has no callers and the column
+// is written by nothing.
+//
+// The capacity sync clears a stale JOIN outcome and deliberately leaves a
+// departure, on the reasoning that a node which failed to leave and is still a
+// member has an accurate failure beside it. True — but only until the node
+// actually leaves, which the sync never sees, because a departed host is no
+// longer in the cluster it syncs.
+func TestLeavingRetiresAFailedDeparture(t *testing.T) {
+	db := factsDB(t)
+
+	hive := tenant.Hive{Name: "dc-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	name := "pve12"
+	hv := tenant.Hypervisor{
+		HiveID: &hive.ID, Name: &name, Address: "192.0.2.12",
+		LastOperation:      "depart",
+		LastOperationError: "depart: refused by a precondition: departure refused: drain_unknown",
+	}
+	if err := db.Create(&hv).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MarkFleetless(context.Background(), db, hv.ID); err != nil {
+		t.Fatalf("mark fleetless: %v", err)
+	}
+
+	var got tenant.Hypervisor
+	if err := db.First(&got, "id = ?", hv.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.LastOperationError != "" {
+		t.Fatalf("the host left its cluster and still reports %q — the refusal describes a "+
+			"departure that has since happened", got.LastOperationError)
+	}
+
+	// A join failure is NOT this event's to clear. The node left; whether it
+	// could join something is a different unresolved question.
+	other := tenant.Hypervisor{
+		HiveID: &hive.ID, Name: &name, Address: "192.0.2.13",
+		LastOperation: "join", LastOperationError: "join refused: hive_not_empty",
+	}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkFleetless(context.Background(), db, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	// A FRESH destination. GORM adds a populated primary key on the destination
+	// struct as an extra condition, so reusing `got` here searches for both ids
+	// and finds neither.
+	var kept tenant.Hypervisor
+	if err := db.First(&kept, "id = ?", other.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if kept.LastOperationError == "" {
+		t.Fatal("leaving a cluster erased an unrelated join failure, which is a true statement " +
+			"about a machine nobody has resolved")
+	}
+}
