@@ -412,9 +412,30 @@ func (r *FleetRepoGorm) ClaimNextTask(ctx context.Context, beeID uuid.UUID, leas
 			return err
 		}
 
-		// Already running under a live lease held by this same bee: extend it and
-		// hand back the same task rather than resetting its state.
-		if task.Status == tenant.FleetTaskRunning &&
+		// ALREADY HELD BY THIS BEE UNDER A LIVE LEASE: extend it and hand back
+		// the same task, touching neither claimed_at nor attempt.
+		//
+		// Claimed as well as running. This used to test for running alone, and no
+		// bee ever reports that state — it is tracked in the agent's own local
+		// store and only the terminal outcome comes back — so every task sat in
+		// "claimed" and every heartbeat fell through to the re-claim below.
+		//
+		// The heartbeat calls this on every beat, so the cost was one re-claim
+		// per beat for the whole life of the task, and it corrupted both columns
+		// it wrote:
+		//
+		//   - attempt became a count of HEARTBEATS rather than of pickups. A task
+		//     that lived 98 minutes reached 2354.
+		//   - claimed_at was overwritten on every beat, so finished_at minus
+		//     claimed_at could never exceed one heartbeat interval. Across 57
+		//     finished tasks the largest was 2.09s, which is the interval and not
+		//     the work — a duration column reading it showed roughly two seconds
+		//     for everything, which is worse than showing nothing.
+		//
+		// An EXPIRED lease still falls through and re-claims. That is the
+		// recovery path for a bee that died mid-task, and incrementing the
+		// counter there is correct: it is genuinely another pickup.
+		if (task.Status == tenant.FleetTaskRunning || task.Status == tenant.FleetTaskClaimed) &&
 			task.LeaseExpiresAt != nil && task.LeaseExpiresAt.After(now) {
 			return tx.Model(&tenant.FleetTask{}).Where("id = ?", task.ID).
 				Update("lease_expires_at", deadline).Error

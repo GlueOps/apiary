@@ -342,6 +342,16 @@ func TestClaimReturnsTheSameTaskToACrashedBee(t *testing.T) {
 	if err != nil || first == nil {
 		t.Fatalf("first claim: %v (task=%v)", err, first)
 	}
+
+	// ACTUALLY CRASH IT. This test used to claim twice in a row under a live
+	// lease and assert the counter moved — which is a bee polling, not a bee
+	// dying, and asserting it locked in the bug that made attempt a count of
+	// heartbeats. Expiring the lease is what the name has always described.
+	if err := db.Model(&tenant.FleetTask{}).Where("id = ?", first.ID).
+		Update("lease_expires_at", time.Now().UTC().Add(-time.Minute)).Error; err != nil {
+		t.Fatal(err)
+	}
+
 	again, err := r.ClaimNextTask(context.Background(), bee.ID, time.Minute)
 	if err != nil || again == nil {
 		t.Fatalf("second claim: %v (task=%v)", err, again)
@@ -351,7 +361,8 @@ func TestClaimReturnsTheSameTaskToACrashedBee(t *testing.T) {
 			"already running is now orphaned", first.ID, again.ID)
 	}
 	if again.Attempt < 2 {
-		t.Fatalf("attempt = %d, want it to increment so a task that keeps being reclaimed is visible", again.Attempt)
+		t.Fatalf("attempt = %d after a lapsed lease was picked up again; a task being retried "+
+			"has to be visible as one", again.Attempt)
 	}
 }
 
@@ -530,5 +541,66 @@ func TestReEnrolmentWithTheSameKeyDisplacesNothing(t *testing.T) {
 			t.Fatalf("enrol %d reported %s as displaced, but it is the key still in use — "+
 				"revoking it locks the host out on its own retry", i, *res.ReplacedKeyID)
 		}
+	}
+}
+
+// A HEARTBEAT IS NOT A PICKUP.
+//
+// ClaimNextTask is called on every heartbeat, and its live-lease shortcut used
+// to test for status "running" — a state no bee ever reports, because the agent
+// tracks it in its own local store and sends back only the terminal outcome. So
+// every task sat in "claimed", every beat fell through to the re-claim, and both
+// columns it writes were corrupted: attempt counted beats rather than pickups
+// (2354 on a task that lived 98 minutes), and claimed_at was overwritten each
+// time, capping finished_at minus claimed_at at one heartbeat interval. Across
+// 57 finished tasks the largest such duration was 2.09s — the interval, not the
+// work.
+func TestPollingDoesNotReclaimATaskTheBeeAlreadyHolds(t *testing.T) {
+	db := fleetDB(t)
+	ctx := context.Background()
+	r := NewFleetRepoGorm(db)
+
+	bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+	if err := db.Create(&bee).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateTask(ctx, &tenant.FleetTask{
+		BeeID: bee.ID, Kind: KindDisarm, Spec: []byte(`{}`),
+		Status: tenant.FleetTaskPending,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := r.ClaimNextTask(ctx, bee.ID, 15*time.Minute)
+	if err != nil || first == nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if first.Attempt != 1 {
+		t.Fatalf("attempt = %d after one pickup, want 1", first.Attempt)
+	}
+	firstClaimedAt := first.ClaimedAt
+
+	// Five more heartbeats, exactly as a live agent produces while it works.
+	for range 5 {
+		if _, err := r.ClaimNextTask(ctx, bee.ID, 15*time.Minute); err != nil {
+			t.Fatalf("re-poll: %v", err)
+		}
+	}
+
+	var got tenant.FleetTask
+	if err := db.First(&got, "id = ?", first.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempt != 1 {
+		t.Fatalf("attempt = %d after five heartbeats on a task already held; the counter is "+
+			"measuring beats rather than pickups", got.Attempt)
+	}
+	if got.ClaimedAt == nil || firstClaimedAt == nil || !got.ClaimedAt.Equal(*firstClaimedAt) {
+		t.Fatal("claimed_at moved while the bee was working, so any duration measured from it " +
+			"is bounded by the heartbeat interval rather than by the work")
+	}
+	// The lease is still extended — that is what the shortcut is for.
+	if got.LeaseExpiresAt == nil || !got.LeaseExpiresAt.After(*first.LeaseExpiresAt) {
+		t.Fatal("the lease was not extended, so a long task would lose its claim mid-flight")
 	}
 }
