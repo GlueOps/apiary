@@ -1,11 +1,11 @@
 import {
+  IconActivity,
   IconAlertTriangle,
   IconBuildingWarehouse,
   IconChevronRight,
   IconCloudUpload,
   IconCpu,
   IconEye,
-  IconActivity,
   IconHistory,
   IconKey,
   IconLayoutDashboard,

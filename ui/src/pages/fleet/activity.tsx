@@ -148,9 +148,9 @@ export const FleetActivity = () => {
           <h1 className="font-heading text-2xl">Fleet activity</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             What the fleet's agents have been asked to do, newest first, and what came of it.
-            Distinct from the audit trail, which records what people did: asking for a departure
-            is one action there, and the work that follows on the host is several here — so a
-            request that succeeded and then failed on the machine appears in both, differently.
+            Distinct from the audit trail, which records what people did: asking for a departure is
+            one action there, and the work that follows on the host is several here — so a request
+            that succeeded and then failed on the machine appears in both, differently.
           </p>
         </div>
         <Button
