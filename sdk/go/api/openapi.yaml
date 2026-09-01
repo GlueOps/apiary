@@ -2280,6 +2280,85 @@ paths:
       summary: Remove an address from a set
       tags:
       - Firewall
+  /api/v1/fleet/activity:
+    get:
+      description: |-
+        Every agent task, newest first: which machine ran it, what it was, whether it finished, and the agent's own account of what stopped it.
+
+        DISTINCT FROM THE AUDIT TRAIL, which records what PEOPLE did. An operator asking for a departure is one event there; the work that follows on the host is several here, and a departure that was requested successfully and then failed on the machine appears as a success in one and a failure in the other.
+
+        A failure is kept as the agent wrote it. These messages are written to be acted on — "pve-root-ca.srl is still byte-identical to the copy this node left the hive with" — and paraphrasing one loses the half that says what to do.
+      operationId: fleet-activity-list
+      parameters:
+      - description: "Exact task kind, e.g. fleet.datacenter.disarm."
+        explode: false
+        in: query
+        name: kind
+        required: false
+        schema:
+          description: "Exact task kind, e.g. fleet.datacenter.disarm."
+          type: string
+        style: form
+      - description: "pending, running, succeeded, failed or cancelled."
+        explode: false
+        in: query
+        name: status
+        required: false
+        schema:
+          description: "pending, running, succeeded, failed or cancelled."
+          type: string
+        style: form
+      - description: Narrow to one machine.
+        explode: false
+        in: query
+        name: hypervisor_id
+        required: false
+        schema:
+          description: Narrow to one machine.
+          type: string
+        style: form
+      - description: Default 50.
+        explode: false
+        in: query
+        name: limit
+        required: false
+        schema:
+          description: Default 50.
+          format: int64
+          maximum: 200
+          minimum: 1
+          type: integer
+        style: form
+      - explode: false
+        in: query
+        name: offset
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetActivityResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: "What the fleet's agents have been asked to do, and what came of it"
+      tags:
+      - Fleet
   /api/v1/fleet/agent-upgrades:
     post:
       description: |-
@@ -5871,6 +5950,116 @@ components:
       required:
       - digest
       - revision
+    FleetActivityResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        activity:
+        - address: address
+          attempt: 0
+          bee_id: bee_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          error: error
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hive_name: hive_name
+          id: id
+          kind: kind
+          node_name: node_name
+          operation: operation
+          phase: phase
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: status
+        - address: address
+          attempt: 0
+          bee_id: bee_id
+          created_at: 2000-01-23T04:56:07.000+00:00
+          error: error
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hive_name: hive_name
+          id: id
+          kind: kind
+          node_name: node_name
+          operation: operation
+          phase: phase
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: status
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        activity:
+          items:
+            $ref: "#/components/schemas/FleetActivityView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - activity
+    FleetActivityView:
+      additionalProperties: false
+      example:
+        address: address
+        attempt: 0
+        bee_id: bee_id
+        created_at: 2000-01-23T04:56:07.000+00:00
+        error: error
+        finished_at: 2000-01-23T04:56:07.000+00:00
+        hive_name: hive_name
+        id: id
+        kind: kind
+        node_name: node_name
+        operation: operation
+        phase: phase
+        started_at: 2000-01-23T04:56:07.000+00:00
+        status: status
+      properties:
+        address:
+          type: string
+        attempt:
+          format: int64
+          type: integer
+        bee_id:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        error:
+          description: The agent's own account of what stopped it. Empty unless it
+            failed.
+          type: string
+        finished_at:
+          format: date-time
+          type: string
+        hive_name:
+          description: "The cluster the task ACTED AGAINST, which during a migration\
+            \ is not the one the machine is in."
+          type: string
+        id:
+          type: string
+        kind:
+          type: string
+        node_name:
+          type: string
+        operation:
+          description: The kind as an operator reads it. Empty for a kind with no
+            label yet.
+          type: string
+        phase:
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        status:
+          type: string
+      required:
+      - attempt
+      - bee_id
+      - created_at
+      - id
+      - kind
+      - status
     FleetlessHostView:
       additionalProperties: false
       example:

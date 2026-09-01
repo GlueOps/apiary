@@ -577,6 +577,12 @@ func queueDisarm(ctx context.Context, db *gorm.DB, h tenant.Hypervisor, members 
 // KindDisarm matches the agent's fleetops.KindDisarm.
 const KindDisarm = "fleet.datacenter.disarm"
 
+// KindDistUpgrade matches the agent's fleetops.KindDistUpgrade. Named here
+// because the outcome recorder has to label it for an operator, and a wire
+// constant spelled out at each use site is one typo away from a task kind that
+// silently matches nothing.
+const KindDistUpgrade = "fleet.host.dist-upgrade"
+
 // ObservedHiveNodeCount is how many of a hive's machines are actually IN its
 // cluster, as their own agents report.
 //

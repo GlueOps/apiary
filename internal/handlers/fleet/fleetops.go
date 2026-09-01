@@ -392,6 +392,44 @@ type ListAuditResponse struct {
 	}
 }
 
+// FleetActivityRequest narrows the agent-task trail.
+type FleetActivityRequest struct {
+	Kind         string `query:"kind" doc:"Exact task kind, e.g. fleet.datacenter.disarm."`
+	Status       string `query:"status" doc:"pending, running, succeeded, failed or cancelled."`
+	HypervisorID string `query:"hypervisor_id" doc:"Narrow to one machine."`
+	Limit        int    `query:"limit" minimum:"1" maximum:"200" doc:"Default 50."`
+	Offset       int    `query:"offset" minimum:"0"`
+}
+
+// FleetActivityView is one thing an agent was asked to do, and what came of it.
+//
+// The machine's address is on the row rather than left to the client to resolve.
+// Whoever reads this has to go and look at a box, and an agent id names a
+// database record — a host that has since been re-enrolled would resolve to
+// nothing, which is exactly when its history is worth reading.
+type FleetActivityView struct {
+	ID         string `json:"id"`
+	BeeID      string `json:"bee_id"`
+	Address    string `json:"address,omitempty"`
+	NodeName   string `json:"node_name,omitempty"`
+	HiveName   string `json:"hive_name,omitempty" doc:"The cluster the task ACTED AGAINST, which during a migration is not the one the machine is in."`
+	Kind       string `json:"kind"`
+	Operation  string `json:"operation,omitempty" doc:"The kind as an operator reads it. Empty for a kind with no label yet."`
+	Status     string `json:"status"`
+	Phase      string `json:"phase,omitempty"`
+	Error      string `json:"error,omitempty" doc:"The agent's own account of what stopped it. Empty unless it failed."`
+	Attempt    int    `json:"attempt"`
+	CreatedAt  string `json:"created_at" format:"date-time"`
+	StartedAt  string `json:"started_at,omitempty" format:"date-time"`
+	FinishedAt string `json:"finished_at,omitempty" format:"date-time"`
+}
+
+type FleetActivityResponse struct {
+	Body struct {
+		Activity []FleetActivityView `json:"activity"`
+	}
+}
+
 type SyncHiveRequest struct {
 	ID string `path:"id" format:"uuid"`
 }
@@ -1465,6 +1503,79 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		out.Body.Queued = true
 		out.Body.Detail = fmt.Sprintf("this host is recorded as a member of %q; its agent will "+
 			"form the cluster on its next check-in", hive.Name)
+		return out, nil
+	})
+
+	huma.Register(hapi, huma.Operation{
+		OperationID: "fleet-activity-list",
+		Method:      http.MethodGet,
+		Path:        "/fleet/activity",
+		Summary:     "What the fleet's agents have been asked to do, and what came of it",
+		Description: "Every agent task, newest first: which machine ran it, what it was, " +
+			"whether it finished, and the agent's own account of what stopped it.\n\n" +
+			"DISTINCT FROM THE AUDIT TRAIL, which records what PEOPLE did. An operator asking " +
+			"for a departure is one event there; the work that follows on the host is several " +
+			"here, and a departure that was requested successfully and then failed on the " +
+			"machine appears as a success in one and a failure in the other.\n\n" +
+			"A failure is kept as the agent wrote it. These messages are written to be acted " +
+			"on — \"pve-root-ca.srl is still byte-identical to the copy this node left the hive " +
+			"with\" — and paraphrasing one loses the half that says what to do.",
+		Tags:     []string{"Fleet"},
+		Security: apimiddleware.SecurityUserOrKey,
+	}, func(ctx context.Context, in *FleetActivityRequest) (*FleetActivityResponse, error) {
+		p, err := admin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		db, err := tenantDB(ctx, p.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+
+		f := repo.FleetActivityFilter{
+			Kind:   strings.TrimSpace(in.Kind),
+			Status: strings.TrimSpace(in.Status),
+			Limit:  in.Limit,
+			Offset: in.Offset,
+		}
+		if strings.TrimSpace(in.HypervisorID) != "" {
+			hid, perr := uuid.Parse(in.HypervisorID)
+			if perr != nil {
+				return nil, huma.Error422UnprocessableEntity("invalid hypervisor id")
+			}
+			f.HypervisorID = &hid
+		}
+
+		rows, err := repo.ListFleetActivity(ctx, db, f)
+		if err != nil {
+			return nil, mapErr(ctx, err)
+		}
+
+		out := &FleetActivityResponse{}
+		out.Body.Activity = make([]FleetActivityView, 0, len(rows))
+		for _, r := range rows {
+			v := FleetActivityView{
+				ID:        r.ID.String(),
+				BeeID:     r.BeeID.String(),
+				Address:   r.Address,
+				NodeName:  r.NodeName,
+				HiveName:  r.HiveName,
+				Kind:      r.Kind,
+				Operation: repo.OperationNameForTaskKind(r.Kind),
+				Status:    r.Status,
+				Phase:     r.Phase,
+				Error:     r.Error,
+				Attempt:   r.Attempt,
+				CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339),
+			}
+			if r.StartedAt != nil {
+				v.StartedAt = r.StartedAt.UTC().Format(time.RFC3339)
+			}
+			if r.FinishedAt != nil {
+				v.FinishedAt = r.FinishedAt.UTC().Format(time.RFC3339)
+			}
+			out.Body.Activity = append(out.Body.Activity, v)
+		}
 		return out, nil
 	})
 

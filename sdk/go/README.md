@@ -126,6 +126,7 @@ Class | Method | HTTP request | Description
 *FirewallAPI* | [**FirewallSnapshotBody**](docs/FirewallAPI.md#firewallsnapshotbody) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots/{revision} | Read one published revision&#39;s ruleset
 *FirewallAPI* | [**FirewallSnapshotsList**](docs/FirewallAPI.md#firewallsnapshotslist) | **Get** /api/v1/firewall/hives/{hive_id}/snapshots | List this fleet&#39;s published revisions
 *FleetAPI* | [**AuditEventsList**](docs/FleetAPI.md#auditeventslist) | **Get** /api/v1/audit/events | What has been done in this organization, and by whom
+*FleetAPI* | [**FleetActivityList**](docs/FleetAPI.md#fleetactivitylist) | **Get** /api/v1/fleet/activity | What the fleet&#39;s agents have been asked to do, and what came of it
 *FleetAPI* | [**FleetAgentUpgrade**](docs/FleetAPI.md#fleetagentupgrade) | **Post** /api/v1/fleet/agent-upgrades | Upgrade every agent in a fleet
 *FleetAPI* | [**FleetBeeAgentBinary**](docs/FleetAPI.md#fleetbeeagentbinary) | **Get** /api/v1/agent/dist/{os}/{arch} | Download the agent binary for one platform
 *FleetAPI* | [**FleetBeeAgentDist**](docs/FleetAPI.md#fleetbeeagentdist) | **Get** /api/v1/agent/dist | What agent binaries this control plane can serve
@@ -250,6 +251,8 @@ Class | Method | HTTP request | Description
  - [ErrorModel](docs/ErrorModel.md)
  - [EstateView](docs/EstateView.md)
  - [FirewallDesiredView](docs/FirewallDesiredView.md)
+ - [FleetActivityResponseBody](docs/FleetActivityResponseBody.md)
+ - [FleetActivityView](docs/FleetActivityView.md)
  - [FleetlessHostView](docs/FleetlessHostView.md)
  - [ForgotPasswordRequestBody](docs/ForgotPasswordRequestBody.md)
  - [ForgotPasswordResponseBody](docs/ForgotPasswordResponseBody.md)

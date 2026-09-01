@@ -5,6 +5,7 @@ import {
   IconCloudUpload,
   IconCpu,
   IconEye,
+  IconActivity,
   IconHistory,
   IconKey,
   IconLayoutDashboard,
@@ -119,6 +120,7 @@ const navItems: NavEntry[] = [
   // Top level rather than under Settings: it answers a question asked DURING
   // an incident — who changed this — and a page nobody can find during one
   // is a page that does not exist.
+  { title: 'Fleet activity', href: '/fleet/activity', icon: IconActivity },
   { title: 'Audit trail', href: '/audit', icon: IconHistory },
   {
     title: 'Proxmox Datacenter',
