@@ -408,18 +408,27 @@ type FleetActivityRequest struct {
 // database record — a host that has since been re-enrolled would resolve to
 // nothing, which is exactly when its history is worth reading.
 type FleetActivityView struct {
-	ID         string `json:"id"`
-	BeeID      string `json:"bee_id"`
-	Address    string `json:"address,omitempty"`
-	NodeName   string `json:"node_name,omitempty"`
-	HiveName   string `json:"hive_name,omitempty" doc:"The cluster the task ACTED AGAINST, which during a migration is not the one the machine is in."`
-	Kind       string `json:"kind"`
-	Operation  string `json:"operation,omitempty" doc:"The kind as an operator reads it. Empty for a kind with no label yet."`
-	Status     string `json:"status"`
-	Phase      string `json:"phase,omitempty"`
-	Error      string `json:"error,omitempty" doc:"The agent's own account of what stopped it. Empty unless it failed."`
-	Attempt    int    `json:"attempt"`
-	CreatedAt  string `json:"created_at" format:"date-time"`
+	ID        string `json:"id"`
+	BeeID     string `json:"bee_id"`
+	Address   string `json:"address,omitempty"`
+	NodeName  string `json:"node_name,omitempty"`
+	HiveName  string `json:"hive_name,omitempty" doc:"The cluster the task ACTED AGAINST, which during a migration is not the one the machine is in."`
+	Kind      string `json:"kind"`
+	Operation string `json:"operation,omitempty" doc:"The kind as an operator reads it. Empty for a kind with no label yet."`
+	Status    string `json:"status"`
+	Phase     string `json:"phase,omitempty"`
+	Error     string `json:"error,omitempty" doc:"The agent's own account of what stopped it. Empty unless it failed."`
+	// Attempt counts how many times an agent CLAIMED this task, not how many
+	// times the work ran. A lease that expires and is picked up again increments
+	// it without anything having been retried, so it reads as "how many times
+	// this was picked up" — which is a real signal, and not the one the word
+	// attempt suggests.
+	Attempt   int    `json:"attempt" doc:"How many times an agent claimed this task. A re-claim after a lease expiry counts, so this is not a count of executions."`
+	CreatedAt string `json:"created_at" format:"date-time"`
+
+	// ClaimedAt is when an agent picked it up, and the only usable start time:
+	// started_at is written only when a bee reports "running", which no bee does.
+	ClaimedAt  string `json:"claimed_at,omitempty" format:"date-time"`
 	StartedAt  string `json:"started_at,omitempty" format:"date-time"`
 	FinishedAt string `json:"finished_at,omitempty" format:"date-time"`
 }
@@ -1567,6 +1576,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 				Error:     r.Error,
 				Attempt:   r.Attempt,
 				CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339),
+			}
+			if r.ClaimedAt != nil {
+				v.ClaimedAt = r.ClaimedAt.UTC().Format(time.RFC3339)
 			}
 			if r.StartedAt != nil {
 				v.StartedAt = r.StartedAt.UTC().Format(time.RFC3339)

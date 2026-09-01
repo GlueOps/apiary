@@ -830,8 +830,12 @@ export type FleetActivityResponseBody = {
 
 export type FleetActivityView = {
     address?: string;
+    /**
+     * How many times an agent claimed this task. A re-claim after a lease expiry counts, so this is not a count of executions.
+     */
     attempt: number;
     bee_id: string;
+    claimed_at?: string;
     created_at: string;
     /**
      * The agent's own account of what stopped it. Empty unless it failed.

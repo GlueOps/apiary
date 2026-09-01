@@ -115,10 +115,18 @@ function when(iso: string): string {
  * failed in under a second never reached the host, and one that failed after two
  * minutes hit the step timeout — two very different things behind the same
  * message.
+ *
+ * Measured from claimed_at, not started_at. started_at is written only when a
+ * bee reports status "running", and no bee does — the agent keeps that state in
+ * its own local store and reports the terminal outcome. So started_at is null on
+ * every row ever written, and reading it here made this column show a dash on
+ * every task in the fleet. claimed_at is when an agent actually picked the work
+ * up, which is the number an operator wants anyway.
  */
 function took(row: FleetActivityView): string | null {
-  if (!row.started_at || !row.finished_at) return null;
-  const ms = new Date(row.finished_at).getTime() - new Date(row.started_at).getTime();
+  const start = row.started_at ?? row.claimed_at;
+  if (!start || !row.finished_at) return null;
+  const ms = new Date(row.finished_at).getTime() - new Date(start).getTime();
   if (!Number.isFinite(ms) || ms < 0) return null;
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
@@ -248,11 +256,18 @@ export const FleetActivity = () => {
                   <TableCell>
                     <div className="flex flex-col items-start gap-1">
                       <StatusBadge status={r.status} />
-                      {/* Only past the first try. "attempt 1" on every row is
-                          noise that hides the one row that has been retried. */}
+                      {/* CLAIMS, not executions. The counter increments every
+                          time an agent picks the task up, including a re-claim
+                          after a lease expiry — so "attempt 9" on a task that
+                          ran once and succeeded was a straightforwardly false
+                          reading of a real signal. Shown only past the first,
+                          where being picked up repeatedly is worth noticing. */}
                       {r.attempt > 1 ? (
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          attempt {r.attempt}
+                        <span
+                          className="text-xs text-muted-foreground tabular-nums"
+                          title="How many times an agent picked this task up. A lease that expires and is re-claimed counts, so this is not a count of retries."
+                        >
+                          picked up {r.attempt}×
                         </span>
                       ) : null}
                     </div>
