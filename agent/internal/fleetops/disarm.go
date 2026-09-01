@@ -74,6 +74,35 @@ var clusterSecretFiles = []string{
 	"/etc/pve/priv/known_hosts",
 }
 
+// capabilityBearingSecrets are the subset whose POSSESSION authenticates this
+// host against the fleet it left. Everything in clusterSecretFiles is destroyed;
+// only these are counted and only these are proved rotated.
+//
+// The distinction was learned from a disarm that failed on
+// `pve-root-ca.srl is still byte-identical to the copy this node left the hive
+// with` — on a node whose secrets had already been destroyed successfully
+// forty-nine seconds earlier. The .srl is OpenSSL's serial counter for the CA: a
+// few bytes of hex holding the next certificate number. `pvecm updatecerts
+// --force` regenerates the CA with its serial starting from the same value, so
+// on any second run the file comes back byte-identical BY CONSTRUCTION, and a
+// file carrying no authentication capability at all vetoed the whole disarm.
+//
+// The two excluded key files are excluded for a different reason. Both are
+// recreated by pmxcfs on its own, and neither is what lets a departed node reach
+// back into the cluster: /etc/pve/priv/authorized_keys names who may log in HERE,
+// which is the opposite direction, and known_hosts is public key material. The
+// key that does grant a departed node passwordless root into the hive it left
+// lives in the REMAINING cluster's keyring, where this host cannot reach it and
+// no disarm can address it.
+//
+// So the capability set is the three that mint or sign: the API tokens, the key
+// PVE signs auth tickets with, and the CA private key.
+var capabilityBearingSecrets = []string{
+	"/etc/pve/priv/token.cfg",
+	"/etc/pve/priv/authkey.key",
+	"/etc/pve/priv/pve-root-ca.key",
+}
+
 // DisarmSpec is what the control plane asks for.
 type DisarmSpec struct {
 	// Disposition is accept-exposure or rotate. Empty is treated as
@@ -233,7 +262,7 @@ func proveDisarmed(_ context.Context, before map[string]string, e *Env) error {
 	_ = os.Remove(probe)
 
 	after := secretDigests()
-	for _, f := range clusterSecretFiles {
+	for _, f := range capabilityBearingSecrets {
 		was, had := before[f]
 		if !had || was == "absent" {
 			continue // never held it; nothing to prove about this one
@@ -276,7 +305,7 @@ func secretDigests() map[string]string {
 // disarm never ran because the host had no agent, or the task was lost.
 func HeldClusterSecrets() int {
 	n := 0
-	for _, f := range clusterSecretFiles {
+	for _, f := range capabilityBearingSecrets {
 		if _, err := os.Stat(f); err == nil {
 			n++
 		}
