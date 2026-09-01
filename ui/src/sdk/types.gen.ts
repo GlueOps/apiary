@@ -820,6 +820,40 @@ export type FirewallDesiredView = {
     revision: number;
 };
 
+export type FleetActivityResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    activity: Array<FleetActivityView> | null;
+};
+
+export type FleetActivityView = {
+    address?: string;
+    attempt: number;
+    bee_id: string;
+    created_at: string;
+    /**
+     * The agent's own account of what stopped it. Empty unless it failed.
+     */
+    error?: string;
+    finished_at?: string;
+    /**
+     * The cluster the task ACTED AGAINST, which during a migration is not the one the machine is in.
+     */
+    hive_name?: string;
+    id: string;
+    kind: string;
+    node_name?: string;
+    /**
+     * The kind as an operator reads it. Empty for a kind with no label yet.
+     */
+    operation?: string;
+    phase?: string;
+    started_at?: string;
+    status: string;
+};
+
 export type FleetlessHostView = {
     address: string;
     arrival_refusals: Array<RefusalView> | null;
@@ -2716,6 +2750,10 @@ export type EstateViewWritable = {
         [key: string]: string;
     };
     scope_version: number;
+};
+
+export type FleetActivityResponseBodyWritable = {
+    activity: Array<FleetActivityView> | null;
 };
 
 export type ForgotPasswordRequestBodyWritable = {
@@ -5251,6 +5289,49 @@ export type FirewallSetElementsDeleteResponses = {
 };
 
 export type FirewallSetElementsDeleteResponse = FirewallSetElementsDeleteResponses[keyof FirewallSetElementsDeleteResponses];
+
+export type FleetActivityListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Exact task kind, e.g. fleet.datacenter.disarm.
+         */
+        kind?: string;
+        /**
+         * pending, running, succeeded, failed or cancelled.
+         */
+        status?: string;
+        /**
+         * Narrow to one machine.
+         */
+        hypervisor_id?: string;
+        /**
+         * Default 50.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/fleet/activity';
+};
+
+export type FleetActivityListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetActivityListError = FleetActivityListErrors[keyof FleetActivityListErrors];
+
+export type FleetActivityListResponses = {
+    /**
+     * OK
+     */
+    200: FleetActivityResponseBody;
+};
+
+export type FleetActivityListResponse = FleetActivityListResponses[keyof FleetActivityListResponses];
 
 export type FleetAgentUpgradeData = {
     body: AgentUpgradeRequestBodyWritable;

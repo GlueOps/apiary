@@ -456,7 +456,7 @@ func RegisterUserProtected(hapi huma.API, deps *app.Deps) error {
 		//
 		// Only dist-upgrade: it is the one kind that can interrupt what a host is
 		// running. Ping, join and evict have their own gates or none.
-		if in.Body.Kind == "fleet.host.dist-upgrade" {
+		if in.Body.Kind == repo.KindDistUpgrade {
 			refusals, gerr := repo.CheckUpgradeForBee(ctx, db, beeID, spec,
 				deps.Config.FleetObservationMaxAge, time.Now().UTC())
 			if gerr != nil {

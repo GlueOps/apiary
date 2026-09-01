@@ -16,6 +16,7 @@ import { FirewallBindings } from '@/pages/firewall/bindings.tsx';
 import { FirewallPublish } from '@/pages/firewall/publish.tsx';
 import { FirewallRulesets } from '@/pages/firewall/rulesets.tsx';
 import { FirewallSets } from '@/pages/firewall/sets.tsx';
+import { FleetActivity } from '@/pages/fleet/activity.tsx';
 import { Fleet } from '@/pages/fleet/fleet.tsx';
 import { Clusters } from '@/pages/fleet/hives.tsx';
 import { Hypervisors } from '@/pages/fleet/hypervisors.tsx';
@@ -89,6 +90,11 @@ export const router = createBrowserRouter([
                 path: 'fleet/hives',
                 element: <Clusters />,
                 handle: { title: 'Clusters' },
+              },
+              {
+                path: 'fleet/activity',
+                element: <FleetActivity />,
+                handle: { title: 'Fleet activity' },
               },
               {
                 path: 'audit',

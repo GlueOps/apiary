@@ -502,6 +502,19 @@ func (r *FleetRepoGorm) ReportTask(ctx context.Context, in ReportTaskInput) (*te
 		if err := tx.Model(&tenant.FleetTask{}).Where("id = ?", task.ID).Updates(updates).Error; err != nil {
 			return err
 		}
+		// Summarise the outcome BESIDE THE MACHINE, not only on the task.
+		//
+		// The task row has carried the reason all along, and it was reachable
+		// only by querying the database — so a host that could not be disarmed
+		// looked exactly like one nobody had asked to disarm. This is what the
+		// fleet view reads.
+		//
+		// In the same transaction as the status write: the two are one fact, and
+		// a summary that survived a rolled-back report would describe a task
+		// outcome that never happened.
+		if tenant.FleetTaskIsTerminal(in.Status) {
+			RecordTaskOutcomeForBee(ctx, tx, in.BeeID, task.Kind, in.Error)
+		}
 		return tx.First(&out, "id = ?", task.ID).Error
 	})
 	if err != nil {
