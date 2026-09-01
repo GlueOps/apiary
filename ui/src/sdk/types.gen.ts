@@ -820,6 +820,28 @@ export type FirewallDesiredView = {
     revision: number;
 };
 
+export type FlagView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * What applies when neither level has a row.
+     */
+    default: boolean;
+    key: string;
+    /**
+     * platform: one value for the installation. tenant: a platform default that an organization row overrides.
+     */
+    scope: string;
+    /**
+     * default, platform or organization — which level decided.
+     */
+    source: string;
+    value: boolean;
+    why?: string;
+};
+
 export type FleetActivityResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1273,10 +1295,18 @@ export type ListResponseBody3 = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
-    keys: Array<KeyView> | null;
+    flags: Array<FlagView> | null;
 };
 
 export type ListResponseBody4 = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    keys: Array<KeyView> | null;
+};
+
+export type ListResponseBody5 = {
     /**
      * A URL to the JSON Schema for this object.
      */
@@ -1539,6 +1569,20 @@ export type MyOrganizationView = {
 export type OrganizationStruct = {
     id: string;
     name: string;
+};
+
+export type OverrideView = {
+    organization_id: string;
+    value: boolean;
+};
+
+export type OverridesResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    key: string;
+    overrides: Array<OverrideView> | null;
 };
 
 export type PasskeyBeginLoginResponseBody = {
@@ -1988,6 +2032,14 @@ export type SetElementView = {
     value: string;
 };
 
+export type SetOrgRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    value: boolean;
+};
+
 export type SetRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1998,6 +2050,14 @@ export type SetRequestBody = {
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
+};
+
+export type SetRequestBody1 = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    value: boolean;
 };
 
 export type SetView = {
@@ -2756,6 +2816,24 @@ export type EstateViewWritable = {
     scope_version: number;
 };
 
+export type FlagViewWritable = {
+    /**
+     * What applies when neither level has a row.
+     */
+    default: boolean;
+    key: string;
+    /**
+     * platform: one value for the installation. tenant: a platform default that an organization row overrides.
+     */
+    scope: string;
+    /**
+     * default, platform or organization — which level decided.
+     */
+    source: string;
+    value: boolean;
+    why?: string;
+};
+
 export type FleetActivityResponseBodyWritable = {
     activity: Array<FleetActivityView> | null;
 };
@@ -3043,10 +3121,14 @@ export type ListResponseBody2Writable = {
 };
 
 export type ListResponseBody3Writable = {
-    keys: Array<KeyViewWritable> | null;
+    flags: Array<FlagViewWritable> | null;
 };
 
 export type ListResponseBody4Writable = {
+    keys: Array<KeyViewWritable> | null;
+};
+
+export type ListResponseBody5Writable = {
     rules: Array<AccessRuleViewWritable> | null;
     /**
      * Whether auth.seed_public_domain_rules re-applies the public-domain corpus at every boot.
@@ -3174,6 +3256,11 @@ export type MintTokenResponseBodyWritable = {
      * Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet.
      */
     token: string;
+};
+
+export type OverridesResponseBodyWritable = {
+    key: string;
+    overrides: Array<OverrideView> | null;
 };
 
 export type PasskeyBeginLoginResponseBodyWritable = {
@@ -3435,12 +3522,20 @@ export type SetElementViewWritable = {
     value: string;
 };
 
+export type SetOrgRequestBodyWritable = {
+    value: boolean;
+};
+
 export type SetRequestBodyWritable = {
     config?: PolicyConfigView;
     /**
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
+};
+
+export type SetRequestBody1Writable = {
+    value: boolean;
 };
 
 export type SetViewWritable = {
@@ -5294,6 +5389,31 @@ export type FirewallSetElementsDeleteResponses = {
 
 export type FirewallSetElementsDeleteResponse = FirewallSetElementsDeleteResponses[keyof FirewallSetElementsDeleteResponses];
 
+export type FlagsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/flags';
+};
+
+export type FlagsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FlagsListError = FlagsListErrors[keyof FlagsListErrors];
+
+export type FlagsListResponses = {
+    /**
+     * OK
+     */
+    200: ListResponseBody3;
+};
+
+export type FlagsListResponse = FlagsListResponses[keyof FlagsListResponses];
+
 export type FleetActivityListData = {
     body?: never;
     path?: never;
@@ -6410,7 +6530,7 @@ export type PlatformAccessRulesListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody4;
+    200: ListResponseBody5;
 };
 
 export type PlatformAccessRulesListResponse = PlatformAccessRulesListResponses[keyof PlatformAccessRulesListResponses];
@@ -6493,6 +6613,168 @@ export type PlatformAccessRulesUpdateResponses = {
 };
 
 export type PlatformAccessRulesUpdateResponse = PlatformAccessRulesUpdateResponses[keyof PlatformAccessRulesUpdateResponses];
+
+export type PlatformFlagsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/platform/flags';
+};
+
+export type PlatformFlagsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformFlagsListError = PlatformFlagsListErrors[keyof PlatformFlagsListErrors];
+
+export type PlatformFlagsListResponses = {
+    /**
+     * OK
+     */
+    200: ListResponseBody;
+};
+
+export type PlatformFlagsListResponse = PlatformFlagsListResponses[keyof PlatformFlagsListResponses];
+
+export type PlatformFlagClearData = {
+    body?: never;
+    path: {
+        key: string;
+    };
+    query?: never;
+    url: '/api/v1/platform/flags/{key}';
+};
+
+export type PlatformFlagClearErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformFlagClearError = PlatformFlagClearErrors[keyof PlatformFlagClearErrors];
+
+export type PlatformFlagClearResponses = {
+    /**
+     * OK
+     */
+    200: FlagView;
+};
+
+export type PlatformFlagClearResponse = PlatformFlagClearResponses[keyof PlatformFlagClearResponses];
+
+export type PlatformFlagSetData = {
+    body: SetRequestBody1Writable;
+    path: {
+        key: string;
+    };
+    query?: never;
+    url: '/api/v1/platform/flags/{key}';
+};
+
+export type PlatformFlagSetErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformFlagSetError = PlatformFlagSetErrors[keyof PlatformFlagSetErrors];
+
+export type PlatformFlagSetResponses = {
+    /**
+     * OK
+     */
+    200: FlagView;
+};
+
+export type PlatformFlagSetResponse = PlatformFlagSetResponses[keyof PlatformFlagSetResponses];
+
+export type PlatformFlagOverridesData = {
+    body?: never;
+    path: {
+        key: string;
+    };
+    query?: never;
+    url: '/api/v1/platform/flags/{key}/overrides';
+};
+
+export type PlatformFlagOverridesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformFlagOverridesError = PlatformFlagOverridesErrors[keyof PlatformFlagOverridesErrors];
+
+export type PlatformFlagOverridesResponses = {
+    /**
+     * OK
+     */
+    200: OverridesResponseBody;
+};
+
+export type PlatformFlagOverridesResponse = PlatformFlagOverridesResponses[keyof PlatformFlagOverridesResponses];
+
+export type PlatformOrgFlagClearData = {
+    body?: never;
+    path: {
+        org_id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/v1/platform/organizations/{org_id}/flags/{key}';
+};
+
+export type PlatformOrgFlagClearErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformOrgFlagClearError = PlatformOrgFlagClearErrors[keyof PlatformOrgFlagClearErrors];
+
+export type PlatformOrgFlagClearResponses = {
+    /**
+     * OK
+     */
+    200: FlagView;
+};
+
+export type PlatformOrgFlagClearResponse = PlatformOrgFlagClearResponses[keyof PlatformOrgFlagClearResponses];
+
+export type PlatformOrgFlagSetData = {
+    body: SetOrgRequestBodyWritable;
+    path: {
+        org_id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/v1/platform/organizations/{org_id}/flags/{key}';
+};
+
+export type PlatformOrgFlagSetErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformOrgFlagSetError = PlatformOrgFlagSetErrors[keyof PlatformOrgFlagSetErrors];
+
+export type PlatformOrgFlagSetResponses = {
+    /**
+     * OK
+     */
+    200: FlagView;
+};
+
+export type PlatformOrgFlagSetResponse = PlatformOrgFlagSetResponses[keyof PlatformOrgFlagSetResponses];
 
 export type PlatformPoliciesListData = {
     body?: never;
@@ -6620,7 +6902,7 @@ export type SshKeysListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody3;
+    200: ListResponseBody4;
 };
 
 export type SshKeysListResponse = SshKeysListResponses[keyof SshKeysListResponses];

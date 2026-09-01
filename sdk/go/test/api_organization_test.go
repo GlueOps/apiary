@@ -22,6 +22,18 @@ func Test_apiary_OrganizationAPIService(t *testing.T) {
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
 
+	t.Run("Test OrganizationAPIService FlagsList", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.OrganizationAPI.FlagsList(context.Background()).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test OrganizationAPIService OrgMembersList", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test
