@@ -185,6 +185,7 @@ Class | Method | HTTP request | Description
 *PlatformAPI* | [**PlatformFlagsList**](docs/PlatformAPI.md#platformflagslist) | **Get** /api/v1/platform/flags | List every declared feature flag
 *PlatformAPI* | [**PlatformOrgFlagClear**](docs/PlatformAPI.md#platformorgflagclear) | **Delete** /api/v1/platform/organizations/{org_id}/flags/{key} | Drop one organization&#39;s override
 *PlatformAPI* | [**PlatformOrgFlagSet**](docs/PlatformAPI.md#platformorgflagset) | **Put** /api/v1/platform/organizations/{org_id}/flags/{key} | Set a flag for one organization
+*PlatformAPI* | [**PlatformOrganizationsList**](docs/PlatformAPI.md#platformorganizationslist) | **Get** /api/v1/platform/organizations | The organizations on this installation
 *PlatformAPI* | [**PlatformPoliciesClear**](docs/PlatformAPI.md#platformpoliciesclear) | **Delete** /api/v1/platform/policies/{kind} | Return a platform policy to inherit
 *PlatformAPI* | [**PlatformPoliciesImpact**](docs/PlatformAPI.md#platformpoliciesimpact) | **Get** /api/v1/platform/policies/{kind}/impact | How many users this policy would lock out
 *PlatformAPI* | [**PlatformPoliciesList**](docs/PlatformAPI.md#platformpolicieslist) | **Get** /api/v1/platform/policies | List platform policies
@@ -289,6 +290,7 @@ Class | Method | HTTP request | Description
  - [ListHivesResponseBody](docs/ListHivesResponseBody.md)
  - [ListHypervisorsResponseBody](docs/ListHypervisorsResponseBody.md)
  - [ListMembersResponseBody](docs/ListMembersResponseBody.md)
+ - [ListOrganizationsResponseBody](docs/ListOrganizationsResponseBody.md)
  - [ListResponseBody](docs/ListResponseBody.md)
  - [ListResponseBody1](docs/ListResponseBody1.md)
  - [ListResponseBody2](docs/ListResponseBody2.md)
@@ -316,6 +318,7 @@ Class | Method | HTTP request | Description
  - [MintTokenResponseBody](docs/MintTokenResponseBody.md)
  - [MyOrganizationView](docs/MyOrganizationView.md)
  - [OrganizationStruct](docs/OrganizationStruct.md)
+ - [OrganizationSummaryView](docs/OrganizationSummaryView.md)
  - [OverrideView](docs/OverrideView.md)
  - [PasskeyBeginLoginResponseBody](docs/PasskeyBeginLoginResponseBody.md)
  - [PasskeyBeginRegisterResponseBody](docs/PasskeyBeginRegisterResponseBody.md)

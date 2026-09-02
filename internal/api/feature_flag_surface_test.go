@@ -84,3 +84,34 @@ func TestThePlatformFlagSurfaceRefusesACustomerWithoutLeakingTheRegistry(t *test
 		t.Fatalf("an ordinary customer set an installation-wide flag: %s", real.Body.String())
 	}
 }
+
+// A CUSTOMER MUST NOT BE ABLE TO ENUMERATE THE OTHER TENANTS.
+//
+// The directory answers "who else is on this installation", which is the first
+// thing anyone with a foothold in one organization would want and is not any
+// customer's to see. It is mounted on the admin group, so this is really
+// asserting WHICH GROUP the route was registered on — the one property a unit
+// test on the handler closure cannot observe, and the mistake that would not
+// show up until somebody read the wrong list.
+func TestACustomerCannotListTheOtherOrganizations(t *testing.T) {
+	db := hhtDB(t)
+	a := hhtApp(t, db)
+
+	// A second organization, so there is genuinely something to leak.
+	hhtSeedOrg(t, db, "Someone Else Entirely")
+
+	mine := hhtSeedOrg(t, db, "My Own Org")
+	owner := hhtSeedUser(t, db, hhtEmail("dir-owner"), control.RolePlatformCustomer)
+	hhtSeedMembership(t, db, owner.ID, mine.ID, control.MemberRoleOwner)
+	token := hhtSession(t, db, owner.ID, mine.ID)
+
+	rec := hhtReq(t, a, http.MethodGet, "/platform/organizations", token, nil)
+	if rec.Code < 400 {
+		t.Fatalf("GET /platform/organizations answered %d for an ordinary customer who is an "+
+			"OWNER of their own organization; the tenant directory is not theirs to read: %s",
+			rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "Someone Else Entirely") {
+		t.Fatalf("the refusal echoed another tenant's name: %s", rec.Body.String())
+	}
+}

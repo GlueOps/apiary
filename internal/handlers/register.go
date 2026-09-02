@@ -87,6 +87,11 @@ func RegisterAdminProtected(api huma.API, deps *app.Deps) {
 	// flag's whole purpose is that the narrower level overrides, in either
 	// direction. Same two-table shape, opposite resolution rule.
 	featureflag.RegisterAdminProtected(api, deps)
+	// The tenant directory. Platform-only: the names of every organization on
+	// the installation are not any one customer's to see. It sits with the flags
+	// because that is what needed it — setting a flag for one tenant otherwise
+	// means pasting a uuid nobody has a way to look up.
+	featureflag.RegisterOrganizationDirectory(api, deps)
 }
 
 // RegisterPreAuthz mounts the endpoints that must be reachable AFTER

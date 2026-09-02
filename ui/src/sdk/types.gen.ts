@@ -1283,6 +1283,14 @@ export type ListMembersResponseBody = {
     members: Array<MemberView> | null;
 };
 
+export type ListOrganizationsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    organizations: Array<OrganizationSummaryView> | null;
+};
+
 export type ListResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1578,6 +1586,15 @@ export type MyOrganizationView = {
 export type OrganizationStruct = {
     id: string;
     name: string;
+};
+
+export type OrganizationSummaryView = {
+    created_at: string;
+    deleted: boolean;
+    domain?: string;
+    id: string;
+    name: string;
+    status: string;
 };
 
 export type OverrideView = {
@@ -3116,6 +3133,10 @@ export type ListHypervisorsResponseBodyWritable = {
 
 export type ListMembersResponseBodyWritable = {
     members: Array<MemberView> | null;
+};
+
+export type ListOrganizationsResponseBodyWritable = {
+    organizations: Array<OrganizationSummaryView> | null;
 };
 
 export type ListResponseBodyWritable = {
@@ -6720,6 +6741,45 @@ export type PlatformFlagOverridesResponses = {
 };
 
 export type PlatformFlagOverridesResponse = PlatformFlagOverridesResponses[keyof PlatformFlagOverridesResponses];
+
+export type PlatformOrganizationsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Match the name or domain, case-insensitively.
+         */
+        q?: string;
+        /**
+         * Include soft-deleted organizations. Off by default: a deleted tenant is not something to target.
+         */
+        include_deleted?: boolean;
+        /**
+         * Default 50.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/platform/organizations';
+};
+
+export type PlatformOrganizationsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlatformOrganizationsListError = PlatformOrganizationsListErrors[keyof PlatformOrganizationsListErrors];
+
+export type PlatformOrganizationsListResponses = {
+    /**
+     * OK
+     */
+    200: ListOrganizationsResponseBody;
+};
+
+export type PlatformOrganizationsListResponse = PlatformOrganizationsListResponses[keyof PlatformOrganizationsListResponses];
 
 export type PlatformOrgFlagClearData = {
     body?: never;

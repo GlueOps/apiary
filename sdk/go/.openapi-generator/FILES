@@ -116,6 +116,7 @@ docs/ListFleetlessResponseBody.md
 docs/ListHivesResponseBody.md
 docs/ListHypervisorsResponseBody.md
 docs/ListMembersResponseBody.md
+docs/ListOrganizationsResponseBody.md
 docs/ListResponseBody.md
 docs/ListResponseBody1.md
 docs/ListResponseBody2.md
@@ -145,6 +146,7 @@ docs/MintTokenResponseBody.md
 docs/MyOrganizationView.md
 docs/OrganizationAPI.md
 docs/OrganizationStruct.md
+docs/OrganizationSummaryView.md
 docs/OrganizationsAPI.md
 docs/OverrideView.md
 docs/PasskeyBeginLoginResponseBody.md
@@ -315,6 +317,7 @@ model_list_fleetless_response_body.go
 model_list_hives_response_body.go
 model_list_hypervisors_response_body.go
 model_list_members_response_body.go
+model_list_organizations_response_body.go
 model_list_response_body.go
 model_list_response_body1.go
 model_list_response_body2.go
@@ -342,6 +345,7 @@ model_mint_token_request_body.go
 model_mint_token_response_body.go
 model_my_organization_view.go
 model_organization_struct.go
+model_organization_summary_view.go
 model_override_view.go
 model_passkey_begin_login_response_body.go
 model_passkey_begin_register_response_body.go

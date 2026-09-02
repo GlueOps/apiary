@@ -14,6 +14,7 @@ Method | HTTP request | Description
 [**PlatformFlagsList**](PlatformAPI.md#PlatformFlagsList) | **Get** /api/v1/platform/flags | List every declared feature flag
 [**PlatformOrgFlagClear**](PlatformAPI.md#PlatformOrgFlagClear) | **Delete** /api/v1/platform/organizations/{org_id}/flags/{key} | Drop one organization&#39;s override
 [**PlatformOrgFlagSet**](PlatformAPI.md#PlatformOrgFlagSet) | **Put** /api/v1/platform/organizations/{org_id}/flags/{key} | Set a flag for one organization
+[**PlatformOrganizationsList**](PlatformAPI.md#PlatformOrganizationsList) | **Get** /api/v1/platform/organizations | The organizations on this installation
 [**PlatformPoliciesClear**](PlatformAPI.md#PlatformPoliciesClear) | **Delete** /api/v1/platform/policies/{kind} | Return a platform policy to inherit
 [**PlatformPoliciesImpact**](PlatformAPI.md#PlatformPoliciesImpact) | **Get** /api/v1/platform/policies/{kind}/impact | How many users this policy would lock out
 [**PlatformPoliciesList**](PlatformAPI.md#PlatformPoliciesList) | **Get** /api/v1/platform/policies | List platform policies
@@ -704,6 +705,78 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
 - **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## PlatformOrganizationsList
+
+> ListOrganizationsResponseBody PlatformOrganizationsList(ctx).Q(q).IncludeDeleted(includeDeleted).Limit(limit).Offset(offset).Execute()
+
+The organizations on this installation
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	q := "q_example" // string | Match the name or domain, case-insensitively. (optional)
+	includeDeleted := true // bool | Include soft-deleted organizations. Off by default: a deleted tenant is not something to target. (optional)
+	limit := int64(789) // int64 | Default 50. (optional)
+	offset := int64(789) // int64 |  (optional)
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.PlatformAPI.PlatformOrganizationsList(context.Background()).Q(q).IncludeDeleted(includeDeleted).Limit(limit).Offset(offset).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformOrganizationsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `PlatformOrganizationsList`: ListOrganizationsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `PlatformAPI.PlatformOrganizationsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiPlatformOrganizationsListRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **q** | **string** | Match the name or domain, case-insensitively. | 
+ **includeDeleted** | **bool** | Include soft-deleted organizations. Off by default: a deleted tenant is not something to target. | 
+ **limit** | **int64** | Default 50. | 
+ **offset** | **int64** |  | 
+
+### Return type
+
+[**ListOrganizationsResponseBody**](ListOrganizationsResponseBody.md)
+
+### Authorization
+
+[ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: application/json, application/problem+json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
