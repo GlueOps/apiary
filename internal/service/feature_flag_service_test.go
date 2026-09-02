@@ -114,6 +114,11 @@ func TestATenantIsTargetedByRowAndTheOthersAreUnaffected(t *testing.T) {
 	if len(over) != 1 || over[0].OrganizationID != acme {
 		t.Fatalf("overrides = %+v, want exactly the one organization that set it", over)
 	}
+	// The NAME travels with the id. A platform operator reading this is asking
+	// "who will a change to the default not reach", and a uuid does not answer it.
+	if over[0].OrganizationName == "" {
+		t.Fatal("the override names no organization, so the list is a column of uuids")
+	}
 }
 
 // CLEARING IS NOT SETTING FALSE. A cleared flag falls back to what this build

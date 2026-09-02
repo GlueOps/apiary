@@ -24,7 +24,7 @@ type FeatureFlagRepo interface {
 	// ListOrgOverridesFor answers "which organizations have this on" without a
 	// LIKE over a composed key — the query the dotted notation would have made
 	// awkward if the tenant lived in the key string.
-	ListOrgOverridesFor(ctx context.Context, key string) ([]control.OrgFeatureFlag, error)
+	ListOrgOverridesFor(ctx context.Context, key string) ([]FlagOverride, error)
 	SetOrg(ctx context.Context, orgID uuid.UUID, key string, value bool, by uuid.UUID) error
 	ClearOrg(ctx context.Context, orgID uuid.UUID, key string) error
 }
@@ -104,9 +104,32 @@ func (r *FeatureFlagRepoGorm) ListOrg(ctx context.Context, orgID uuid.UUID) ([]c
 	return out, err
 }
 
-func (r *FeatureFlagRepoGorm) ListOrgOverridesFor(ctx context.Context, key string) ([]control.OrgFeatureFlag, error) {
-	var out []control.OrgFeatureFlag
-	err := r.db.WithContext(ctx).Where("key = ?", key).Order("organization_id ASC").Find(&out).Error
+// FlagOverride is one organization's override WITH ITS NAME.
+//
+// The name is joined here rather than resolved by the caller. This list exists
+// to be read by a person deciding whether to change an installation-wide
+// default, and a column of bare uuids does not answer "who am I about to not
+// affect" — while a per-row lookup from a UI would be one request per tenant
+// against an endpoint that does not exist.
+type FlagOverride struct {
+	OrganizationID   uuid.UUID
+	OrganizationName string
+	Value            bool
+}
+
+// LEFT JOIN, so an override whose organization has been deleted still appears.
+// The foreign key cascades, so that should be impossible — but a row that
+// somehow outlived its organization is exactly the row worth seeing, and an
+// inner join would hide it.
+func (r *FeatureFlagRepoGorm) ListOrgOverridesFor(ctx context.Context, key string) ([]FlagOverride, error) {
+	var out []FlagOverride
+	err := r.db.WithContext(ctx).
+		Table("org_feature_flags AS f").
+		Select("f.organization_id, f.value, coalesce(o.name, '') AS organization_name").
+		Joins("LEFT JOIN organizations o ON o.id = f.organization_id").
+		Where("f.key = ?", key).
+		Order("organization_name ASC, f.organization_id ASC").
+		Scan(&out).Error
 	return out, err
 }
 

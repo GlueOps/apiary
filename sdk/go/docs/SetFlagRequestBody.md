@@ -1,4 +1,4 @@
-# SetRequestBody1
+# SetFlagRequestBody
 
 ## Properties
 
@@ -9,64 +9,64 @@ Name | Type | Description | Notes
 
 ## Methods
 
-### NewSetRequestBody1
+### NewSetFlagRequestBody
 
-`func NewSetRequestBody1(value bool, ) *SetRequestBody1`
+`func NewSetFlagRequestBody(value bool, ) *SetFlagRequestBody`
 
-NewSetRequestBody1 instantiates a new SetRequestBody1 object
+NewSetFlagRequestBody instantiates a new SetFlagRequestBody object
 This constructor will assign default values to properties that have it defined,
 and makes sure properties required by API are set, but the set of arguments
 will change when the set of required properties is changed
 
-### NewSetRequestBody1WithDefaults
+### NewSetFlagRequestBodyWithDefaults
 
-`func NewSetRequestBody1WithDefaults() *SetRequestBody1`
+`func NewSetFlagRequestBodyWithDefaults() *SetFlagRequestBody`
 
-NewSetRequestBody1WithDefaults instantiates a new SetRequestBody1 object
+NewSetFlagRequestBodyWithDefaults instantiates a new SetFlagRequestBody object
 This constructor will only assign default values to properties that have it defined,
 but it doesn't guarantee that properties required by API are set
 
 ### GetSchema
 
-`func (o *SetRequestBody1) GetSchema() string`
+`func (o *SetFlagRequestBody) GetSchema() string`
 
 GetSchema returns the Schema field if non-nil, zero value otherwise.
 
 ### GetSchemaOk
 
-`func (o *SetRequestBody1) GetSchemaOk() (*string, bool)`
+`func (o *SetFlagRequestBody) GetSchemaOk() (*string, bool)`
 
 GetSchemaOk returns a tuple with the Schema field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetSchema
 
-`func (o *SetRequestBody1) SetSchema(v string)`
+`func (o *SetFlagRequestBody) SetSchema(v string)`
 
 SetSchema sets Schema field to given value.
 
 ### HasSchema
 
-`func (o *SetRequestBody1) HasSchema() bool`
+`func (o *SetFlagRequestBody) HasSchema() bool`
 
 HasSchema returns a boolean if a field has been set.
 
 ### GetValue
 
-`func (o *SetRequestBody1) GetValue() bool`
+`func (o *SetFlagRequestBody) GetValue() bool`
 
 GetValue returns the Value field if non-nil, zero value otherwise.
 
 ### GetValueOk
 
-`func (o *SetRequestBody1) GetValueOk() (*bool, bool)`
+`func (o *SetFlagRequestBody) GetValueOk() (*bool, bool)`
 
 GetValueOk returns a tuple with the Value field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetValue
 
-`func (o *SetRequestBody1) SetValue(v bool)`
+`func (o *SetFlagRequestBody) SetValue(v bool)`
 
 SetValue sets Value field to given value.
 

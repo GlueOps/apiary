@@ -2153,7 +2153,7 @@ Name | Type | Description  | Notes
 
 ## SshKeysList
 
-> ListResponseBody4 SshKeysList(ctx).Execute()
+> ListResponseBody3 SshKeysList(ctx).Execute()
 
 List fleet SSH keys
 
@@ -2180,7 +2180,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.SshKeysList``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
 	}
-	// response from `SshKeysList`: ListResponseBody4
+	// response from `SshKeysList`: ListResponseBody3
 	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.SshKeysList`: %v\n", resp)
 }
 ```
@@ -2196,7 +2196,7 @@ Other parameters are passed through a pointer to a apiSshKeysListRequest struct 
 
 ### Return type
 
-[**ListResponseBody4**](ListResponseBody4.md)
+[**ListResponseBody3**](ListResponseBody3.md)
 
 ### Authorization
 

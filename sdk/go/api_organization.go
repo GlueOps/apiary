@@ -28,7 +28,7 @@ type ApiFlagsListRequest struct {
 	ApiService *OrganizationAPIService
 }
 
-func (r ApiFlagsListRequest) Execute() (*ListResponseBody3, *http.Response, error) {
+func (r ApiFlagsListRequest) Execute() (*FlagListResponseBody, *http.Response, error) {
 	return r.ApiService.FlagsListExecute(r)
 }
 
@@ -50,13 +50,13 @@ func (a *OrganizationAPIService) FlagsList(ctx context.Context) ApiFlagsListRequ
 }
 
 // Execute executes the request
-//  @return ListResponseBody3
-func (a *OrganizationAPIService) FlagsListExecute(r ApiFlagsListRequest) (*ListResponseBody3, *http.Response, error) {
+//  @return FlagListResponseBody
+func (a *OrganizationAPIService) FlagsListExecute(r ApiFlagsListRequest) (*FlagListResponseBody, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodGet
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *ListResponseBody3
+		localVarReturnValue  *FlagListResponseBody
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OrganizationAPIService.FlagsList")

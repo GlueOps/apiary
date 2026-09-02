@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **OrganizationId** | **string** |  | 
+**OrganizationName** | Pointer to **string** |  | [optional] 
 **Value** | **bool** |  | 
 
 ## Methods
@@ -45,6 +46,31 @@ and a boolean to check if the value has been set.
 
 SetOrganizationId sets OrganizationId field to given value.
 
+
+### GetOrganizationName
+
+`func (o *OverrideView) GetOrganizationName() string`
+
+GetOrganizationName returns the OrganizationName field if non-nil, zero value otherwise.
+
+### GetOrganizationNameOk
+
+`func (o *OverrideView) GetOrganizationNameOk() (*string, bool)`
+
+GetOrganizationNameOk returns a tuple with the OrganizationName field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetOrganizationName
+
+`func (o *OverrideView) SetOrganizationName(v string)`
+
+SetOrganizationName sets OrganizationName field to given value.
+
+### HasOrganizationName
+
+`func (o *OverrideView) HasOrganizationName() bool`
+
+HasOrganizationName returns a boolean if a field has been set.
 
 ### GetValue
 

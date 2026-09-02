@@ -18,6 +18,7 @@ import {
   IconServerBolt,
   IconShield,
   IconShieldLock,
+  IconToggleLeft,
   IconUser,
   IconUsers,
   IconWorldCog,
@@ -163,6 +164,7 @@ const settingsItems = [
 // group rather than under Settings even though its path is /settings/*.
 const platformItems = [
   { title: 'Platform policy', href: '/platform/policies', icon: IconWorldCog },
+  { title: 'Feature flags', href: '/platform/flags', icon: IconToggleLeft },
   { title: 'Access rules', href: '/settings/access-rules', icon: IconLockAccess },
 ];
 

@@ -159,7 +159,7 @@ Name | Type | Description  | Notes
 
 ## PlatformAccessRulesList
 
-> ListResponseBody5 PlatformAccessRulesList(ctx).Execute()
+> ListResponseBody4 PlatformAccessRulesList(ctx).Execute()
 
 List auth access rules
 
@@ -186,7 +186,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformAccessRulesList``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
 	}
-	// response from `PlatformAccessRulesList`: ListResponseBody5
+	// response from `PlatformAccessRulesList`: ListResponseBody4
 	fmt.Fprintf(os.Stdout, "Response from `PlatformAPI.PlatformAccessRulesList`: %v\n", resp)
 }
 ```
@@ -202,7 +202,7 @@ Other parameters are passed through a pointer to a apiPlatformAccessRulesListReq
 
 ### Return type
 
-[**ListResponseBody5**](ListResponseBody5.md)
+[**ListResponseBody4**](ListResponseBody4.md)
 
 ### Authorization
 
@@ -362,7 +362,7 @@ Name | Type | Description  | Notes
 
 ## PlatformFlagOverrides
 
-> OverridesResponseBody PlatformFlagOverrides(ctx, key).Execute()
+> FlagOverridesResponseBody PlatformFlagOverrides(ctx, key).Execute()
 
 Which organizations have set this flag themselves
 
@@ -390,7 +390,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformFlagOverrides``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
 	}
-	// response from `PlatformFlagOverrides`: OverridesResponseBody
+	// response from `PlatformFlagOverrides`: FlagOverridesResponseBody
 	fmt.Fprintf(os.Stdout, "Response from `PlatformAPI.PlatformFlagOverrides`: %v\n", resp)
 }
 ```
@@ -414,7 +414,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-[**OverridesResponseBody**](OverridesResponseBody.md)
+[**FlagOverridesResponseBody**](FlagOverridesResponseBody.md)
 
 ### Authorization
 
@@ -432,7 +432,7 @@ Name | Type | Description  | Notes
 
 ## PlatformFlagSet
 
-> FlagView PlatformFlagSet(ctx, key).SetRequestBody1(setRequestBody1).Execute()
+> FlagView PlatformFlagSet(ctx, key).SetFlagRequestBody(setFlagRequestBody).Execute()
 
 Set a flag for the whole installation
 
@@ -452,11 +452,11 @@ import (
 
 func main() {
 	key := "key_example" // string | 
-	setRequestBody1 := *openapiclient.NewSetRequestBody1(false) // SetRequestBody1 | 
+	setFlagRequestBody := *openapiclient.NewSetFlagRequestBody(false) // SetFlagRequestBody | 
 
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
-	resp, r, err := apiClient.PlatformAPI.PlatformFlagSet(context.Background(), key).SetRequestBody1(setRequestBody1).Execute()
+	resp, r, err := apiClient.PlatformAPI.PlatformFlagSet(context.Background(), key).SetFlagRequestBody(setFlagRequestBody).Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformFlagSet``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -482,7 +482,7 @@ Other parameters are passed through a pointer to a apiPlatformFlagSetRequest str
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
- **setRequestBody1** | [**SetRequestBody1**](SetRequestBody1.md) |  | 
+ **setFlagRequestBody** | [**SetFlagRequestBody**](SetFlagRequestBody.md) |  | 
 
 ### Return type
 
@@ -504,7 +504,7 @@ Name | Type | Description  | Notes
 
 ## PlatformFlagsList
 
-> ListResponseBody PlatformFlagsList(ctx).Execute()
+> FlagListResponseBody PlatformFlagsList(ctx).Execute()
 
 List every declared feature flag
 
@@ -531,7 +531,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformFlagsList``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
 	}
-	// response from `PlatformFlagsList`: ListResponseBody
+	// response from `PlatformFlagsList`: FlagListResponseBody
 	fmt.Fprintf(os.Stdout, "Response from `PlatformAPI.PlatformFlagsList`: %v\n", resp)
 }
 ```
@@ -547,7 +547,7 @@ Other parameters are passed through a pointer to a apiPlatformFlagsListRequest s
 
 ### Return type
 
-[**ListResponseBody**](ListResponseBody.md)
+[**FlagListResponseBody**](FlagListResponseBody.md)
 
 ### Authorization
 
@@ -638,7 +638,7 @@ Name | Type | Description  | Notes
 
 ## PlatformOrgFlagSet
 
-> FlagView PlatformOrgFlagSet(ctx, orgId, key).SetOrgRequestBody(setOrgRequestBody).Execute()
+> FlagView PlatformOrgFlagSet(ctx, orgId, key).SetOrgFlagRequestBody(setOrgFlagRequestBody).Execute()
 
 Set a flag for one organization
 
@@ -659,11 +659,11 @@ import (
 func main() {
 	orgId := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
 	key := "key_example" // string | 
-	setOrgRequestBody := *openapiclient.NewSetOrgRequestBody(false) // SetOrgRequestBody | 
+	setOrgFlagRequestBody := *openapiclient.NewSetOrgFlagRequestBody(false) // SetOrgFlagRequestBody | 
 
 	configuration := openapiclient.NewConfiguration()
 	apiClient := openapiclient.NewAPIClient(configuration)
-	resp, r, err := apiClient.PlatformAPI.PlatformOrgFlagSet(context.Background(), orgId, key).SetOrgRequestBody(setOrgRequestBody).Execute()
+	resp, r, err := apiClient.PlatformAPI.PlatformOrgFlagSet(context.Background(), orgId, key).SetOrgFlagRequestBody(setOrgFlagRequestBody).Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `PlatformAPI.PlatformOrgFlagSet``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -691,7 +691,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
 
- **setOrgRequestBody** | [**SetOrgRequestBody**](SetOrgRequestBody.md) |  | 
+ **setOrgFlagRequestBody** | [**SetOrgFlagRequestBody**](SetOrgFlagRequestBody.md) |  | 
 
 ### Return type
 

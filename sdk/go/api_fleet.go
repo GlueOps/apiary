@@ -4920,7 +4920,7 @@ type ApiSshKeysListRequest struct {
 	ApiService *FleetAPIService
 }
 
-func (r ApiSshKeysListRequest) Execute() (*ListResponseBody4, *http.Response, error) {
+func (r ApiSshKeysListRequest) Execute() (*ListResponseBody3, *http.Response, error) {
 	return r.ApiService.SshKeysListExecute(r)
 }
 
@@ -4940,13 +4940,13 @@ func (a *FleetAPIService) SshKeysList(ctx context.Context) ApiSshKeysListRequest
 }
 
 // Execute executes the request
-//  @return ListResponseBody4
-func (a *FleetAPIService) SshKeysListExecute(r ApiSshKeysListRequest) (*ListResponseBody4, *http.Response, error) {
+//  @return ListResponseBody3
+func (a *FleetAPIService) SshKeysListExecute(r ApiSshKeysListRequest) (*ListResponseBody3, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodGet
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *ListResponseBody4
+		localVarReturnValue  *ListResponseBody3
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "FleetAPIService.SshKeysList")

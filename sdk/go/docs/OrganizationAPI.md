@@ -17,7 +17,7 @@ Method | HTTP request | Description
 
 ## FlagsList
 
-> ListResponseBody3 FlagsList(ctx).Execute()
+> FlagListResponseBody FlagsList(ctx).Execute()
 
 The feature flags in effect for this organization
 
@@ -44,7 +44,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error when calling `OrganizationAPI.FlagsList``: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
 	}
-	// response from `FlagsList`: ListResponseBody3
+	// response from `FlagsList`: FlagListResponseBody
 	fmt.Fprintf(os.Stdout, "Response from `OrganizationAPI.FlagsList`: %v\n", resp)
 }
 ```
@@ -60,7 +60,7 @@ Other parameters are passed through a pointer to a apiFlagsListRequest struct vi
 
 ### Return type
 
-[**ListResponseBody3**](ListResponseBody3.md)
+[**FlagListResponseBody**](FlagListResponseBody.md)
 
 ### Authorization
 

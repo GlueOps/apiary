@@ -5,13 +5,13 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
-**Flags** | [**[]FlagView**](FlagView.md) |  | 
+**Keys** | [**[]KeyView**](KeyView.md) |  | 
 
 ## Methods
 
 ### NewListResponseBody3
 
-`func NewListResponseBody3(flags []FlagView, ) *ListResponseBody3`
+`func NewListResponseBody3(keys []KeyView, ) *ListResponseBody3`
 
 NewListResponseBody3 instantiates a new ListResponseBody3 object
 This constructor will assign default values to properties that have it defined,
@@ -51,36 +51,36 @@ SetSchema sets Schema field to given value.
 
 HasSchema returns a boolean if a field has been set.
 
-### GetFlags
+### GetKeys
 
-`func (o *ListResponseBody3) GetFlags() []FlagView`
+`func (o *ListResponseBody3) GetKeys() []KeyView`
 
-GetFlags returns the Flags field if non-nil, zero value otherwise.
+GetKeys returns the Keys field if non-nil, zero value otherwise.
 
-### GetFlagsOk
+### GetKeysOk
 
-`func (o *ListResponseBody3) GetFlagsOk() (*[]FlagView, bool)`
+`func (o *ListResponseBody3) GetKeysOk() (*[]KeyView, bool)`
 
-GetFlagsOk returns a tuple with the Flags field if it's non-nil, zero value otherwise
+GetKeysOk returns a tuple with the Keys field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
-### SetFlags
+### SetKeys
 
-`func (o *ListResponseBody3) SetFlags(v []FlagView)`
+`func (o *ListResponseBody3) SetKeys(v []KeyView)`
 
-SetFlags sets Flags field to given value.
+SetKeys sets Keys field to given value.
 
 
-### SetFlagsNil
+### SetKeysNil
 
-`func (o *ListResponseBody3) SetFlagsNil(b bool)`
+`func (o *ListResponseBody3) SetKeysNil(b bool)`
 
- SetFlagsNil sets the value for Flags to be an explicit nil
+ SetKeysNil sets the value for Keys to be an explicit nil
 
-### UnsetFlags
-`func (o *ListResponseBody3) UnsetFlags()`
+### UnsetKeys
+`func (o *ListResponseBody3) UnsetKeys()`
 
-UnsetFlags ensures that no value is present for Flags, not even an explicit nil
+UnsetKeys ensures that no value is present for Keys, not even an explicit nil
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 
