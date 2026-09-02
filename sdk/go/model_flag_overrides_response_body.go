@@ -16,40 +16,40 @@ import (
 	"fmt"
 )
 
-// checks if the OverridesResponseBody type satisfies the MappedNullable interface at compile time
-var _ MappedNullable = &OverridesResponseBody{}
+// checks if the FlagOverridesResponseBody type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &FlagOverridesResponseBody{}
 
-// OverridesResponseBody struct for OverridesResponseBody
-type OverridesResponseBody struct {
+// FlagOverridesResponseBody struct for FlagOverridesResponseBody
+type FlagOverridesResponseBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 	Key string `json:"key"`
 	Overrides []OverrideView `json:"overrides"`
 }
 
-type _OverridesResponseBody OverridesResponseBody
+type _FlagOverridesResponseBody FlagOverridesResponseBody
 
-// NewOverridesResponseBody instantiates a new OverridesResponseBody object
+// NewFlagOverridesResponseBody instantiates a new FlagOverridesResponseBody object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewOverridesResponseBody(key string, overrides []OverrideView) *OverridesResponseBody {
-	this := OverridesResponseBody{}
+func NewFlagOverridesResponseBody(key string, overrides []OverrideView) *FlagOverridesResponseBody {
+	this := FlagOverridesResponseBody{}
 	this.Key = key
 	this.Overrides = overrides
 	return &this
 }
 
-// NewOverridesResponseBodyWithDefaults instantiates a new OverridesResponseBody object
+// NewFlagOverridesResponseBodyWithDefaults instantiates a new FlagOverridesResponseBody object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewOverridesResponseBodyWithDefaults() *OverridesResponseBody {
-	this := OverridesResponseBody{}
+func NewFlagOverridesResponseBodyWithDefaults() *FlagOverridesResponseBody {
+	this := FlagOverridesResponseBody{}
 	return &this
 }
 
 // GetSchema returns the Schema field value if set, zero value otherwise.
-func (o *OverridesResponseBody) GetSchema() string {
+func (o *FlagOverridesResponseBody) GetSchema() string {
 	if o == nil || IsNil(o.Schema) {
 		var ret string
 		return ret
@@ -59,7 +59,7 @@ func (o *OverridesResponseBody) GetSchema() string {
 
 // GetSchemaOk returns a tuple with the Schema field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *OverridesResponseBody) GetSchemaOk() (*string, bool) {
+func (o *FlagOverridesResponseBody) GetSchemaOk() (*string, bool) {
 	if o == nil || IsNil(o.Schema) {
 		return nil, false
 	}
@@ -67,7 +67,7 @@ func (o *OverridesResponseBody) GetSchemaOk() (*string, bool) {
 }
 
 // HasSchema returns a boolean if a field has been set.
-func (o *OverridesResponseBody) HasSchema() bool {
+func (o *FlagOverridesResponseBody) HasSchema() bool {
 	if o != nil && !IsNil(o.Schema) {
 		return true
 	}
@@ -76,12 +76,12 @@ func (o *OverridesResponseBody) HasSchema() bool {
 }
 
 // SetSchema gets a reference to the given string and assigns it to the Schema field.
-func (o *OverridesResponseBody) SetSchema(v string) {
+func (o *FlagOverridesResponseBody) SetSchema(v string) {
 	o.Schema = &v
 }
 
 // GetKey returns the Key field value
-func (o *OverridesResponseBody) GetKey() string {
+func (o *FlagOverridesResponseBody) GetKey() string {
 	if o == nil {
 		var ret string
 		return ret
@@ -92,7 +92,7 @@ func (o *OverridesResponseBody) GetKey() string {
 
 // GetKeyOk returns a tuple with the Key field value
 // and a boolean to check if the value has been set.
-func (o *OverridesResponseBody) GetKeyOk() (*string, bool) {
+func (o *FlagOverridesResponseBody) GetKeyOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -100,13 +100,13 @@ func (o *OverridesResponseBody) GetKeyOk() (*string, bool) {
 }
 
 // SetKey sets field value
-func (o *OverridesResponseBody) SetKey(v string) {
+func (o *FlagOverridesResponseBody) SetKey(v string) {
 	o.Key = v
 }
 
 // GetOverrides returns the Overrides field value
 // If the value is explicit nil, the zero value for []OverrideView will be returned
-func (o *OverridesResponseBody) GetOverrides() []OverrideView {
+func (o *FlagOverridesResponseBody) GetOverrides() []OverrideView {
 	if o == nil {
 		var ret []OverrideView
 		return ret
@@ -118,7 +118,7 @@ func (o *OverridesResponseBody) GetOverrides() []OverrideView {
 // GetOverridesOk returns a tuple with the Overrides field value
 // and a boolean to check if the value has been set.
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
-func (o *OverridesResponseBody) GetOverridesOk() ([]OverrideView, bool) {
+func (o *FlagOverridesResponseBody) GetOverridesOk() ([]OverrideView, bool) {
 	if o == nil || IsNil(o.Overrides) {
 		return nil, false
 	}
@@ -126,11 +126,11 @@ func (o *OverridesResponseBody) GetOverridesOk() ([]OverrideView, bool) {
 }
 
 // SetOverrides sets field value
-func (o *OverridesResponseBody) SetOverrides(v []OverrideView) {
+func (o *FlagOverridesResponseBody) SetOverrides(v []OverrideView) {
 	o.Overrides = v
 }
 
-func (o OverridesResponseBody) MarshalJSON() ([]byte, error) {
+func (o FlagOverridesResponseBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
@@ -138,7 +138,7 @@ func (o OverridesResponseBody) MarshalJSON() ([]byte, error) {
 	return json.Marshal(toSerialize)
 }
 
-func (o OverridesResponseBody) ToMap() (map[string]interface{}, error) {
+func (o FlagOverridesResponseBody) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
@@ -150,7 +150,7 @@ func (o OverridesResponseBody) ToMap() (map[string]interface{}, error) {
 	return toSerialize, nil
 }
 
-func (o *OverridesResponseBody) UnmarshalJSON(data []byte) (err error) {
+func (o *FlagOverridesResponseBody) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
@@ -173,53 +173,53 @@ func (o *OverridesResponseBody) UnmarshalJSON(data []byte) (err error) {
 		}
 	}
 
-	varOverridesResponseBody := _OverridesResponseBody{}
+	varFlagOverridesResponseBody := _FlagOverridesResponseBody{}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&varOverridesResponseBody)
+	err = decoder.Decode(&varFlagOverridesResponseBody)
 
 	if err != nil {
 		return err
 	}
 
-	*o = OverridesResponseBody(varOverridesResponseBody)
+	*o = FlagOverridesResponseBody(varFlagOverridesResponseBody)
 
 	return err
 }
 
-type NullableOverridesResponseBody struct {
-	value *OverridesResponseBody
+type NullableFlagOverridesResponseBody struct {
+	value *FlagOverridesResponseBody
 	isSet bool
 }
 
-func (v NullableOverridesResponseBody) Get() *OverridesResponseBody {
+func (v NullableFlagOverridesResponseBody) Get() *FlagOverridesResponseBody {
 	return v.value
 }
 
-func (v *NullableOverridesResponseBody) Set(val *OverridesResponseBody) {
+func (v *NullableFlagOverridesResponseBody) Set(val *FlagOverridesResponseBody) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullableOverridesResponseBody) IsSet() bool {
+func (v NullableFlagOverridesResponseBody) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullableOverridesResponseBody) Unset() {
+func (v *NullableFlagOverridesResponseBody) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullableOverridesResponseBody(val *OverridesResponseBody) *NullableOverridesResponseBody {
-	return &NullableOverridesResponseBody{value: val, isSet: true}
+func NewNullableFlagOverridesResponseBody(val *FlagOverridesResponseBody) *NullableFlagOverridesResponseBody {
+	return &NullableFlagOverridesResponseBody{value: val, isSet: true}
 }
 
-func (v NullableOverridesResponseBody) MarshalJSON() ([]byte, error) {
+func (v NullableFlagOverridesResponseBody) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullableOverridesResponseBody) UnmarshalJSON(src []byte) error {
+func (v *NullableFlagOverridesResponseBody) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

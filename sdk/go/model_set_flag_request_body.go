@@ -16,38 +16,38 @@ import (
 	"fmt"
 )
 
-// checks if the SetRequestBody1 type satisfies the MappedNullable interface at compile time
-var _ MappedNullable = &SetRequestBody1{}
+// checks if the SetFlagRequestBody type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &SetFlagRequestBody{}
 
-// SetRequestBody1 struct for SetRequestBody1
-type SetRequestBody1 struct {
+// SetFlagRequestBody struct for SetFlagRequestBody
+type SetFlagRequestBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
 	Value bool `json:"value"`
 }
 
-type _SetRequestBody1 SetRequestBody1
+type _SetFlagRequestBody SetFlagRequestBody
 
-// NewSetRequestBody1 instantiates a new SetRequestBody1 object
+// NewSetFlagRequestBody instantiates a new SetFlagRequestBody object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewSetRequestBody1(value bool) *SetRequestBody1 {
-	this := SetRequestBody1{}
+func NewSetFlagRequestBody(value bool) *SetFlagRequestBody {
+	this := SetFlagRequestBody{}
 	this.Value = value
 	return &this
 }
 
-// NewSetRequestBody1WithDefaults instantiates a new SetRequestBody1 object
+// NewSetFlagRequestBodyWithDefaults instantiates a new SetFlagRequestBody object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewSetRequestBody1WithDefaults() *SetRequestBody1 {
-	this := SetRequestBody1{}
+func NewSetFlagRequestBodyWithDefaults() *SetFlagRequestBody {
+	this := SetFlagRequestBody{}
 	return &this
 }
 
 // GetSchema returns the Schema field value if set, zero value otherwise.
-func (o *SetRequestBody1) GetSchema() string {
+func (o *SetFlagRequestBody) GetSchema() string {
 	if o == nil || IsNil(o.Schema) {
 		var ret string
 		return ret
@@ -57,7 +57,7 @@ func (o *SetRequestBody1) GetSchema() string {
 
 // GetSchemaOk returns a tuple with the Schema field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *SetRequestBody1) GetSchemaOk() (*string, bool) {
+func (o *SetFlagRequestBody) GetSchemaOk() (*string, bool) {
 	if o == nil || IsNil(o.Schema) {
 		return nil, false
 	}
@@ -65,7 +65,7 @@ func (o *SetRequestBody1) GetSchemaOk() (*string, bool) {
 }
 
 // HasSchema returns a boolean if a field has been set.
-func (o *SetRequestBody1) HasSchema() bool {
+func (o *SetFlagRequestBody) HasSchema() bool {
 	if o != nil && !IsNil(o.Schema) {
 		return true
 	}
@@ -74,12 +74,12 @@ func (o *SetRequestBody1) HasSchema() bool {
 }
 
 // SetSchema gets a reference to the given string and assigns it to the Schema field.
-func (o *SetRequestBody1) SetSchema(v string) {
+func (o *SetFlagRequestBody) SetSchema(v string) {
 	o.Schema = &v
 }
 
 // GetValue returns the Value field value
-func (o *SetRequestBody1) GetValue() bool {
+func (o *SetFlagRequestBody) GetValue() bool {
 	if o == nil {
 		var ret bool
 		return ret
@@ -90,7 +90,7 @@ func (o *SetRequestBody1) GetValue() bool {
 
 // GetValueOk returns a tuple with the Value field value
 // and a boolean to check if the value has been set.
-func (o *SetRequestBody1) GetValueOk() (*bool, bool) {
+func (o *SetFlagRequestBody) GetValueOk() (*bool, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -98,11 +98,11 @@ func (o *SetRequestBody1) GetValueOk() (*bool, bool) {
 }
 
 // SetValue sets field value
-func (o *SetRequestBody1) SetValue(v bool) {
+func (o *SetFlagRequestBody) SetValue(v bool) {
 	o.Value = v
 }
 
-func (o SetRequestBody1) MarshalJSON() ([]byte, error) {
+func (o SetFlagRequestBody) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
@@ -110,7 +110,7 @@ func (o SetRequestBody1) MarshalJSON() ([]byte, error) {
 	return json.Marshal(toSerialize)
 }
 
-func (o SetRequestBody1) ToMap() (map[string]interface{}, error) {
+func (o SetFlagRequestBody) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
@@ -119,7 +119,7 @@ func (o SetRequestBody1) ToMap() (map[string]interface{}, error) {
 	return toSerialize, nil
 }
 
-func (o *SetRequestBody1) UnmarshalJSON(data []byte) (err error) {
+func (o *SetFlagRequestBody) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
@@ -141,53 +141,53 @@ func (o *SetRequestBody1) UnmarshalJSON(data []byte) (err error) {
 		}
 	}
 
-	varSetRequestBody1 := _SetRequestBody1{}
+	varSetFlagRequestBody := _SetFlagRequestBody{}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&varSetRequestBody1)
+	err = decoder.Decode(&varSetFlagRequestBody)
 
 	if err != nil {
 		return err
 	}
 
-	*o = SetRequestBody1(varSetRequestBody1)
+	*o = SetFlagRequestBody(varSetFlagRequestBody)
 
 	return err
 }
 
-type NullableSetRequestBody1 struct {
-	value *SetRequestBody1
+type NullableSetFlagRequestBody struct {
+	value *SetFlagRequestBody
 	isSet bool
 }
 
-func (v NullableSetRequestBody1) Get() *SetRequestBody1 {
+func (v NullableSetFlagRequestBody) Get() *SetFlagRequestBody {
 	return v.value
 }
 
-func (v *NullableSetRequestBody1) Set(val *SetRequestBody1) {
+func (v *NullableSetFlagRequestBody) Set(val *SetFlagRequestBody) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullableSetRequestBody1) IsSet() bool {
+func (v NullableSetFlagRequestBody) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullableSetRequestBody1) Unset() {
+func (v *NullableSetFlagRequestBody) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullableSetRequestBody1(val *SetRequestBody1) *NullableSetRequestBody1 {
-	return &NullableSetRequestBody1{value: val, isSet: true}
+func NewNullableSetFlagRequestBody(val *SetFlagRequestBody) *NullableSetFlagRequestBody {
+	return &NullableSetFlagRequestBody{value: val, isSet: true}
 }
 
-func (v NullableSetRequestBody1) MarshalJSON() ([]byte, error) {
+func (v NullableSetFlagRequestBody) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullableSetRequestBody1) UnmarshalJSON(src []byte) error {
+func (v *NullableSetFlagRequestBody) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

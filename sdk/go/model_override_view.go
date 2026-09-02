@@ -22,6 +22,7 @@ var _ MappedNullable = &OverrideView{}
 // OverrideView struct for OverrideView
 type OverrideView struct {
 	OrganizationId string `json:"organization_id"`
+	OrganizationName *string `json:"organization_name,omitempty"`
 	Value bool `json:"value"`
 }
 
@@ -70,6 +71,38 @@ func (o *OverrideView) SetOrganizationId(v string) {
 	o.OrganizationId = v
 }
 
+// GetOrganizationName returns the OrganizationName field value if set, zero value otherwise.
+func (o *OverrideView) GetOrganizationName() string {
+	if o == nil || IsNil(o.OrganizationName) {
+		var ret string
+		return ret
+	}
+	return *o.OrganizationName
+}
+
+// GetOrganizationNameOk returns a tuple with the OrganizationName field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *OverrideView) GetOrganizationNameOk() (*string, bool) {
+	if o == nil || IsNil(o.OrganizationName) {
+		return nil, false
+	}
+	return o.OrganizationName, true
+}
+
+// HasOrganizationName returns a boolean if a field has been set.
+func (o *OverrideView) HasOrganizationName() bool {
+	if o != nil && !IsNil(o.OrganizationName) {
+		return true
+	}
+
+	return false
+}
+
+// SetOrganizationName gets a reference to the given string and assigns it to the OrganizationName field.
+func (o *OverrideView) SetOrganizationName(v string) {
+	o.OrganizationName = &v
+}
+
 // GetValue returns the Value field value
 func (o *OverrideView) GetValue() bool {
 	if o == nil {
@@ -105,6 +138,9 @@ func (o OverrideView) MarshalJSON() ([]byte, error) {
 func (o OverrideView) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["organization_id"] = o.OrganizationId
+	if !IsNil(o.OrganizationName) {
+		toSerialize["organization_name"] = o.OrganizationName
+	}
 	toSerialize["value"] = o.Value
 	return toSerialize, nil
 }

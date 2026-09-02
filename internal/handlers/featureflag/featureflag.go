@@ -20,6 +20,12 @@ import (
 	"github.com/glueops/apiary/internal/models/control"
 )
 
+// TYPES ARE NAMED DISTINCTIVELY ON PURPOSE. The generated SDKs flatten every
+// handler package into one namespace, so a second `ListResponse` in this tree
+// does not collide loudly — hey-api emits `ListResponseBody1` and the TypeScript
+// client silently binds an operation to the wrong shape. The compiler caught it
+// here only because the fields differed.
+//
 // FlagView is one resolved flag, with the reason it resolved that way.
 //
 // SOURCE TRAVELS WITH THE VALUE. "Off" and "off because the platform says so"
@@ -41,20 +47,20 @@ func viewOf(e control.EffectiveFlag) FlagView {
 	}
 }
 
-type ListResponse struct {
+type FlagListResponse struct {
 	Body struct {
 		Flags []FlagView `json:"flags"`
 	}
 }
 
-type SetRequest struct {
+type SetFlagRequest struct {
 	Key  string `path:"key" maxLength:"120"`
 	Body struct {
 		Value bool `json:"value"`
 	}
 }
 
-type SetOrgRequest struct {
+type SetOrgFlagRequest struct {
 	OrgID string `path:"org_id" format:"uuid"`
 	Key   string `path:"key" maxLength:"120"`
 	Body  struct {
@@ -62,11 +68,11 @@ type SetOrgRequest struct {
 	}
 }
 
-type ClearRequest struct {
+type ClearFlagRequest struct {
 	Key string `path:"key" maxLength:"120"`
 }
 
-type ClearOrgRequest struct {
+type ClearOrgFlagRequest struct {
 	OrgID string `path:"org_id" format:"uuid"`
 	Key   string `path:"key" maxLength:"120"`
 }
@@ -77,10 +83,14 @@ type FlagResponse struct {
 
 type OverrideView struct {
 	OrganizationID string `json:"organization_id"`
-	Value          bool   `json:"value"`
+	// Name travels with the id because this list is read by a person deciding
+	// whether to change an installation-wide default, and "who will this not
+	// reach" is not a question a column of uuids answers.
+	OrganizationName string `json:"organization_name,omitempty"`
+	Value            bool   `json:"value"`
 }
 
-type OverridesResponse struct {
+type FlagOverridesResponse struct {
 	Body struct {
 		Key       string         `json:"key"`
 		Overrides []OverrideView `json:"overrides"`
@@ -134,7 +144,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 			"organization — so a key is never per-tenant, and adding a tenant adds no flags.",
 		Tags:     []string{"Platform"},
 		Security: apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, _ *struct{}) (*ListResponse, error) {
+	}, func(ctx context.Context, _ *struct{}) (*FlagListResponse, error) {
 		if _, err := principal(ctx); err != nil {
 			return nil, err
 		}
@@ -143,7 +153,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, mapFlagErr(err)
 		}
-		out := &ListResponse{}
+		out := &FlagListResponse{}
 		out.Body.Flags = make([]FlagView, 0, len(eff))
 		for _, e := range eff {
 			out.Body.Flags = append(out.Body.Flags, viewOf(e))
@@ -163,7 +173,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 			"the real flag exactly as it was.",
 		Tags:     []string{"Platform"},
 		Security: apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, in *SetRequest) (*FlagResponse, error) {
+	}, func(ctx context.Context, in *SetFlagRequest) (*FlagResponse, error) {
 		p, err := principal(ctx)
 		if err != nil {
 			return nil, err
@@ -189,7 +199,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 			"Clearing a flag that was not set SUCCEEDS. The requested state is reached either way.",
 		Tags:     []string{"Platform"},
 		Security: apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, in *ClearRequest) (*FlagResponse, error) {
+	}, func(ctx context.Context, in *ClearFlagRequest) (*FlagResponse, error) {
 		if _, err := principal(ctx); err != nil {
 			return nil, err
 		}
@@ -215,7 +225,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 			"Refused for a platform-scoped flag: there is no per-tenant legacy login page.",
 		Tags:     []string{"Platform"},
 		Security: apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, in *SetOrgRequest) (*FlagResponse, error) {
+	}, func(ctx context.Context, in *SetOrgFlagRequest) (*FlagResponse, error) {
 		p, err := principal(ctx)
 		if err != nil {
 			return nil, err
@@ -243,7 +253,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 		Description:   "The organization falls back to the installation-wide value, or to the built-in default.",
 		Tags:          []string{"Platform"},
 		Security:      apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, in *ClearOrgRequest) (*FlagResponse, error) {
+	}, func(ctx context.Context, in *ClearOrgFlagRequest) (*FlagResponse, error) {
 		if _, err := principal(ctx); err != nil {
 			return nil, err
 		}
@@ -270,7 +280,7 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 			"the organizations the change will NOT reach, because each has an opinion of its own.",
 		Tags:     []string{"Platform"},
 		Security: apimiddleware.SecurityUserOnly,
-	}, func(ctx context.Context, in *ClearRequest) (*OverridesResponse, error) {
+	}, func(ctx context.Context, in *ClearFlagRequest) (*FlagOverridesResponse, error) {
 		if _, err := principal(ctx); err != nil {
 			return nil, err
 		}
@@ -278,12 +288,14 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, mapFlagErr(err)
 		}
-		out := &OverridesResponse{}
+		out := &FlagOverridesResponse{}
 		out.Body.Key = in.Key
 		out.Body.Overrides = make([]OverrideView, 0, len(rows))
 		for _, r := range rows {
 			out.Body.Overrides = append(out.Body.Overrides, OverrideView{
-				OrganizationID: r.OrganizationID.String(), Value: r.Value,
+				OrganizationID:   r.OrganizationID.String(),
+				OrganizationName: r.OrganizationName,
+				Value:            r.Value,
 			})
 		}
 		return out, nil
@@ -307,7 +319,7 @@ func RegisterProtected(hapi huma.API, deps *app.Deps) {
 			"missing from this list would be indistinguishable from one that is switched off.",
 		Tags:     []string{"Organization"},
 		Security: apimiddleware.SecurityUserOrKey,
-	}, func(ctx context.Context, _ *struct{}) (*ListResponse, error) {
+	}, func(ctx context.Context, _ *struct{}) (*FlagListResponse, error) {
 		p, ok := apimiddleware.PrincipalFromContext(ctx)
 		if !ok || p == nil {
 			return nil, huma.Error401Unauthorized("not authenticated")
@@ -316,7 +328,7 @@ func RegisterProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, mapFlagErr(err)
 		}
-		out := &ListResponse{}
+		out := &FlagListResponse{}
 		out.Body.Flags = make([]FlagView, 0, len(eff))
 		for _, e := range eff {
 			out.Body.Flags = append(out.Body.Flags, viewOf(e))

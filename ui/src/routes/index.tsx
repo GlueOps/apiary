@@ -23,6 +23,7 @@ import { Hypervisors } from '@/pages/fleet/hypervisors.tsx';
 import { AccessRules } from '@/pages/settings/access-rules.tsx';
 import { ApiKeys } from '@/pages/settings/api-keys.tsx';
 import { DangerZone } from '@/pages/settings/danger-zone.tsx';
+import { FeatureFlags } from '@/pages/settings/feature-flags.tsx';
 import { OrgPolicies } from '@/pages/settings/org-policies.tsx';
 import { PlatformPolicies } from '@/pages/settings/platform-policies.tsx';
 import { ProfileSettings } from '@/pages/settings/profile.tsx';
@@ -138,6 +139,11 @@ export const router = createBrowserRouter([
                 // reachable URL.
                 element: <PlatformRoute />,
                 children: [
+                  {
+                    path: 'platform/flags',
+                    element: <FeatureFlags />,
+                    handle: { title: 'Feature flags' },
+                  },
                   {
                     path: 'platform/policies',
                     element: <PlatformPolicies />,

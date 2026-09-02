@@ -820,6 +820,23 @@ export type FirewallDesiredView = {
     revision: number;
 };
 
+export type FlagListResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    flags: Array<FlagView> | null;
+};
+
+export type FlagOverridesResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    key: string;
+    overrides: Array<OverrideView> | null;
+};
+
 export type FlagView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1295,18 +1312,10 @@ export type ListResponseBody3 = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
-    flags: Array<FlagView> | null;
-};
-
-export type ListResponseBody4 = {
-    /**
-     * A URL to the JSON Schema for this object.
-     */
-    readonly $schema?: string;
     keys: Array<KeyView> | null;
 };
 
-export type ListResponseBody5 = {
+export type ListResponseBody4 = {
     /**
      * A URL to the JSON Schema for this object.
      */
@@ -1573,16 +1582,8 @@ export type OrganizationStruct = {
 
 export type OverrideView = {
     organization_id: string;
+    organization_name?: string;
     value: boolean;
-};
-
-export type OverridesResponseBody = {
-    /**
-     * A URL to the JSON Schema for this object.
-     */
-    readonly $schema?: string;
-    key: string;
-    overrides: Array<OverrideView> | null;
 };
 
 export type PasskeyBeginLoginResponseBody = {
@@ -2032,7 +2033,15 @@ export type SetElementView = {
     value: string;
 };
 
-export type SetOrgRequestBody = {
+export type SetFlagRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    value: boolean;
+};
+
+export type SetOrgFlagRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
      */
@@ -2050,14 +2059,6 @@ export type SetRequestBody = {
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
-};
-
-export type SetRequestBody1 = {
-    /**
-     * A URL to the JSON Schema for this object.
-     */
-    readonly $schema?: string;
-    value: boolean;
 };
 
 export type SetView = {
@@ -2816,6 +2817,15 @@ export type EstateViewWritable = {
     scope_version: number;
 };
 
+export type FlagListResponseBodyWritable = {
+    flags: Array<FlagViewWritable> | null;
+};
+
+export type FlagOverridesResponseBodyWritable = {
+    key: string;
+    overrides: Array<OverrideView> | null;
+};
+
 export type FlagViewWritable = {
     /**
      * What applies when neither level has a row.
@@ -3121,14 +3131,10 @@ export type ListResponseBody2Writable = {
 };
 
 export type ListResponseBody3Writable = {
-    flags: Array<FlagViewWritable> | null;
-};
-
-export type ListResponseBody4Writable = {
     keys: Array<KeyViewWritable> | null;
 };
 
-export type ListResponseBody5Writable = {
+export type ListResponseBody4Writable = {
     rules: Array<AccessRuleViewWritable> | null;
     /**
      * Whether auth.seed_public_domain_rules re-applies the public-domain corpus at every boot.
@@ -3256,11 +3262,6 @@ export type MintTokenResponseBodyWritable = {
      * Returned once. Only its hash is stored — a leak of the table must not yield a token that can enrol a machine into the fleet.
      */
     token: string;
-};
-
-export type OverridesResponseBodyWritable = {
-    key: string;
-    overrides: Array<OverrideView> | null;
 };
 
 export type PasskeyBeginLoginResponseBodyWritable = {
@@ -3522,7 +3523,11 @@ export type SetElementViewWritable = {
     value: string;
 };
 
-export type SetOrgRequestBodyWritable = {
+export type SetFlagRequestBodyWritable = {
+    value: boolean;
+};
+
+export type SetOrgFlagRequestBodyWritable = {
     value: boolean;
 };
 
@@ -3532,10 +3537,6 @@ export type SetRequestBodyWritable = {
      * To return this level to 'inherit', DELETE the policy instead.
      */
     state: 'enabled' | 'disabled';
-};
-
-export type SetRequestBody1Writable = {
-    value: boolean;
 };
 
 export type SetViewWritable = {
@@ -5409,7 +5410,7 @@ export type FlagsListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody3;
+    200: FlagListResponseBody;
 };
 
 export type FlagsListResponse = FlagsListResponses[keyof FlagsListResponses];
@@ -6530,7 +6531,7 @@ export type PlatformAccessRulesListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody5;
+    200: ListResponseBody4;
 };
 
 export type PlatformAccessRulesListResponse = PlatformAccessRulesListResponses[keyof PlatformAccessRulesListResponses];
@@ -6634,7 +6635,7 @@ export type PlatformFlagsListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody;
+    200: FlagListResponseBody;
 };
 
 export type PlatformFlagsListResponse = PlatformFlagsListResponses[keyof PlatformFlagsListResponses];
@@ -6667,7 +6668,7 @@ export type PlatformFlagClearResponses = {
 export type PlatformFlagClearResponse = PlatformFlagClearResponses[keyof PlatformFlagClearResponses];
 
 export type PlatformFlagSetData = {
-    body: SetRequestBody1Writable;
+    body: SetFlagRequestBodyWritable;
     path: {
         key: string;
     };
@@ -6715,7 +6716,7 @@ export type PlatformFlagOverridesResponses = {
     /**
      * OK
      */
-    200: OverridesResponseBody;
+    200: FlagOverridesResponseBody;
 };
 
 export type PlatformFlagOverridesResponse = PlatformFlagOverridesResponses[keyof PlatformFlagOverridesResponses];
@@ -6749,7 +6750,7 @@ export type PlatformOrgFlagClearResponses = {
 export type PlatformOrgFlagClearResponse = PlatformOrgFlagClearResponses[keyof PlatformOrgFlagClearResponses];
 
 export type PlatformOrgFlagSetData = {
-    body: SetOrgRequestBodyWritable;
+    body: SetOrgFlagRequestBodyWritable;
     path: {
         org_id: string;
         key: string;
@@ -6902,7 +6903,7 @@ export type SshKeysListResponses = {
     /**
      * OK
      */
-    200: ListResponseBody4;
+    200: ListResponseBody3;
 };
 
 export type SshKeysListResponse = SshKeysListResponses[keyof SshKeysListResponses];

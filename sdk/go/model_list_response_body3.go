@@ -23,7 +23,7 @@ var _ MappedNullable = &ListResponseBody3{}
 type ListResponseBody3 struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
-	Flags []FlagView `json:"flags"`
+	Keys []KeyView `json:"keys"`
 }
 
 type _ListResponseBody3 ListResponseBody3
@@ -32,9 +32,9 @@ type _ListResponseBody3 ListResponseBody3
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewListResponseBody3(flags []FlagView) *ListResponseBody3 {
+func NewListResponseBody3(keys []KeyView) *ListResponseBody3 {
 	this := ListResponseBody3{}
-	this.Flags = flags
+	this.Keys = keys
 	return &this
 }
 
@@ -78,30 +78,30 @@ func (o *ListResponseBody3) SetSchema(v string) {
 	o.Schema = &v
 }
 
-// GetFlags returns the Flags field value
-// If the value is explicit nil, the zero value for []FlagView will be returned
-func (o *ListResponseBody3) GetFlags() []FlagView {
+// GetKeys returns the Keys field value
+// If the value is explicit nil, the zero value for []KeyView will be returned
+func (o *ListResponseBody3) GetKeys() []KeyView {
 	if o == nil {
-		var ret []FlagView
+		var ret []KeyView
 		return ret
 	}
 
-	return o.Flags
+	return o.Keys
 }
 
-// GetFlagsOk returns a tuple with the Flags field value
+// GetKeysOk returns a tuple with the Keys field value
 // and a boolean to check if the value has been set.
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
-func (o *ListResponseBody3) GetFlagsOk() ([]FlagView, bool) {
-	if o == nil || IsNil(o.Flags) {
+func (o *ListResponseBody3) GetKeysOk() ([]KeyView, bool) {
+	if o == nil || IsNil(o.Keys) {
 		return nil, false
 	}
-	return o.Flags, true
+	return o.Keys, true
 }
 
-// SetFlags sets field value
-func (o *ListResponseBody3) SetFlags(v []FlagView) {
-	o.Flags = v
+// SetKeys sets field value
+func (o *ListResponseBody3) SetKeys(v []KeyView) {
+	o.Keys = v
 }
 
 func (o ListResponseBody3) MarshalJSON() ([]byte, error) {
@@ -117,8 +117,8 @@ func (o ListResponseBody3) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
 	}
-	if o.Flags != nil {
-		toSerialize["flags"] = o.Flags
+	if o.Keys != nil {
+		toSerialize["keys"] = o.Keys
 	}
 	return toSerialize, nil
 }
@@ -128,7 +128,7 @@ func (o *ListResponseBody3) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
-		"flags",
+		"keys",
 	}
 
 	allProperties := make(map[string]interface{})

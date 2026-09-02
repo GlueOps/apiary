@@ -23,7 +23,9 @@ var _ MappedNullable = &ListResponseBody4{}
 type ListResponseBody4 struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
-	Keys []KeyView `json:"keys"`
+	Rules []AccessRuleView `json:"rules"`
+	// Whether auth.seed_public_domain_rules re-applies the public-domain corpus at every boot.
+	SeedingEnabled bool `json:"seeding_enabled"`
 }
 
 type _ListResponseBody4 ListResponseBody4
@@ -32,9 +34,10 @@ type _ListResponseBody4 ListResponseBody4
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewListResponseBody4(keys []KeyView) *ListResponseBody4 {
+func NewListResponseBody4(rules []AccessRuleView, seedingEnabled bool) *ListResponseBody4 {
 	this := ListResponseBody4{}
-	this.Keys = keys
+	this.Rules = rules
+	this.SeedingEnabled = seedingEnabled
 	return &this
 }
 
@@ -78,30 +81,54 @@ func (o *ListResponseBody4) SetSchema(v string) {
 	o.Schema = &v
 }
 
-// GetKeys returns the Keys field value
-// If the value is explicit nil, the zero value for []KeyView will be returned
-func (o *ListResponseBody4) GetKeys() []KeyView {
+// GetRules returns the Rules field value
+// If the value is explicit nil, the zero value for []AccessRuleView will be returned
+func (o *ListResponseBody4) GetRules() []AccessRuleView {
 	if o == nil {
-		var ret []KeyView
+		var ret []AccessRuleView
 		return ret
 	}
 
-	return o.Keys
+	return o.Rules
 }
 
-// GetKeysOk returns a tuple with the Keys field value
+// GetRulesOk returns a tuple with the Rules field value
 // and a boolean to check if the value has been set.
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
-func (o *ListResponseBody4) GetKeysOk() ([]KeyView, bool) {
-	if o == nil || IsNil(o.Keys) {
+func (o *ListResponseBody4) GetRulesOk() ([]AccessRuleView, bool) {
+	if o == nil || IsNil(o.Rules) {
 		return nil, false
 	}
-	return o.Keys, true
+	return o.Rules, true
 }
 
-// SetKeys sets field value
-func (o *ListResponseBody4) SetKeys(v []KeyView) {
-	o.Keys = v
+// SetRules sets field value
+func (o *ListResponseBody4) SetRules(v []AccessRuleView) {
+	o.Rules = v
+}
+
+// GetSeedingEnabled returns the SeedingEnabled field value
+func (o *ListResponseBody4) GetSeedingEnabled() bool {
+	if o == nil {
+		var ret bool
+		return ret
+	}
+
+	return o.SeedingEnabled
+}
+
+// GetSeedingEnabledOk returns a tuple with the SeedingEnabled field value
+// and a boolean to check if the value has been set.
+func (o *ListResponseBody4) GetSeedingEnabledOk() (*bool, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.SeedingEnabled, true
+}
+
+// SetSeedingEnabled sets field value
+func (o *ListResponseBody4) SetSeedingEnabled(v bool) {
+	o.SeedingEnabled = v
 }
 
 func (o ListResponseBody4) MarshalJSON() ([]byte, error) {
@@ -117,9 +144,10 @@ func (o ListResponseBody4) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
 	}
-	if o.Keys != nil {
-		toSerialize["keys"] = o.Keys
+	if o.Rules != nil {
+		toSerialize["rules"] = o.Rules
 	}
+	toSerialize["seeding_enabled"] = o.SeedingEnabled
 	return toSerialize, nil
 }
 
@@ -128,7 +156,8 @@ func (o *ListResponseBody4) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
-		"keys",
+		"rules",
+		"seeding_enabled",
 	}
 
 	allProperties := make(map[string]interface{})

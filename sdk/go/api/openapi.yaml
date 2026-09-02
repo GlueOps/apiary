@@ -2292,7 +2292,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody3"
+                $ref: "#/components/schemas/FlagListResponseBody"
           description: OK
         default:
           content:
@@ -3796,7 +3796,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody5"
+                $ref: "#/components/schemas/ListResponseBody4"
           description: OK
         default:
           content:
@@ -3928,7 +3928,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody"
+                $ref: "#/components/schemas/FlagListResponseBody"
           description: OK
         default:
           content:
@@ -3996,7 +3996,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SetRequestBody1"
+              $ref: "#/components/schemas/SetFlagRequestBody"
         required: true
       responses:
         "200":
@@ -4037,7 +4037,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OverridesResponseBody"
+                $ref: "#/components/schemas/FlagOverridesResponseBody"
           description: OK
         default:
           content:
@@ -4119,7 +4119,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SetOrgRequestBody"
+              $ref: "#/components/schemas/SetOrgFlagRequestBody"
         required: true
       responses:
         "200":
@@ -4296,7 +4296,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponseBody4"
+                $ref: "#/components/schemas/ListResponseBody3"
           description: OK
         default:
           content:
@@ -6202,6 +6202,68 @@ components:
       required:
       - digest
       - revision
+    FlagListResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        flags:
+        - $schema: https://openapi-generator.tech
+          default: true
+          key: key
+          scope: scope
+          source: source
+          value: true
+          why: why
+        - $schema: https://openapi-generator.tech
+          default: true
+          key: key
+          scope: scope
+          source: source
+          value: true
+          why: why
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        flags:
+          items:
+            $ref: "#/components/schemas/FlagView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - flags
+    FlagOverridesResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        key: key
+        overrides:
+        - organization_id: organization_id
+          organization_name: organization_name
+          value: true
+        - organization_id: organization_id
+          organization_name: organization_name
+          value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        overrides:
+          items:
+            $ref: "#/components/schemas/OverrideView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - key
+      - overrides
     FlagView:
       additionalProperties: false
       example:
@@ -7676,39 +7738,6 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
-        flags:
-        - $schema: https://openapi-generator.tech
-          default: true
-          key: key
-          scope: scope
-          source: source
-          value: true
-          why: why
-        - $schema: https://openapi-generator.tech
-          default: true
-          key: key
-          scope: scope
-          source: source
-          value: true
-          why: why
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          format: uri
-          readOnly: true
-          type: string
-        flags:
-          items:
-            $ref: "#/components/schemas/FlagView"
-          nullable: true
-          type: array
-          default: null
-      required:
-      - flags
-    ListResponseBody4:
-      additionalProperties: false
-      example:
-        $schema: https://openapi-generator.tech
         keys:
         - $schema: https://openapi-generator.tech
           created_at: 2000-01-23T04:56:07.000+00:00
@@ -7744,7 +7773,7 @@ components:
           default: null
       required:
       - keys
-    ListResponseBody5:
+    ListResponseBody4:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
@@ -8469,42 +8498,18 @@ components:
       additionalProperties: false
       example:
         organization_id: organization_id
+        organization_name: organization_name
         value: true
       properties:
         organization_id:
+          type: string
+        organization_name:
           type: string
         value:
           type: boolean
       required:
       - organization_id
       - value
-    OverridesResponseBody:
-      additionalProperties: false
-      example:
-        $schema: https://openapi-generator.tech
-        key: key
-        overrides:
-        - organization_id: organization_id
-          value: true
-        - organization_id: organization_id
-          value: true
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          format: uri
-          readOnly: true
-          type: string
-        key:
-          type: string
-        overrides:
-          items:
-            $ref: "#/components/schemas/OverrideView"
-          nullable: true
-          type: array
-          default: null
-      required:
-      - key
-      - overrides
     PasskeyBeginLoginResponseBody:
       additionalProperties: false
       example:
@@ -9793,7 +9798,22 @@ components:
       required:
       - id
       - value
-    SetOrgRequestBody:
+    SetFlagRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          type: boolean
+      required:
+      - value
+    SetOrgFlagRequestBody:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
@@ -9836,21 +9856,6 @@ components:
           type: string
       required:
       - state
-    SetRequestBody1:
-      additionalProperties: false
-      example:
-        $schema: https://openapi-generator.tech
-        value: true
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          format: uri
-          readOnly: true
-          type: string
-        value:
-          type: boolean
-      required:
-      - value
     SetView:
       additionalProperties: false
       example:

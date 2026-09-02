@@ -185,7 +185,7 @@ func (s *FeatureFlagService) ClearOrg(ctx context.Context, orgID uuid.UUID, key 
 // which is the question a platform operator asks before changing the default.
 func (s *FeatureFlagService) OverridesFor(
 	ctx context.Context, key string,
-) ([]control.OrgFeatureFlag, error) {
+) ([]repo.FlagOverride, error) {
 	if s == nil || s.flags == nil {
 		return nil, errUnwiredFlags
 	}

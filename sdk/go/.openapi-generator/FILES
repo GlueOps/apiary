@@ -83,6 +83,8 @@ docs/EstateView.md
 docs/EstatesAPI.md
 docs/FirewallAPI.md
 docs/FirewallDesiredView.md
+docs/FlagListResponseBody.md
+docs/FlagOverridesResponseBody.md
 docs/FlagView.md
 docs/FleetAPI.md
 docs/FleetActivityResponseBody.md
@@ -119,7 +121,6 @@ docs/ListResponseBody1.md
 docs/ListResponseBody2.md
 docs/ListResponseBody3.md
 docs/ListResponseBody4.md
-docs/ListResponseBody5.md
 docs/ListRulesResponseBody.md
 docs/ListRulesetsResponseBody.md
 docs/ListSetElementsResponseBody.md
@@ -146,7 +147,6 @@ docs/OrganizationAPI.md
 docs/OrganizationStruct.md
 docs/OrganizationsAPI.md
 docs/OverrideView.md
-docs/OverridesResponseBody.md
 docs/PasskeyBeginLoginResponseBody.md
 docs/PasskeyBeginRegisterResponseBody.md
 docs/PasskeyDeleteResponseBody.md
@@ -188,9 +188,9 @@ docs/RuleBody.md
 docs/RuleView.md
 docs/RulesetView.md
 docs/SetElementView.md
-docs/SetOrgRequestBody.md
+docs/SetFlagRequestBody.md
+docs/SetOrgFlagRequestBody.md
 docs/SetRequestBody.md
-docs/SetRequestBody1.md
 docs/SetView.md
 docs/SnapshotBodyResponseBody.md
 docs/SnapshotView.md
@@ -284,6 +284,8 @@ model_error_detail.go
 model_error_model.go
 model_estate_view.go
 model_firewall_desired_view.go
+model_flag_list_response_body.go
+model_flag_overrides_response_body.go
 model_flag_view.go
 model_fleet_activity_response_body.go
 model_fleet_activity_view.go
@@ -318,7 +320,6 @@ model_list_response_body1.go
 model_list_response_body2.go
 model_list_response_body3.go
 model_list_response_body4.go
-model_list_response_body5.go
 model_list_rules_response_body.go
 model_list_rulesets_response_body.go
 model_list_set_elements_response_body.go
@@ -342,7 +343,6 @@ model_mint_token_response_body.go
 model_my_organization_view.go
 model_organization_struct.go
 model_override_view.go
-model_overrides_response_body.go
 model_passkey_begin_login_response_body.go
 model_passkey_begin_register_response_body.go
 model_passkey_delete_response_body.go
@@ -382,9 +382,9 @@ model_rule_body.go
 model_rule_view.go
 model_ruleset_view.go
 model_set_element_view.go
-model_set_org_request_body.go
+model_set_flag_request_body.go
+model_set_org_flag_request_body.go
 model_set_request_body.go
-model_set_request_body1.go
 model_set_view.go
 model_snapshot_body_response_body.go
 model_snapshot_view.go

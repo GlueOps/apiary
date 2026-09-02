@@ -285,7 +285,7 @@ type ApiPlatformAccessRulesListRequest struct {
 	ApiService *PlatformAPIService
 }
 
-func (r ApiPlatformAccessRulesListRequest) Execute() (*ListResponseBody5, *http.Response, error) {
+func (r ApiPlatformAccessRulesListRequest) Execute() (*ListResponseBody4, *http.Response, error) {
 	return r.ApiService.PlatformAccessRulesListExecute(r)
 }
 
@@ -305,13 +305,13 @@ func (a *PlatformAPIService) PlatformAccessRulesList(ctx context.Context) ApiPla
 }
 
 // Execute executes the request
-//  @return ListResponseBody5
-func (a *PlatformAPIService) PlatformAccessRulesListExecute(r ApiPlatformAccessRulesListRequest) (*ListResponseBody5, *http.Response, error) {
+//  @return ListResponseBody4
+func (a *PlatformAPIService) PlatformAccessRulesListExecute(r ApiPlatformAccessRulesListRequest) (*ListResponseBody4, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodGet
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *ListResponseBody5
+		localVarReturnValue  *ListResponseBody4
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "PlatformAPIService.PlatformAccessRulesList")
@@ -673,7 +673,7 @@ type ApiPlatformFlagOverridesRequest struct {
 	key string
 }
 
-func (r ApiPlatformFlagOverridesRequest) Execute() (*OverridesResponseBody, *http.Response, error) {
+func (r ApiPlatformFlagOverridesRequest) Execute() (*FlagOverridesResponseBody, *http.Response, error) {
 	return r.ApiService.PlatformFlagOverridesExecute(r)
 }
 
@@ -695,13 +695,13 @@ func (a *PlatformAPIService) PlatformFlagOverrides(ctx context.Context, key stri
 }
 
 // Execute executes the request
-//  @return OverridesResponseBody
-func (a *PlatformAPIService) PlatformFlagOverridesExecute(r ApiPlatformFlagOverridesRequest) (*OverridesResponseBody, *http.Response, error) {
+//  @return FlagOverridesResponseBody
+func (a *PlatformAPIService) PlatformFlagOverridesExecute(r ApiPlatformFlagOverridesRequest) (*FlagOverridesResponseBody, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodGet
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *OverridesResponseBody
+		localVarReturnValue  *FlagOverridesResponseBody
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "PlatformAPIService.PlatformFlagOverrides")
@@ -799,11 +799,11 @@ type ApiPlatformFlagSetRequest struct {
 	ctx context.Context
 	ApiService *PlatformAPIService
 	key string
-	setRequestBody1 *SetRequestBody1
+	setFlagRequestBody *SetFlagRequestBody
 }
 
-func (r ApiPlatformFlagSetRequest) SetRequestBody1(setRequestBody1 SetRequestBody1) ApiPlatformFlagSetRequest {
-	r.setRequestBody1 = &setRequestBody1
+func (r ApiPlatformFlagSetRequest) SetFlagRequestBody(setFlagRequestBody SetFlagRequestBody) ApiPlatformFlagSetRequest {
+	r.setFlagRequestBody = &setFlagRequestBody
 	return r
 }
 
@@ -854,8 +854,8 @@ func (a *PlatformAPIService) PlatformFlagSetExecute(r ApiPlatformFlagSetRequest)
 	if strlen(r.key) > 120 {
 		return localVarReturnValue, nil, reportError("key must have less than 120 elements")
 	}
-	if r.setRequestBody1 == nil {
-		return localVarReturnValue, nil, reportError("setRequestBody1 is required and must be specified")
+	if r.setFlagRequestBody == nil {
+		return localVarReturnValue, nil, reportError("setFlagRequestBody is required and must be specified")
 	}
 
 	// to determine the Content-Type header
@@ -876,7 +876,7 @@ func (a *PlatformAPIService) PlatformFlagSetExecute(r ApiPlatformFlagSetRequest)
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
 	// body params
-	localVarPostBody = r.setRequestBody1
+	localVarPostBody = r.setFlagRequestBody
 	if r.ctx != nil {
 		// API Key Authentication
 		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
@@ -941,7 +941,7 @@ type ApiPlatformFlagsListRequest struct {
 	ApiService *PlatformAPIService
 }
 
-func (r ApiPlatformFlagsListRequest) Execute() (*ListResponseBody, *http.Response, error) {
+func (r ApiPlatformFlagsListRequest) Execute() (*FlagListResponseBody, *http.Response, error) {
 	return r.ApiService.PlatformFlagsListExecute(r)
 }
 
@@ -963,13 +963,13 @@ func (a *PlatformAPIService) PlatformFlagsList(ctx context.Context) ApiPlatformF
 }
 
 // Execute executes the request
-//  @return ListResponseBody
-func (a *PlatformAPIService) PlatformFlagsListExecute(r ApiPlatformFlagsListRequest) (*ListResponseBody, *http.Response, error) {
+//  @return FlagListResponseBody
+func (a *PlatformAPIService) PlatformFlagsListExecute(r ApiPlatformFlagsListRequest) (*FlagListResponseBody, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodGet
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *ListResponseBody
+		localVarReturnValue  *FlagListResponseBody
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "PlatformAPIService.PlatformFlagsList")
@@ -1196,11 +1196,11 @@ type ApiPlatformOrgFlagSetRequest struct {
 	ApiService *PlatformAPIService
 	orgId string
 	key string
-	setOrgRequestBody *SetOrgRequestBody
+	setOrgFlagRequestBody *SetOrgFlagRequestBody
 }
 
-func (r ApiPlatformOrgFlagSetRequest) SetOrgRequestBody(setOrgRequestBody SetOrgRequestBody) ApiPlatformOrgFlagSetRequest {
-	r.setOrgRequestBody = &setOrgRequestBody
+func (r ApiPlatformOrgFlagSetRequest) SetOrgFlagRequestBody(setOrgFlagRequestBody SetOrgFlagRequestBody) ApiPlatformOrgFlagSetRequest {
+	r.setOrgFlagRequestBody = &setOrgFlagRequestBody
 	return r
 }
 
@@ -1254,8 +1254,8 @@ func (a *PlatformAPIService) PlatformOrgFlagSetExecute(r ApiPlatformOrgFlagSetRe
 	if strlen(r.key) > 120 {
 		return localVarReturnValue, nil, reportError("key must have less than 120 elements")
 	}
-	if r.setOrgRequestBody == nil {
-		return localVarReturnValue, nil, reportError("setOrgRequestBody is required and must be specified")
+	if r.setOrgFlagRequestBody == nil {
+		return localVarReturnValue, nil, reportError("setOrgFlagRequestBody is required and must be specified")
 	}
 
 	// to determine the Content-Type header
@@ -1276,7 +1276,7 @@ func (a *PlatformAPIService) PlatformOrgFlagSetExecute(r ApiPlatformOrgFlagSetRe
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
 	// body params
-	localVarPostBody = r.setOrgRequestBody
+	localVarPostBody = r.setOrgFlagRequestBody
 	if r.ctx != nil {
 		// API Key Authentication
 		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
