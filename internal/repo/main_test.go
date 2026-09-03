@@ -17,6 +17,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	testsupport.DropSchemas(
 		accessRuleTestSchema,
+		orgDirSchema,
 		authFailureTestSchema,
 		credentialTestSchema,
 		declareTestSchema,

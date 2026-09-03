@@ -1336,6 +1336,170 @@ func (a *PlatformAPIService) PlatformOrgFlagSetExecute(r ApiPlatformOrgFlagSetRe
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type ApiPlatformOrganizationsListRequest struct {
+	ctx context.Context
+	ApiService *PlatformAPIService
+	q *string
+	includeDeleted *bool
+	limit *int64
+	offset *int64
+}
+
+// Match the name or domain, case-insensitively.
+func (r ApiPlatformOrganizationsListRequest) Q(q string) ApiPlatformOrganizationsListRequest {
+	r.q = &q
+	return r
+}
+
+// Include soft-deleted organizations. Off by default: a deleted tenant is not something to target.
+func (r ApiPlatformOrganizationsListRequest) IncludeDeleted(includeDeleted bool) ApiPlatformOrganizationsListRequest {
+	r.includeDeleted = &includeDeleted
+	return r
+}
+
+// Default 50.
+func (r ApiPlatformOrganizationsListRequest) Limit(limit int64) ApiPlatformOrganizationsListRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiPlatformOrganizationsListRequest) Offset(offset int64) ApiPlatformOrganizationsListRequest {
+	r.offset = &offset
+	return r
+}
+
+func (r ApiPlatformOrganizationsListRequest) Execute() (*ListOrganizationsResponseBody, *http.Response, error) {
+	return r.ApiService.PlatformOrganizationsListExecute(r)
+}
+
+/*
+PlatformOrganizationsList The organizations on this installation
+
+Names and ids, so that anything targeted at one organization can be chosen rather than typed as a uuid.
+
+Soft-deleted organizations are EXCLUDED unless asked for. A deleted tenant is not something to target, and its row survives only so a mistaken deletion can be seen and undone.
+
+Carries no credential material of any kind. An organization row also holds the sealed connection string and tenant key that decrypt that customer's database; those columns are never read by this query.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return ApiPlatformOrganizationsListRequest
+*/
+func (a *PlatformAPIService) PlatformOrganizationsList(ctx context.Context) ApiPlatformOrganizationsListRequest {
+	return ApiPlatformOrganizationsListRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+//  @return ListOrganizationsResponseBody
+func (a *PlatformAPIService) PlatformOrganizationsListExecute(r ApiPlatformOrganizationsListRequest) (*ListOrganizationsResponseBody, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *ListOrganizationsResponseBody
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "PlatformAPIService.PlatformOrganizationsList")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/api/v1/platform/organizations"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.q != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "q", r.q, "form", "")
+	}
+	if r.includeDeleted != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "include_deleted", r.includeDeleted, "form", "")
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	}
+	if r.offset != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "offset", r.offset, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json", "application/problem+json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.ctx != nil {
+		// API Key Authentication
+		if auth, ok := r.ctx.Value(ContextAPIKeys).(map[string]APIKey); ok {
+			if apiKey, ok := auth["ApiKeyAuth"]; ok {
+				var key string
+				if apiKey.Prefix != "" {
+					key = apiKey.Prefix + " " + apiKey.Key
+				} else {
+					key = apiKey.Key
+				}
+				localVarHeaderParams["X-API-Key"] = key
+			}
+		}
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+			var v ErrorModel
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiPlatformPoliciesClearRequest struct {
 	ctx context.Context
 	ApiService *PlatformAPIService

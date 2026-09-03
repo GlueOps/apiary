@@ -7,23 +7,21 @@ import (
 )
 
 type Organization struct {
-	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Name               string     `gorm:"not null" json:"name"`
-	Domain             *string    `gorm:"index" json:"domain"`
-	DomainVerifiedAt   *time.Time `gorm:"column:domain_verified_at" json:"domain_verified_at,omitempty"`
-	Status             string     `gorm:"not null;default:'pending'" json:"status"`
-	ConnectionString   string     `gorm:"not null;default:''" json:"-"`
-	EncryptedTenantKey string     `gorm:"not null;default:''" json:"-"`
-	TenantKeyIV        string     `gorm:"not null;default:''" json:"-"`
-	TenantKeyTag       string     `gorm:"not null;default:''" json:"-"`
-
-	ConnectionStringIV  string `gorm:"not null;default:''" json:"-"`
-	ConnectionStringTag string `gorm:"not null;default:''" json:"-"`
-
-	RegistrableDomain *string    `gorm:"type:varchar(253);column:registrable_domain;index:idx_organizations_registrable_domain_proven,priority:1" json:"-"`
-	ProvenAt          *time.Time `gorm:"type:timestamptz;column:proven_at;index:idx_organizations_registrable_domain_proven,priority:2" json:"-"`
-	ProvingDaysSeen   int        `gorm:"column:proving_days_seen;not null;default:0" json:"-"`
-	ProvingLastDay    *time.Time `gorm:"type:date;column:proving_last_day" json:"-"`
+	ID                  uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name                string     `gorm:"not null" json:"name"`
+	Domain              *string    `gorm:"index" json:"domain"`
+	DomainVerifiedAt    *time.Time `gorm:"column:domain_verified_at" json:"domain_verified_at,omitempty"`
+	Status              string     `gorm:"not null;default:'pending'" json:"status"`
+	ConnectionString    string     `gorm:"not null;default:''" json:"-"`
+	EncryptedTenantKey  string     `gorm:"not null;default:''" json:"-"`
+	TenantKeyIV         string     `gorm:"not null;default:''" json:"-"`
+	TenantKeyTag        string     `gorm:"not null;default:''" json:"-"`
+	ConnectionStringIV  string     `gorm:"not null;default:''" json:"-"`
+	ConnectionStringTag string     `gorm:"not null;default:''" json:"-"`
+	RegistrableDomain   *string    `gorm:"type:varchar(253);column:registrable_domain;index:idx_organizations_registrable_domain_proven,priority:1" json:"-"`
+	ProvenAt            *time.Time `gorm:"type:timestamptz;column:proven_at;index:idx_organizations_registrable_domain_proven,priority:2" json:"-"`
+	ProvingDaysSeen     int        `gorm:"column:proving_days_seen;not null;default:0" json:"-"`
+	ProvingLastDay      *time.Time `gorm:"type:date;column:proving_last_day" json:"-"`
 
 	// DeletedAt soft-deletes the organization, and soft is the only safe kind
 	// here.

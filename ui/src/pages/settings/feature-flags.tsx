@@ -18,6 +18,7 @@ import {
   platformFlagsListOptions,
   platformFlagsListQueryKey,
   platformOrgFlagSetMutation,
+  platformOrganizationsListOptions,
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { LoadError } from '../fleet/drain';
@@ -60,18 +61,26 @@ function ValuePill({ on }: { on: boolean }) {
  */
 function Overrides({ flag }: { flag: FlagView }) {
   const qc = useQueryClient();
-  const [orgID, setOrgID] = useState('');
+  const [search, setSearch] = useState('');
 
   const query = useQuery({
     ...platformFlagOverridesOptions({ path: { key: flag.key } }),
     enabled: flag.scope === 'tenant',
   });
 
+  // Only once something is typed, and only for a flag that can carry an
+  // override. Fetching every tenant for every flag card on the page would be one
+  // full directory read per flag, for a list nobody has asked to see yet.
+  const orgs = useQuery({
+    ...platformOrganizationsListOptions({ query: { q: search.trim(), limit: 20 } }),
+    enabled: flag.scope === 'tenant' && search.trim().length > 0,
+  });
+
   const setOrg = useMutation({
     ...platformOrgFlagSetMutation(),
     onSuccess: () => {
       toast.success('Override saved');
-      setOrgID('');
+      setSearch('');
       void qc.invalidateQueries({
         queryKey: platformFlagOverridesQueryKey({ path: { key: flag.key } }),
       });
@@ -89,6 +98,11 @@ function Overrides({ flag }: { flag: FlagView }) {
   }
 
   const rows = query.data?.overrides ?? [];
+  // An organization that already has a row is offered through the list above,
+  // where its current value is visible. Offering it twice invites setting it
+  // from the half of the screen that does not say what it is now.
+  const already = new Set(rows.map((o) => o.organization_id));
+  const candidates = (orgs.data?.organizations ?? []).filter((o) => !already.has(o.id));
 
   return (
     <div className="space-y-3">
@@ -133,45 +147,73 @@ function Overrides({ flag }: { flag: FlagView }) {
         </ul>
       ) : null}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="space-y-1">
-          <Label htmlFor={`org-${flag.key}`} className="text-xs">
-            Override for an organization
-          </Label>
-          <Input
-            id={`org-${flag.key}`}
-            value={orgID}
-            onChange={(e) => setOrgID(e.target.value)}
-            placeholder="organization id"
-            className="h-8 w-80 font-mono text-xs"
-          />
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!orgID.trim() || setOrg.isPending}
-          onClick={() =>
-            setOrg.mutate({ path: { org_id: orgID.trim(), key: flag.key }, body: { value: true } })
-          }
-        >
-          Turn on
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!orgID.trim() || setOrg.isPending}
-          onClick={() =>
-            setOrg.mutate({ path: { org_id: orgID.trim(), key: flag.key }, body: { value: false } })
-          }
-        >
-          Turn off
-        </Button>
+      <div className="space-y-2">
+        <Label htmlFor={`org-${flag.key}`} className="text-xs">
+          Override for an organization
+        </Label>
+        <Input
+          id={`org-${flag.key}`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search organizations by name or domain"
+          className="h-8 w-80 text-xs"
+        />
+        {/* Only once something has been typed. A list of every tenant sitting
+            open under each flag is noise on a screen whose subject is the flag,
+            and it invites clicking the wrong one. */}
+        {search.trim() ? (
+          orgs.isLoading ? (
+            <p className="text-xs text-muted-foreground">Searching…</p>
+          ) : candidates.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No organization matches. Deleted ones are not listed.
+            </p>
+          ) : (
+            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-2">
+              {candidates.map((o) => (
+                <li key={o.id} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="min-w-0">
+                    <span className="block truncate">{o.name}</span>
+                    {o.domain ? (
+                      <span className="block truncate text-muted-foreground">{o.domain}</span>
+                    ) : null}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2"
+                      disabled={setOrg.isPending}
+                      onClick={() =>
+                        setOrg.mutate({
+                          path: { org_id: o.id, key: flag.key },
+                          body: { value: true },
+                        })
+                      }
+                    >
+                      on
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2"
+                      disabled={setOrg.isPending}
+                      onClick={() =>
+                        setOrg.mutate({
+                          path: { org_id: o.id, key: flag.key },
+                          body: { value: false },
+                        })
+                      }
+                    >
+                      off
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
       </div>
-      {/* Said out loud rather than left as a puzzle: there is no endpoint that
-          lists organizations, so there is nothing to build a picker from. */}
-      <p className="text-xs text-muted-foreground">
-        An organization id is required because nothing in this API lists organizations yet.
-      </p>
     </div>
   );
 }

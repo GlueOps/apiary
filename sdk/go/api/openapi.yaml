@@ -4051,6 +4051,77 @@ paths:
       summary: Which organizations have set this flag themselves
       tags:
       - Platform
+  /api/v1/platform/organizations:
+    get:
+      description: |-
+        Names and ids, so that anything targeted at one organization can be chosen rather than typed as a uuid.
+
+        Soft-deleted organizations are EXCLUDED unless asked for. A deleted tenant is not something to target, and its row survives only so a mistaken deletion can be seen and undone.
+
+        Carries no credential material of any kind. An organization row also holds the sealed connection string and tenant key that decrypt that customer's database; those columns are never read by this query.
+      operationId: platform-organizations-list
+      parameters:
+      - description: "Match the name or domain, case-insensitively."
+        explode: false
+        in: query
+        name: q
+        required: false
+        schema:
+          description: "Match the name or domain, case-insensitively."
+          maxLength: 200
+          type: string
+        style: form
+      - description: "Include soft-deleted organizations. Off by default: a deleted\
+          \ tenant is not something to target."
+        explode: false
+        in: query
+        name: include_deleted
+        required: false
+        schema:
+          description: "Include soft-deleted organizations. Off by default: a deleted\
+            \ tenant is not something to target."
+          type: boolean
+        style: form
+      - description: Default 50.
+        explode: false
+        in: query
+        name: limit
+        required: false
+        schema:
+          description: Default 50.
+          format: int64
+          maximum: 200
+          minimum: 1
+          type: integer
+        style: form
+      - explode: false
+        in: query
+        name: offset
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListOrganizationsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      summary: The organizations on this installation
+      tags:
+      - Platform
   /api/v1/platform/organizations/{org_id}/flags/{key}:
     delete:
       description: "The organization falls back to the installation-wide value, or\
@@ -7605,6 +7676,37 @@ components:
           default: null
       required:
       - members
+    ListOrganizationsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        organizations:
+        - created_at: 2000-01-23T04:56:07.000+00:00
+          deleted: true
+          domain: domain
+          id: id
+          name: name
+          status: status
+        - created_at: 2000-01-23T04:56:07.000+00:00
+          deleted: true
+          domain: domain
+          id: id
+          name: name
+          status: status
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        organizations:
+          items:
+            $ref: "#/components/schemas/OrganizationSummaryView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - organizations
     ListResponseBody:
       additionalProperties: false
       example:
@@ -8494,6 +8596,35 @@ components:
       required:
       - id
       - name
+    OrganizationSummaryView:
+      additionalProperties: false
+      example:
+        created_at: 2000-01-23T04:56:07.000+00:00
+        deleted: true
+        domain: domain
+        id: id
+        name: name
+        status: status
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        deleted:
+          type: boolean
+        domain:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+      required:
+      - created_at
+      - deleted
+      - id
+      - name
+      - status
     OverrideView:
       additionalProperties: false
       example:
