@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { usePublicFlags } from '@/hooks/use-public-flags';
 import { authRegisterMutation } from '@/sdk/@tanstack/react-query.gen';
 
 export const Signup = () => {
+  const { enabled } = usePublicFlags();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -64,6 +66,31 @@ export const Signup = () => {
               variant="ghost"
               className="w-full"
             >
+              Back to sign in
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // TOLD, NOT HIDDEN. Someone who followed a sign-up link needs to know that
+  // registration is closed here and what to do instead; a page that simply
+  // rendered nothing would read as broken. The server refuses the request in any
+  // case — this only decides what the visitor is shown.
+  if (!enabled('legacy_registration')) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-lg md:text-xl">Registration is by invitation</CardTitle>
+            <CardDescription className="text-xs md:text-sm">
+              Self-service sign-up is not enabled on this installation. Ask someone in your
+              organization to invite you, then follow the link in that invitation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button render={<Link to="/login" />} variant="outline" className="w-full">
               Back to sign in
             </Button>
           </CardContent>

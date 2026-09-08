@@ -1733,6 +1733,19 @@ export type PreviewResponseBody1 = {
     rules: Array<RuleView> | null;
 };
 
+export type PublicFlagView = {
+    key: string;
+    value: boolean;
+};
+
+export type PublicFlagsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    flags: Array<PublicFlagView> | null;
+};
+
 export type PublicKeyCredentialCreationOptions = {
     attestation?: string;
     attestationFormats?: Array<string> | null;
@@ -3353,6 +3366,10 @@ export type PreviewResponseBodyWritable = {
 export type PreviewResponseBody1Writable = {
     count: number;
     rules: Array<RuleViewWritable> | null;
+};
+
+export type PublicFlagsResponseBodyWritable = {
+    flags: Array<PublicFlagView> | null;
 };
 
 export type PublishRequestBodyWritable = {
@@ -5435,6 +5452,31 @@ export type FlagsListResponses = {
 };
 
 export type FlagsListResponse = FlagsListResponses[keyof FlagsListResponses];
+
+export type FlagsPublicData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/flags/public';
+};
+
+export type FlagsPublicErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FlagsPublicError = FlagsPublicErrors[keyof FlagsPublicErrors];
+
+export type FlagsPublicResponses = {
+    /**
+     * OK
+     */
+    200: PublicFlagsResponseBody;
+};
+
+export type FlagsPublicResponse = FlagsPublicResponses[keyof FlagsPublicResponses];
 
 export type FleetActivityListData = {
     body?: never;

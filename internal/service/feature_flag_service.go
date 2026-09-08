@@ -121,6 +121,49 @@ func (s *FeatureFlagService) ListEffective(
 	return out, nil
 }
 
+// ListPublicEffective resolves the flags an unauthenticated caller may read.
+//
+// NO ORGANIZATION IS CONSULTED, and not because the caller happens not to have
+// one — because a public flag is platform-scoped by construction, so there is no
+// organization row that could apply. Passing uuid.Nil would reach the same
+// answer today; naming it here means a future tenant-scoped public flag fails to
+// compile a decision rather than silently resolving to whatever the platform
+// happens to say.
+func (s *FeatureFlagService) ListPublicEffective(ctx context.Context) ([]control.EffectiveFlag, error) {
+	pub := control.PublicFlags()
+	out := make([]control.EffectiveFlag, 0, len(pub))
+
+	if s == nil || s.flags == nil {
+		for _, f := range pub {
+			out = append(out, control.ResolveFlag(f, nil, nil))
+		}
+		return out, nil
+	}
+
+	rows, err := s.flags.ListPlatform(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list platform flags: %w", err)
+	}
+	platform := make(map[string]*control.PlatformFeatureFlag, len(rows))
+	for i := range rows {
+		platform[rows[i].Key] = &rows[i]
+	}
+	for _, f := range pub {
+		out = append(out, control.ResolveFlag(f, platform[f.Key], nil))
+	}
+	return out, nil
+}
+
+// PlatformEnabled answers one platform-scoped flag with no organization in play.
+//
+// For the server's own gates — the sign-in handler asking whether it is allowed
+// to run at all — where there is no tenant yet and inventing uuid.Nil at each
+// call site invites somebody passing a real one and getting a per-tenant answer
+// to an installation-wide question.
+func (s *FeatureFlagService) PlatformEnabled(ctx context.Context, key string) (bool, error) {
+	return s.Enabled(ctx, uuid.Nil, key)
+}
+
 // SetPlatform stores the installation-wide value.
 func (s *FeatureFlagService) SetPlatform(
 	ctx context.Context, key string, value bool, by uuid.UUID,

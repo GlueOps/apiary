@@ -62,6 +62,11 @@ func RegisterSignup(hapi huma.API, deps *app.Deps) {
 			"The organization's tenant database is not provisioned until the address is confirmed, so an unconfirmed signup costs a row and nothing else.",
 		Tags: []string{"Auth"},
 	}, func(ctx context.Context, input *RegisterRequest) (*RegisterResponse, error) {
+		// Before anything is created, so a refused signup leaves no half-made
+		// user, organization or admission-counter increment behind it.
+		if err := refuseIfLegacyRegistrationDisabled(ctx, deps); err != nil {
+			return nil, err
+		}
 		result, err := svc.Register(ctx, service.RegisterInput{
 			Email:            input.Body.Email,
 			Password:         input.Body.Password,

@@ -164,6 +164,8 @@ docs/PolicyView.md
 docs/PreviewResponseBody.md
 docs/PreviewResponseBody1.md
 docs/ProfileAPI.md
+docs/PublicFlagView.md
+docs/PublicFlagsResponseBody.md
 docs/PublicKeyCredentialCreationOptions.md
 docs/PublicKeyCredentialRequestOptions.md
 docs/PublishRequestBody.md
@@ -360,6 +362,8 @@ model_policy_config_view.go
 model_policy_view.go
 model_preview_response_body.go
 model_preview_response_body1.go
+model_public_flag_view.go
+model_public_flags_response_body.go
 model_public_key_credential_creation_options.go
 model_public_key_credential_request_options.go
 model_publish_request_body.go
