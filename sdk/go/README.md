@@ -96,6 +96,7 @@ Class | Method | HTTP request | Description
 *AuthAPI* | [**AuthTotpDisable**](docs/AuthAPI.md#authtotpdisable) | **Delete** /api/v1/auth/totp | Disable TOTP
 *AuthAPI* | [**AuthTotpSetup**](docs/AuthAPI.md#authtotpsetup) | **Post** /api/v1/auth/totp/setup | Start TOTP setup
 *AuthAPI* | [**AuthVerifyEmail**](docs/AuthAPI.md#authverifyemail) | **Post** /api/v1/auth/verify-email | Confirm an email address
+*AuthAPI* | [**FlagsPublic**](docs/AuthAPI.md#flagspublic) | **Get** /api/v1/flags/public | The flags a sign-in page needs before anyone has signed in
 *EstatesAPI* | [**EstatesCreate**](docs/EstatesAPI.md#estatescreate) | **Post** /api/v1/estates | Register an estate and its credential
 *EstatesAPI* | [**EstatesDelete**](docs/EstatesAPI.md#estatesdelete) | **Delete** /api/v1/estates/{id} | Delete an estate and its credential
 *EstatesAPI* | [**EstatesGet**](docs/EstatesAPI.md#estatesget) | **Get** /api/v1/estates/{id} | Get an estate
@@ -333,6 +334,8 @@ Class | Method | HTTP request | Description
  - [PolicyView](docs/PolicyView.md)
  - [PreviewResponseBody](docs/PreviewResponseBody.md)
  - [PreviewResponseBody1](docs/PreviewResponseBody1.md)
+ - [PublicFlagView](docs/PublicFlagView.md)
+ - [PublicFlagsResponseBody](docs/PublicFlagsResponseBody.md)
  - [PublicKeyCredentialCreationOptions](docs/PublicKeyCredentialCreationOptions.md)
  - [PublicKeyCredentialRequestOptions](docs/PublicKeyCredentialRequestOptions.md)
  - [PublishRequestBody](docs/PublishRequestBody.md)

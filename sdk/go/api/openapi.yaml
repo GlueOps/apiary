@@ -2308,6 +2308,32 @@ paths:
       summary: The feature flags in effect for this organization
       tags:
       - Organization
+  /api/v1/flags/public:
+    get:
+      description: |-
+        Unauthenticated, and only the flags explicitly marked public — which today is which sign-in methods this installation offers.
+
+        NOT A VIEW OF THE FLAG SYSTEM. It carries a key and a value and nothing else: no source, no scope, no built-in default. Those describe how the installation is configured rather than what it offers, and an anonymous caller has no business knowing whether a value was set deliberately or inherited.
+
+        Organization-scoped flags never appear here at any value. They resolve differently per tenant and an anonymous caller has no tenant, so publishing one would either leak another organization's configuration or answer with a value true for nobody.
+      operationId: flags-public
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicFlagsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security: []
+      summary: The flags a sign-in page needs before anyone has signed in
+      tags:
+      - Auth
   /api/v1/fleet/activity:
     get:
       description: |-
@@ -9088,6 +9114,42 @@ components:
       required:
       - count
       - rules
+    PublicFlagView:
+      additionalProperties: false
+      example:
+        key: key
+        value: true
+      properties:
+        key:
+          type: string
+        value:
+          type: boolean
+      required:
+      - key
+      - value
+    PublicFlagsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        flags:
+        - key: key
+          value: true
+        - key: key
+          value: true
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        flags:
+          items:
+            $ref: "#/components/schemas/PublicFlagView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - flags
     PublicKeyCredentialCreationOptions:
       additionalProperties: false
       example:

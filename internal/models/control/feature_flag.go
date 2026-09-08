@@ -60,6 +60,29 @@ type Flag struct {
 	// Why is shown beside the flag wherever it is listed. A flag nobody can
 	// explain is a flag nobody dares delete.
 	Why string
+
+	// Public serves this flag to callers with NO CREDENTIAL AT ALL.
+	//
+	// It exists for one shape of problem: the sign-in page has to know whether
+	// to render the password form, and it has to know that before anybody has
+	// signed in. There is no authenticated read that can answer a question asked
+	// by an anonymous browser.
+	//
+	// So this is an explicit, per-flag decision to publish a piece of platform
+	// configuration to the internet, and it is opt-in for that reason — the zero
+	// value keeps a flag private, so a new flag is never public by forgetting.
+	//
+	// ONLY MEANINGFUL ON A PLATFORM-SCOPED FLAG, and refused on any other by
+	// TestOnlyPlatformScopedFlagsMayBePublic. A tenant-scoped flag resolves
+	// differently per organization, and an anonymous caller has no organization
+	// — so publishing one would either leak another tenant's configuration or
+	// answer with a value that applies to nobody.
+	//
+	// What it publishes is worth being clear-eyed about: an anonymous caller
+	// learns which sign-in methods this installation offers. That is already
+	// visible to anyone who loads the page, which is why these two are safe and
+	// why a flag whose name gives away something unreleased is not.
+	Public bool
 }
 
 // flagRegistry is every flag this build knows about.
@@ -68,11 +91,11 @@ type Flag struct {
 // parsed. "proxmox.provisioning" is one key, not a path.
 var flagRegistry = map[string]Flag{
 	"legacy_login": {
-		Key: "legacy_login", Scope: ScopePlatform, Default: true,
+		Key: "legacy_login", Scope: ScopePlatform, Default: true, Public: true,
 		Why: "the pre-OIDC username and password login form",
 	},
 	"legacy_registration": {
-		Key: "legacy_registration", Scope: ScopePlatform, Default: true,
+		Key: "legacy_registration", Scope: ScopePlatform, Default: true, Public: true,
 		Why: "self-service registration without an invitation",
 	},
 	"proxmox.provisioning": {
@@ -89,6 +112,24 @@ var flagRegistry = map[string]Flag{
 func LookupFlag(key string) (Flag, bool) {
 	f, ok := flagRegistry[key]
 	return f, ok
+}
+
+// PublicFlags returns the flags an unauthenticated caller may read.
+//
+// Built by FILTERING the registry rather than by keeping a second list. Two
+// lists disagree eventually, and the direction this one would drift is a flag
+// being served publicly after its Public bit was removed.
+func PublicFlags() []Flag {
+	out := make([]Flag, 0, 4)
+	for _, f := range AllFlags() {
+		// Both conditions, every time. Scope is checked here and not only in the
+		// registry test, because the test guards what is DECLARED and this guards
+		// what is SERVED — and the second is the one an anonymous caller reaches.
+		if f.Public && f.Scope == ScopePlatform {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // AllFlags returns every declared flag, ordered by key so that a listing, a

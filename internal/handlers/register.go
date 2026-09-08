@@ -20,6 +20,10 @@ import (
 
 func RegisterPublic(api huma.API, deps *app.Deps) error {
 	auth.RegisterPublic(api, deps)
+	// The sign-in page has to know whether to render the password form before
+	// anybody has signed in, so this one flag read cannot require a principal.
+	// Only flags explicitly marked public reach it, and never a tenant-scoped one.
+	featureflag.RegisterPublicFlags(api, deps)
 	// Public by design — see the invitation package comment.
 	invitation.RegisterPublic(api, deps)
 	// Enrolment only. A host being brought up has no credential yet — that is

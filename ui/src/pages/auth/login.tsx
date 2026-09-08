@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
+import { usePublicFlags } from '@/hooks/use-public-flags';
 import type { MFAPending, TokenData } from '@/providers/auth-provider';
 import { authLoginMutation } from '@/sdk/@tanstack/react-query.gen';
 import { client } from '@/sdk/client.gen';
@@ -91,6 +92,8 @@ export const Login = () => {
   const [totpCode, setTotpCode] = useState('');
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const { enabled } = usePublicFlags();
+  const passwordSignIn = enabled('legacy_login');
 
   // Mirrors ErrTypeEmailNotVerified in internal/handlers/auth/login.go. The
   // generated SDK does not surface error type URIs, so this is hand-carried; a Go
@@ -305,58 +308,73 @@ export const Login = () => {
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">Sign in</CardTitle>
           <CardDescription className="text-xs md:text-sm">
-            Continue with email/password or a provider below to access your account.
+            {passwordSignIn
+              ? 'Continue with email/password or a provider below to access your account.'
+              : 'Continue with a provider below to access your account.'}
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm leading-none font-medium">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+          {/* Hidden, not disabled. A disabled form still says "you could sign in
+              this way if only you were allowed", which is untrue — the server
+              refuses the request outright. */}
+          {passwordSignIn ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm leading-none font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm leading-none font-medium">
+                  Password
+                </label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-muted-foreground hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={login.isPending}>
+                {login.isPending ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </form>
+          ) : null}
+
+          {/* The separator only separates something from something. With the
+              password form gone the providers are the whole of the page, and an
+              "OR" above them reads as a missing half. */}
+          {passwordSignIn ? (
+            <div className="flex items-center gap-4">
+              <Separator className="flex-1" />
+              <span className="text-xs text-muted-foreground">OR</span>
+              <Separator className="flex-1" />
             </div>
-
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm leading-none font-medium">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Link to="/forgot-password" className="text-xs text-muted-foreground hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={login.isPending}>
-              {login.isPending ? 'Signing in...' : 'Sign in'}
-            </Button>
-          </form>
-
-          <div className="flex items-center gap-4">
-            <Separator className="flex-1" />
-            <span className="text-xs text-muted-foreground">OR</span>
-            <Separator className="flex-1" />
-          </div>
+          ) : null}
 
           <div className="grid grid-cols-3 gap-3">
             <Button variant="outline" type="button" onClick={() => handleSocial('google')}>

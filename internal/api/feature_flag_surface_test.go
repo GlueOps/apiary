@@ -115,3 +115,47 @@ func TestACustomerCannotListTheOtherOrganizations(t *testing.T) {
 		t.Fatalf("the refusal echoed another tenant's name: %s", rec.Body.String())
 	}
 }
+
+// THE PUBLIC READ IS REACHABLE WITH NO CREDENTIAL, AND CARRIES ONLY WHAT IT
+// MUST.
+//
+// It exists for one ordering problem: the sign-in page decides whether to render
+// the password form before anybody has signed in, so no authenticated endpoint
+// can answer it. Everything about that makes it the endpoint most worth pinning
+// — it is the only one in this package a stranger can reach.
+func TestThePublicFlagReadIsAnonymousAndNarrow(t *testing.T) {
+	db := hhtDB(t)
+	a := hhtApp(t, db)
+
+	// No token at all.
+	rec := hhtReq(t, a, http.MethodGet, "/flags/public", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /flags/public answered %d with no credential, want 200 — the sign-in page "+
+			"cannot authenticate to ask whether to show a sign-in form: %s",
+			rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "legacy_login") {
+		t.Fatalf("the sign-in page has no way to know whether to render its form: %s", body)
+	}
+
+	// Tenant-scoped flags must not appear AT ANY VALUE. An anonymous caller has
+	// no organization, so a per-tenant answer is either somebody else's or
+	// nobody's.
+	for _, k := range []string{"proxmox.provisioning", "aws.provisioning"} {
+		if strings.Contains(body, k) {
+			t.Fatalf("%q is organization-scoped and reached an anonymous caller: %s", k, body)
+		}
+	}
+
+	// And it carries the answer, not the configuration. Source, scope and the
+	// built-in default describe how the installation is SET UP rather than what
+	// it offers.
+	for _, leak := range []string{`"source"`, `"scope"`, `"default"`, `"why"`} {
+		if strings.Contains(body, leak) {
+			t.Fatalf("the public read exposed %s, which describes how this installation is "+
+				"configured rather than what it offers: %s", leak, body)
+		}
+	}
+}

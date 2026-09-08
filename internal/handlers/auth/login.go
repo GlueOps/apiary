@@ -50,6 +50,12 @@ func RegisterLogin(hapi huma.API, deps *app.Deps) {
 		Description: "Validates email and password, selects the user's organization, and returns JWT access and refresh tokens.",
 		Tags:        []string{"Auth"},
 	}, func(ctx context.Context, input *LoginRequest) (*LoginResponse, error) {
+		// BEFORE the credentials are read. Refusing after would make the flag a
+		// timing oracle and would count a failed attempt against an account for
+		// a request that was never going to be considered.
+		if err := refuseIfLegacyLoginDisabled(ctx, deps); err != nil {
+			return nil, err
+		}
 		result, err := loginSvc.Login(ctx, service.LoginInput{
 			Email:     input.Body.Email,
 			Password:  input.Body.Password,
