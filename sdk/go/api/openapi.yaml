@@ -9995,6 +9995,7 @@ components:
       additionalProperties: false
       example:
         $schema: https://openapi-generator.tech
+        acknowledge_lockout: true
         value: true
       properties:
         $schema:
@@ -10002,6 +10003,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        acknowledge_lockout:
+          description: Proceed even though disabling this would leave no way to sign
+            in. Only consulted for a flag that gates sign-in.
+          type: boolean
         value:
           type: boolean
       required:

@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Schema** | Pointer to **string** | A URL to the JSON Schema for this object. | [optional] [readonly] 
+**AcknowledgeLockout** | Pointer to **bool** | Proceed even though disabling this would leave no way to sign in. Only consulted for a flag that gates sign-in. | [optional] 
 **Value** | **bool** |  | 
 
 ## Methods
@@ -50,6 +51,31 @@ SetSchema sets Schema field to given value.
 `func (o *SetFlagRequestBody) HasSchema() bool`
 
 HasSchema returns a boolean if a field has been set.
+
+### GetAcknowledgeLockout
+
+`func (o *SetFlagRequestBody) GetAcknowledgeLockout() bool`
+
+GetAcknowledgeLockout returns the AcknowledgeLockout field if non-nil, zero value otherwise.
+
+### GetAcknowledgeLockoutOk
+
+`func (o *SetFlagRequestBody) GetAcknowledgeLockoutOk() (*bool, bool)`
+
+GetAcknowledgeLockoutOk returns a tuple with the AcknowledgeLockout field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetAcknowledgeLockout
+
+`func (o *SetFlagRequestBody) SetAcknowledgeLockout(v bool)`
+
+SetAcknowledgeLockout sets AcknowledgeLockout field to given value.
+
+### HasAcknowledgeLockout
+
+`func (o *SetFlagRequestBody) HasAcknowledgeLockout() bool`
+
+HasAcknowledgeLockout returns a boolean if a field has been set.
 
 ### GetValue
 

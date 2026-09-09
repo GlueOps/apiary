@@ -57,6 +57,15 @@ type SetFlagRequest struct {
 	Key  string `path:"key" maxLength:"120"`
 	Body struct {
 		Value bool `json:"value"`
+
+		// AcknowledgeLockout is the operator saying they intend to remove a way
+		// of signing in with nothing else configured.
+		//
+		// NO DEFAULT THAT MEANS YES. Absent is absent, and the guard refuses —
+		// the same shape as a departure's credential disposition, and for the
+		// same reason: this is a judgement only a person can make, and picking
+		// one silently would be this system deciding what an operator can afford.
+		AcknowledgeLockout bool `json:"acknowledge_lockout,omitempty" doc:"Proceed even though disabling this would leave no way to sign in. Only consulted for a flag that gates sign-in."`
 	}
 }
 
@@ -113,6 +122,13 @@ func mapFlagErr(err error) error {
 			" — flags are declared in code, so a key that is not in this build cannot be set")
 	case errors.Is(err, control.ErrFlagNotTenantScoped):
 		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, control.ErrWouldLockEveryoneOut):
+		// 409, and the message carries the way forward. This is a refusal an
+		// operator may legitimately override, so it has to say how — a bare
+		// "conflict" would send them looking for a bug in their request.
+		return huma.Error409Conflict(err.Error() +
+			". Configure a sign-in provider or register a passkey first, or repeat this " +
+			"request with acknowledge_lockout set if you mean to proceed anyway")
 	default:
 		return huma.Error500InternalServerError("could not apply the feature flag", err)
 	}
@@ -178,7 +194,9 @@ func RegisterAdminProtected(hapi huma.API, deps *app.Deps) {
 		if err != nil {
 			return nil, err
 		}
-		if err := deps.Flags.SetPlatform(ctx, in.Key, in.Body.Value, *p.UserID); err != nil {
+		if err := deps.Flags.SetPlatform(
+			ctx, in.Key, in.Body.Value, *p.UserID, in.Body.AcknowledgeLockout,
+		); err != nil {
 			return nil, mapFlagErr(err)
 		}
 		eff, err := deps.Flags.Effective(ctx, uuid.Nil, in.Key)

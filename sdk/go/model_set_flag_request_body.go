@@ -23,6 +23,8 @@ var _ MappedNullable = &SetFlagRequestBody{}
 type SetFlagRequestBody struct {
 	// A URL to the JSON Schema for this object.
 	Schema *string `json:"$schema,omitempty"`
+	// Proceed even though disabling this would leave no way to sign in. Only consulted for a flag that gates sign-in.
+	AcknowledgeLockout *bool `json:"acknowledge_lockout,omitempty"`
 	Value bool `json:"value"`
 }
 
@@ -78,6 +80,38 @@ func (o *SetFlagRequestBody) SetSchema(v string) {
 	o.Schema = &v
 }
 
+// GetAcknowledgeLockout returns the AcknowledgeLockout field value if set, zero value otherwise.
+func (o *SetFlagRequestBody) GetAcknowledgeLockout() bool {
+	if o == nil || IsNil(o.AcknowledgeLockout) {
+		var ret bool
+		return ret
+	}
+	return *o.AcknowledgeLockout
+}
+
+// GetAcknowledgeLockoutOk returns a tuple with the AcknowledgeLockout field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *SetFlagRequestBody) GetAcknowledgeLockoutOk() (*bool, bool) {
+	if o == nil || IsNil(o.AcknowledgeLockout) {
+		return nil, false
+	}
+	return o.AcknowledgeLockout, true
+}
+
+// HasAcknowledgeLockout returns a boolean if a field has been set.
+func (o *SetFlagRequestBody) HasAcknowledgeLockout() bool {
+	if o != nil && !IsNil(o.AcknowledgeLockout) {
+		return true
+	}
+
+	return false
+}
+
+// SetAcknowledgeLockout gets a reference to the given bool and assigns it to the AcknowledgeLockout field.
+func (o *SetFlagRequestBody) SetAcknowledgeLockout(v bool) {
+	o.AcknowledgeLockout = &v
+}
+
 // GetValue returns the Value field value
 func (o *SetFlagRequestBody) GetValue() bool {
 	if o == nil {
@@ -114,6 +148,9 @@ func (o SetFlagRequestBody) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Schema) {
 		toSerialize["$schema"] = o.Schema
+	}
+	if !IsNil(o.AcknowledgeLockout) {
+		toSerialize["acknowledge_lockout"] = o.AcknowledgeLockout
 	}
 	toSerialize["value"] = o.Value
 	return toSerialize, nil
