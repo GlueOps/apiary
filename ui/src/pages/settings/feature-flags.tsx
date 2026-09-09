@@ -222,13 +222,29 @@ function FlagCard({ flag }: { flag: FlagView }) {
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: platformFlagsListQueryKey() });
 
+  // The server refuses to remove the last way of signing in. It is a refusal an
+  // operator may legitimately override — configuring a provider straight
+  // afterwards is a real sequence — so the refusal has to be actionable here
+  // rather than a toast telling them to go and use curl.
+  const [lockout, setLockout] = useState<string | null>(null);
+
   const set = useMutation({
     ...platformFlagSetMutation(),
     onSuccess: () => {
       toast.success('Saved');
+      setLockout(null);
       invalidate();
     },
-    onError: (e: { detail?: string }) => toast.error(e?.detail ?? 'Could not set the flag'),
+    onError: (e: { detail?: string; status?: number }) => {
+      const detail = e?.detail ?? 'Could not set the flag';
+      if (detail.includes('no way to sign in')) {
+        // Shown in place, not as a toast. A toast disappears, and this is a
+        // decision the operator has to read before making.
+        setLockout(detail);
+        return;
+      }
+      toast.error(detail);
+    },
   });
 
   const clear = useMutation({
@@ -292,6 +308,30 @@ function FlagCard({ flag }: { flag: FlagView }) {
             Use the default ({flag.default ? 'on' : 'off'})
           </Button>
         </div>
+
+        {lockout ? (
+          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+            <p className="text-xs font-medium text-destructive">Refused: {lockout}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy}
+                onClick={() =>
+                  set.mutate({
+                    path: { key: flag.key },
+                    body: { value: false, acknowledge_lockout: true },
+                  })
+                }
+              >
+                Turn it off anyway
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setLockout(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="border-t pt-3">
           <Overrides flag={flag} />

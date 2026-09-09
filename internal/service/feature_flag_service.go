@@ -21,10 +21,26 @@ var errUnwiredFlags = fmt.Errorf("feature flag storage is not wired")
 // against the registry.
 type FeatureFlagService struct {
 	flags repo.FeatureFlagRepo
+
+	// alternatives answers whether any way to sign in survives, for the guard on
+	// flags marked GuardsSignIn. Optional: nil means the guard cannot reach a
+	// decision, and SetPlatform denies rather than proceeding — see the comment
+	// there for why this one denies where the auth gate fails open.
+	alternatives SignInAlternatives
 }
 
 func NewFeatureFlagService(flags repo.FeatureFlagRepo) *FeatureFlagService {
 	return &FeatureFlagService{flags: flags}
+}
+
+// WithSignInAlternatives wires the lockout guard.
+//
+// Separate from the constructor so every existing caller and test keeps working
+// unchanged, and so the guard's absence is visible at the wiring site rather
+// than hidden in a nil argument.
+func (s *FeatureFlagService) WithSignInAlternatives(a SignInAlternatives) *FeatureFlagService {
+	s.alternatives = a
+	return s
 }
 
 // Enabled is the one call the rest of the codebase should need.
@@ -165,16 +181,66 @@ func (s *FeatureFlagService) PlatformEnabled(ctx context.Context, key string) (b
 }
 
 // SetPlatform stores the installation-wide value.
+//
+// acknowledgeLockout is the operator saying, explicitly, that they intend to
+// disable a way of signing in with nothing else configured. It is ignored for
+// every flag that does not gate sign-in.
 func (s *FeatureFlagService) SetPlatform(
-	ctx context.Context, key string, value bool, by uuid.UUID,
+	ctx context.Context, key string, value bool, by uuid.UUID, acknowledgeLockout bool,
 ) error {
 	if s == nil || s.flags == nil {
 		return errUnwiredFlags
 	}
-	if _, ok := control.LookupFlag(key); !ok {
+	f, ok := control.LookupFlag(key)
+	if !ok {
 		return fmt.Errorf("%w: %q", control.ErrUnknownFlag, key)
 	}
+	if err := s.checkLockout(ctx, f, value, by, acknowledgeLockout); err != nil {
+		return err
+	}
 	return s.flags.SetPlatform(ctx, key, value, by)
+}
+
+// checkLockout refuses a write that would leave no way into the installation.
+//
+// ONLY ON THE DISABLING EDGE. Enabling a sign-in method cannot lock anybody out,
+// and clearing a row restores the compiled default — which for legacy_login is
+// on — so neither is checked. A guard that fired on those would be an obstacle
+// with no failure behind it, and obstacles with no failure behind them are how
+// operators learn to reach for the override reflexively.
+//
+// THIS ONE DENIES WHEN IT CANNOT DECIDE, which is the opposite of the gate on
+// the login handler, and both are right. The login gate decides whether an
+// individual request may proceed, and denying there on a store outage locks
+// everyone out. This decides whether to make a change that is HARD TO UNDO by
+// construction — undoing it requires signing in, which is the thing being
+// removed. Refusing a configuration change costs an operator a retry; allowing
+// one wrongly costs them the system.
+func (s *FeatureFlagService) checkLockout(
+	ctx context.Context, f control.Flag, value bool, actingUserID uuid.UUID, acknowledged bool,
+) error {
+	if !f.GuardsSignIn || value {
+		return nil
+	}
+	if acknowledged {
+		return nil
+	}
+	if s.alternatives == nil {
+		return fmt.Errorf("%w: no check for other sign-in methods is wired, so this cannot be "+
+			"confirmed safe", control.ErrWouldLockEveryoneOut)
+	}
+	ok, how, err := s.alternatives.Available(ctx, actingUserID)
+	if err != nil {
+		return fmt.Errorf("%w: whether another sign-in method exists could not be determined: %w",
+			control.ErrWouldLockEveryoneOut, err)
+	}
+	if ok {
+		_ = how // an alternative exists; nothing to refuse
+		return nil
+	}
+	return fmt.Errorf("%w: no social provider is configured and you have no passkey, so "+
+		"disabling %q would leave nobody able to sign in — including you, to undo it",
+		control.ErrWouldLockEveryoneOut, f.Key)
 }
 
 // SetOrg stores one organization's override.

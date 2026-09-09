@@ -83,6 +83,19 @@ type Flag struct {
 	// visible to anyone who loads the page, which is why these two are safe and
 	// why a flag whose name gives away something unreleased is not.
 	Public bool
+
+	// GuardsSignIn marks a flag that can take away a way of signing in.
+	//
+	// Turning one off is the only flag change that can lock every operator out
+	// of the installation — including the ones who would turn it back on, since
+	// turning it back on requires signing in. So a write that disables one is
+	// checked against whether any other way in survives, and refused if none
+	// does unless the caller says explicitly that they know.
+	//
+	// A property of the flag rather than a key compared in the service, so the
+	// next flag that gates authentication is guarded by declaring it rather than
+	// by somebody remembering to add it to a list.
+	GuardsSignIn bool
 }
 
 // flagRegistry is every flag this build knows about.
@@ -92,7 +105,8 @@ type Flag struct {
 var flagRegistry = map[string]Flag{
 	"legacy_login": {
 		Key: "legacy_login", Scope: ScopePlatform, Default: true, Public: true,
-		Why: "the pre-OIDC username and password login form",
+		GuardsSignIn: true,
+		Why:          "the pre-OIDC username and password login form",
 	},
 	"legacy_registration": {
 		Key: "legacy_registration", Scope: ScopePlatform, Default: true, Public: true,
@@ -146,6 +160,17 @@ func AllFlags() []Flag {
 // ErrUnknownFlag and ErrFlagNotTenantScoped are the two ways a write is refused.
 var (
 	ErrUnknownFlag = fmt.Errorf("no such feature flag")
+
+	// ErrWouldLockEveryoneOut is raised when disabling a sign-in flag would leave
+	// no way into the installation at all.
+	//
+	// Distinct from the other refusals because it is the only one an operator may
+	// legitimately want to override: configuring a provider immediately after is
+	// a real sequence, and refusing absolutely would make this system decide
+	// something it cannot see. The point is that the decision has to be MADE
+	// rather than arrived at by accident.
+	ErrWouldLockEveryoneOut = fmt.Errorf(
+		"this would leave no way to sign in to this installation")
 
 	// ErrFlagNotTenantScoped is deliberately distinct from "unknown". An operator
 	// who names a real flag at the wrong level has made a different mistake from

@@ -155,7 +155,18 @@ func runServer() error {
 	orgPolicyRepo := repo.NewOrgPolicyRepoGorm(controlDB)
 	passkeyRepo := repo.NewUserPasskeyRepoGorm(controlDB)
 	policySvc := service.NewPolicyService(platformPolicyRepo, orgPolicyRepo, &userRepo, passkeyRepo)
-	flagSvc := service.NewFeatureFlagService(repo.NewFeatureFlagRepoGorm(controlDB))
+	// The lockout guard, wired here because this is where the running
+	// configuration is. A flag that gates sign-in cannot be turned off while
+	// nothing else can authenticate anybody — see FeatureFlagService.checkLockout.
+	flagSvc := service.NewFeatureFlagService(repo.NewFeatureFlagRepoGorm(controlDB)).
+		WithSignInAlternatives(service.ConfiguredSignInAlternatives{
+			Providers: []service.SocialProviderConfig{
+				{Name: "Google", ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret},
+				{Name: "GitHub", ClientID: cfg.GithubClientID, ClientSecret: cfg.GithubClientSecret},
+				{Name: "Keycloak", ClientID: cfg.KeycloakClientID, ClientSecret: cfg.KeycloakClientSecret},
+			},
+			Passkeys: passkeyRepo,
+		})
 
 	// The estate service needs the master key to derive the per-tenant data key
 	// that seals credential material. It is constructed only when tenants are

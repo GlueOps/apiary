@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -128,6 +128,44 @@ describe('FeatureFlags', () => {
 
   // CLEARING IS NOT SETTING FALSE, and the control has to say which default it
   // falls back to — otherwise restoring one means knowing what it used to be.
+  // THE REFUSAL HAS TO BE ACTIONABLE HERE. The server declines to remove the
+  // last way of signing in, and an operator may legitimately mean it — so a
+  // toast telling them to repeat the request with a field they cannot set from
+  // this screen is a dead end. Shown in place, not as a toast, because it is a
+  // decision to read rather than a notification to dismiss.
+  it('offers a way through when removing the last sign-in method is refused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Request) => {
+        if (input.url.includes('/overrides')) {
+          return new Response(JSON.stringify({ overrides: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (input.method === 'PUT') {
+          return new Response(
+            JSON.stringify({ detail: 'this would leave no way to sign in to this installation' }),
+            { status: 409, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response(JSON.stringify({ flags: [platformFlag] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('legacy_login')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^off$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/no way to sign in/i)).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: /turn it off anyway/i })).toBeTruthy();
+  });
+
   it('names the default that clearing restores', async () => {
     stubApi([platformFlag]);
     renderPage();

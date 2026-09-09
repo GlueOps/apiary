@@ -2068,6 +2068,10 @@ export type SetFlagRequestBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Proceed even though disabling this would leave no way to sign in. Only consulted for a flag that gates sign-in.
+     */
+    acknowledge_lockout?: boolean;
     value: boolean;
 };
 
@@ -3562,6 +3566,10 @@ export type SetElementViewWritable = {
 };
 
 export type SetFlagRequestBodyWritable = {
+    /**
+     * Proceed even though disabling this would leave no way to sign in. Only consulted for a flag that gates sign-in.
+     */
+    acknowledge_lockout?: boolean;
     value: boolean;
 };
 
