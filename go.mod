@@ -23,7 +23,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.2
