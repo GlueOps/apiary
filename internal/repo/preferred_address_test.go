@@ -16,7 +16,7 @@ import "testing"
 func TestPreferredAddressNeverLetsAnAgentOverwriteADeclaredOne(t *testing.T) {
 	t.Parallel()
 
-	if got := preferredAddress("10.10.10.3", "", "pve2"); got != "10.10.10.3" {
+	if got := preferredAddress("10.10.10.3", "", "pve2", false); got != "10.10.10.3" {
 		t.Fatalf("got %q: a hostname overwrote a stored address, which is the bug — "+
 			"the control plane then reaches for a name only the cluster network resolves", got)
 	}
@@ -31,7 +31,7 @@ func TestPreferredAddressNeverLetsAnAgentOverwriteADeclaredOne(t *testing.T) {
 func TestAMachineThatMovedGetsItsNewAddress(t *testing.T) {
 	t.Parallel()
 
-	if got := preferredAddress("10.10.10.3", "10.10.20.9", "pve2"); got != "10.10.20.9" {
+	if got := preferredAddress("10.10.10.3", "10.10.20.9", "pve2", false); got != "10.10.20.9" {
 		t.Fatalf("got %q, want the address the request actually came from", got)
 	}
 }
@@ -41,7 +41,7 @@ func TestAMachineThatMovedGetsItsNewAddress(t *testing.T) {
 func TestThePeerAddressBeatsTheHostname(t *testing.T) {
 	t.Parallel()
 
-	if got := preferredAddress("", "10.10.10.3", "pve2"); got != "10.10.10.3" {
+	if got := preferredAddress("", "10.10.10.3", "pve2", false); got != "10.10.10.3" {
 		t.Fatalf("got %q, want the address the request actually came from", got)
 	}
 }
@@ -51,10 +51,10 @@ func TestThePeerAddressBeatsTheHostname(t *testing.T) {
 func TestTheHostnameIsTheLastResort(t *testing.T) {
 	t.Parallel()
 
-	if got := preferredAddress("", "", "pve2.example.com"); got != "pve2.example.com" {
+	if got := preferredAddress("", "", "pve2.example.com", false); got != "pve2.example.com" {
 		t.Fatalf("got %q, want the hostname when nothing better is known", got)
 	}
-	if got := preferredAddress("", "   ", "pve2"); got != "pve2" {
+	if got := preferredAddress("", "   ", "pve2", false); got != "pve2" {
 		t.Fatalf("got %q: whitespace is not a peer address", got)
 	}
 }
@@ -64,7 +64,25 @@ func TestTheHostnameIsTheLastResort(t *testing.T) {
 func TestAnExistingAddressSurvivesEvenWhenNothingElseIsKnown(t *testing.T) {
 	t.Parallel()
 
-	if got := preferredAddress("10.10.10.3", "", ""); got != "10.10.10.3" {
+	if got := preferredAddress("10.10.10.3", "", "", false); got != "10.10.10.3" {
 		t.Fatalf("got %q, want the address left alone", got)
+	}
+}
+
+// TestAnOnboardedAddressOutranksThePeer.
+//
+// Seen on a dual-stack fleet: seven hosts declared and onboarded on IPv4 enrolled
+// from IPv6 through a dual-stack edge. Following the peer replaced every address
+// the operator chose. The control plane reached the host at the stored address
+// over SSH, which is the better evidence of how it reaches it.
+func TestAnOnboardedAddressOutranksThePeer(t *testing.T) {
+	t.Parallel()
+
+	if got := preferredAddress("95.216.2.244", "2a01:4f9:2a:1be0::2", "pve1", true); got != "95.216.2.244" {
+		t.Fatalf("got %q: enrolment replaced the address onboarding reached the host at", got)
+	}
+	// Nothing stored yet: the peer is still the best candidate.
+	if got := preferredAddress("", "2a01:4f9:2a:1be0::2", "pve1", true); got != "2a01:4f9:2a:1be0::2" {
+		t.Fatalf("got %q, want the peer when nothing was stored", got)
 	}
 }

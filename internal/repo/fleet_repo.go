@@ -141,7 +141,17 @@ type EnrolBeeResult struct {
 // hypervisors directly or it cannot manage them at all — and an operator who
 // needs something else declares it, which the next enrolment from the same host
 // then confirms rather than contradicts.
-func preferredAddress(existing, peer, hostname string) string {
+//
+// AN ONBOARDED ADDRESS OUTRANKS THE PEER. When the control plane onboarded this
+// record over SSH, it reached the host at the stored address, which is better
+// evidence of "how the control plane reaches it" than where a request came FROM.
+// The two differ on every dual-stack host: declared as 95.216.2.244, the agent
+// enrols from 2a01:4f9:2a:1be0::2 through a dual-stack edge, and following the
+// peer would silently replace the address the operator chose.
+func preferredAddress(existing, peer, hostname string, onboarded bool) string {
+	if e := strings.TrimSpace(existing); onboarded && e != "" {
+		return e
+	}
 	if p := strings.TrimSpace(peer); p != "" {
 		return p
 	}
@@ -176,7 +186,10 @@ func (r *FleetRepoGorm) EnrolBee(ctx context.Context, in EnrolBeeInput) (*EnrolB
 		// is reachable by demonstration — the packet came from it; and the hostname
 		// only as a last resort, for a deployment where it is genuinely the name
 		// the control plane uses.
-		if addr := preferredAddress(machine.Address, in.PeerAddress, in.Address); addr != machine.Address {
+		// provisioning_started_at is set only when the onboarding ticker claims a
+		// record for SSH onboarding at its stored address.
+		onboarded := machine.ProvisioningStartedAt != nil
+		if addr := preferredAddress(machine.Address, in.PeerAddress, in.Address, onboarded); addr != machine.Address {
 			if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", machine.ID).
 				Updates(map[string]any{"address": addr, "updated_at": in.Now}).Error; err != nil {
 				return fmt.Errorf("record the machine's address: %w", err)
