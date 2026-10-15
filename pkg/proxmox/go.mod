@@ -1,6 +1,6 @@
 module github.com/glueops/apiary/pkg/proxmox
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/buger/goterm v1.0.4
@@ -12,7 +12,7 @@ require (
 
 require (
 	github.com/djherbis/times v1.6.0 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
-	github.com/pierrec/lz4/v4 v4.1.27 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/pierrec/lz4/v4 v4.1.29 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
