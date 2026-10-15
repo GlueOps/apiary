@@ -1,6 +1,6 @@
 module github.com/glueops/apiary
 
-go 1.26.6
+go 1.26.9
 
 require (
 	ariga.io/atlas-provider-gorm v0.6.1

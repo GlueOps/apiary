@@ -16,7 +16,7 @@
 // builds resolve the sibling modules from disk, so a change to pkg/proxmox is
 // visible to the API and the agent immediately, with no replace directives to
 // remember and no version to bump between commits.
-go 1.26.6
+go 1.26.9
 
 use (
 	.

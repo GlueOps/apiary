@@ -230,7 +230,7 @@ jobs:
       # v9 and an EXPLICIT version, not v6 with `latest`.
       #
       # golangci-lint refuses to run when the Go it was built with is older than
-      # the `go` directive it is analysing, and this module targets 1.26.6. The v6
+      # the `go` directive it is analysing, and this module targets 1.26.9. The v6
       # action resolves `latest` within the golangci-lint v1.x line, whose
       # releases are built with go1.24 — so every run failed on config load
       # without ever looking at the code. Pinned rather than floating so a new
