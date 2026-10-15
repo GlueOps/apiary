@@ -3,6 +3,7 @@ package fleetops
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 )
 
@@ -230,17 +231,21 @@ func (d Desired) strayOwnedBy(self string, obs Observation) (string, bool) {
 	return stray, stray != ""
 }
 
-// otherMembers is every member of the composition that is not this host,
-// whether or not it is usable as a join target.
+// otherMembers is every member of the composition that is not this host and is
+// already IN the cluster — it has a node name — whether or not it is usable as a
+// join target.
 //
 // The distinction from joinTargets is what keeps a create from splitting a
-// cluster: "nobody else is supposed to be here" and "somebody else is supposed
-// to be here but I cannot verify them" look identical in a filtered list and
-// call for opposite actions.
+// cluster: "nobody is in it yet" and "somebody is in it but I cannot verify
+// them" look identical in a filtered list and call for opposite actions.
+//
+// Unnamed members are not counted: they are arriving, exactly like this host,
+// and their presence says nothing about whether the cluster exists. Who forms
+// it among several arrivals is founder's decision.
 func (d Desired) otherMembers() []string {
 	out := make([]string, 0, len(d.Members))
 	for _, m := range d.Members {
-		if !d.isSelf(m) {
+		if !d.isSelf(m) && m.Node != "" {
 			name := m.Node
 			if name == "" {
 				name = m.Address
@@ -252,14 +257,25 @@ func (d Desired) otherMembers() []string {
 }
 
 // joinTargets is every member this host could join through, excluding itself and
-// any peer with no fingerprint or address.
+// any peer with no node name, fingerprint or address.
 //
 // A peer without a fingerprint is EXCLUDED rather than tried without one: pvecm
 // accepts a missing fingerprint by prompting, which non-interactively hangs
 // until something kills it and reports a timeout that says nothing about why.
+//
+// A peer without a NODE NAME is excluded because it is not in the cluster yet:
+// the name only exists once a machine has joined one. Joining through it means
+// running pvecm add against a standalone host, which fails — and it used to be
+// tried first. Observed live: five hosts assigned to two clusters at once each
+// tried to join through another arriving host instead of the one real member,
+// and pvecm add reported "unable to copy ssh ID" against a host that had nothing
+// to offer.
 func (d Desired) joinTargets() []DesiredMember {
 	out := make([]DesiredMember, 0, len(d.Members))
 	for _, m := range d.Members {
+		if m.Node == "" {
+			continue
+		}
 		// A member with no host keys is excluded for the same reason as one with
 		// no fingerprint: a join through it could only proceed by trusting
 		// whatever answers on its address, and this is the operation where the
@@ -276,6 +292,75 @@ func (d Desired) joinTargets() []DesiredMember {
 		out = append(out, m)
 	}
 	return out
+}
+
+// selfMember is this host's own entry in the composition, if it has one.
+func (d Desired) selfMember() (DesiredMember, bool) {
+	for _, m := range d.Members {
+		if d.isSelf(m) {
+			return m, true
+		}
+	}
+	return DesiredMember{}, false
+}
+
+// founder is the one arriving member that forms the cluster when nobody is in
+// it yet: the lowest hypervisor id.
+//
+// ONE FOUNDER, for the reason strayOwnedBy has one owner. Several hosts assigned
+// to an empty cluster at once all see no member to join, and if each formed the
+// cluster on finding that, the fleet would hold several clusters of the same
+// name that cannot be merged. Every arrival computes this from the same
+// published document, so exactly one of them creates and the rest wait for it
+// to appear under its node name, then join through it.
+//
+// A member with no hypervisor id is ordered by its node name instead; one with
+// neither cannot be ordered and is skipped. If nothing can be ordered there is
+// no founder, and nobody creates.
+func (d Desired) founder() (DesiredMember, bool) {
+	key := func(m DesiredMember) string {
+		if m.HypervisorID != "" {
+			return m.HypervisorID
+		}
+		return strings.ToLower(m.Node)
+	}
+	var out DesiredMember
+	found := false
+	for _, m := range d.Members {
+		k := key(m)
+		if k == "" {
+			continue
+		}
+		if !found || k < key(out) {
+			out, found = m, true
+		}
+	}
+	return out, found
+}
+
+// linkAddress is the corosync link 0 address this host should use: the address
+// the control plane reaches it on, when that is an IP.
+//
+// Passed EXPLICITLY, because pvecm's own default is wrong on a dual-stack host.
+// Left to itself it resolves the node name, and on a Hetzner host /etc/hosts maps
+// that to the IPv6 address as well as the IPv4 one. A cluster formed on IPv4 then
+// receives a node on IPv6, and corosync refuses the whole configuration: "Nodes
+// for link 0 have different IP families". Observed live: four joins each wrote
+// a corosync.conf the existing member could not load, and each joiner was left
+// with its own /etc/pve wiped and nothing to replace it.
+//
+// The control plane's address is the right one by construction: it is what the
+// operator registered the host by, and every member's address comes from the
+// same place, so the family matches across the cluster.
+func (d Desired) linkAddress() string {
+	m, ok := d.selfMember()
+	if !ok {
+		return ""
+	}
+	if net.ParseIP(strings.TrimSpace(m.Address)) == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.Address)
 }
 
 // ErrDissolveNeedsDeparture reports that a host is desired-absent and alone.
@@ -348,15 +433,17 @@ func Converge(ctx context.Context, d Deps, e *Env, want Desired) (Verb, error) {
 // cluster it should be in exists yet.
 //
 // It CANNOT be decided locally, because a standalone node has no cluster to
-// read. So the host tries to join each published peer in turn, and forms the
-// cluster only when every one of them refuses — which is what "no other member
-// is in it yet" actually looks like from here.
+// read — but the composition can: a member with a node name is one the control
+// plane has observed IN the cluster. So a named peer means the cluster exists
+// and this host joins through it; no named peer means nobody is in it yet, and
+// exactly one arrival — the founder — forms it.
 //
-// Trying first and creating second, never the reverse. Creating first would
-// split a cluster in two the moment two hosts converged at once: both would
-// find no peer, both would create, and the fleet would hold two clusters with
-// the same name and no way to merge them. A failed join is recoverable; a split
-// brain is hand-repaired under /etc/pve.
+// A REFUSED JOIN NEVER BECOMES A CREATE. It used to: every peer refusing was
+// read as "the cluster does not exist", and this host formed it. But a peer is
+// only a join target once it is a named member, so when every one of them
+// refuses, the cluster demonstrably exists and a create would split it into two
+// clusters of the same name that cannot be merged. A failed join is
+// recoverable; a split brain is hand-repaired under /etc/pve.
 func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, error) {
 	targets := want.joinTargets()
 	if len(targets) == 0 {
@@ -381,8 +468,20 @@ func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, erro
 					"of the same name cannot be merged",
 				want.Cluster, strings.Join(others, ", "), want.Cluster)
 		}
-		e.Logf("agent", "no other member is published for %s, so this host forms it", want.Cluster)
-		return VerbCreate, createCluster(ctx, d, e, want.Cluster)
+		f, ok := want.founder()
+		if !ok || !want.isSelf(f) {
+			who := "no member that can be ordered"
+			if ok {
+				who = f.Address
+				if who == "" {
+					who = f.HypervisorID
+				}
+			}
+			e.Logf("agent", "nobody is in %s yet and %s forms it; waiting to join through it", want.Cluster, who)
+			return VerbWait, nil
+		}
+		e.Logf("agent", "nobody is in %s yet and this host is its founder, so this host forms it", want.Cluster)
+		return VerbCreate, createCluster(ctx, d, e, want.Cluster, want.linkAddress())
 	}
 
 	e.Phase(phasePreflight)
@@ -418,6 +517,7 @@ func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, erro
 			Hostname:    t.Address,
 			Fingerprint: t.Fingerprint,
 			Force:       &force,
+			Link0:       want.linkAddress(),
 		})
 		if jerr != nil {
 			last = jerr
@@ -429,24 +529,21 @@ func joinOrCreate(ctx context.Context, d Deps, e *Env, want Desired) (Verb, erro
 		return VerbJoin, verifyJoined(ctx, d, e)
 	}
 
-	// Every published peer refused. That is what an unformed cluster looks like
-	// from a host that cannot see it, so this host forms it — but only after
-	// asking all of them, which is what keeps two simultaneous converges from
-	// creating two clusters of the same name.
-	e.Logf("agent", "no published peer accepted a join, so this host forms %s", want.Cluster)
-	if last != nil {
-		e.Logf("agent", "the last peer's refusal was: %v", last)
-	}
-	return VerbCreate, createCluster(ctx, d, e, want.Cluster)
+	// Every member refused. They are named members, so the cluster EXISTS — this
+	// is a failed join, retried on the next convergence, and never a create.
+	return VerbJoin, fmt.Errorf("no member of %s accepted the join; the last refusal was: %w",
+		want.Cluster, last)
 }
 
-func createCluster(ctx context.Context, d Deps, e *Env, name string) error {
+// createCluster forms name with this host as its first member. link0 is the
+// corosync address to form it on; empty leaves pvecm to pick one.
+func createCluster(ctx context.Context, d Deps, e *Env, name, link0 string) error {
 	if name == "" {
 		return fmt.Errorf("no cluster name was published, so there is nothing to create")
 	}
 	e.Phase(phaseJoining)
 	e.Logf("agent", "forming cluster %s with this host as its first member", name)
-	status, err := d.Cluster.CreateCluster(ctx, &proxmoxCreateOptions{ClusterName: name})
+	status, err := d.Cluster.CreateCluster(ctx, &proxmoxCreateOptions{ClusterName: name, Link0: link0})
 	if err != nil {
 		return fmt.Errorf("create cluster %s: %w", name, err)
 	}

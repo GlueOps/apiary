@@ -175,6 +175,21 @@ func TestJoinTargetsExcludesSelfAndUnusablePeers(t *testing.T) {
 	}
 }
 
+// An arriving member — no node name, because it has never been in a cluster — is
+// not a join target. Must agree with the agent's joinTargets: live, five hosts
+// assigned at once each tried to join through another arriving host first.
+func TestJoinTargetsExcludesArrivingMembers(t *testing.T) {
+	m := labA("pve1", "pve2")
+	m.Members = append(m.Members,
+		MembershipMember{HypervisorID: "h9", Address: "10.0.0.9", Fingerprint: "AA:BB"},
+	)
+	for _, tgt := range m.JoinTargets(Self{Node: "pve2"}) {
+		if tgt.Node == "" {
+			t.Fatalf("an arriving member was offered as a join target: %+v", tgt)
+		}
+	}
+}
+
 // A machine that has never been in a cluster has no node name, so its entry in
 // the composition carries an empty Node. Matching on names alone would make it
 // conclude it is not wanted and never join — which is the state EVERY arrival

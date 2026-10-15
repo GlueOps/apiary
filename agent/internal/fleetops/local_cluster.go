@@ -295,8 +295,9 @@ func (l *localCluster) CreateCluster(ctx context.Context, opts *proxmoxCreateOpt
 	}
 	args := []string{"create", opts.ClusterName}
 	args = append(args, linkArgs(opts.Link0, opts.Link1, opts.Link2, opts.Link3)...)
-	if err := l.runner.Run(ctx, discard, "pvecm", args...); err != nil {
-		return "", fmt.Errorf("pvecm create %s: %w", opts.ClusterName, err)
+	out := newOutputTail(20)
+	if err := l.runner.Run(ctx, out.log, "pvecm", args...); err != nil {
+		return "", fmt.Errorf("pvecm create %s: %w%s", opts.ClusterName, err, out.suffix())
 	}
 	return "cluster created", nil
 }
@@ -326,8 +327,19 @@ func (l *localCluster) JoinCluster(ctx context.Context, opts *proxmoxJoinOptions
 		args = append(args, "--force")
 	}
 	args = append(args, linkArgs(opts.Link0, opts.Link1, opts.Link2, opts.Link3)...)
-	if err := l.runner.Run(ctx, discard, "pvecm", args...); err != nil {
-		return "", fmt.Errorf("pvecm add %s: %w", opts.Hostname, err)
+	out := newOutputTail(20)
+	if err := l.runner.Run(ctx, out.log, "pvecm", args...); err != nil {
+		return "", fmt.Errorf("pvecm add %s: %w%s", opts.Hostname, err, out.suffix())
+	}
+	// THE EXIT CODE IS NOT THE OUTCOME. pvecm add runs the join as a task and
+	// exits 0 when that task fails: observed live, "unable to copy ssh ID:
+	// Permission denied" followed by exit 0, after which the agent reported the
+	// join accepted and waited four minutes for a membership that could never
+	// arrive. A join that took effect leaves this host with a corosync
+	// configuration; one that failed before touching anything does not.
+	if _, err := os.Stat(CorosyncConf); err != nil {
+		return "", fmt.Errorf("pvecm add %s exited 0 but this host has no %s, so the join did "+
+			"not happen%s", opts.Hostname, CorosyncConf, out.suffix())
 	}
 	return "join accepted", nil
 }

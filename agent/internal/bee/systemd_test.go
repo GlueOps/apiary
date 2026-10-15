@@ -120,3 +120,44 @@ func TestWatchdogIsInertWithoutAnInterval(t *testing.T) {
 			"leak this goroutine forever")
 	}
 }
+
+// A long but bounded operation in the report loop keeps it marked alive, and
+// only for as long as it is held.
+//
+// Live: a cluster join runs in the report loop and can wait four minutes for
+// membership to settle. The stamp went stale at two, systemd's watchdog SIGABRTed
+// the agent mid-join, and it restarted and tried again — every time.
+func TestHoldReportAliveStampsUntilReleasedOrCapped(t *testing.T) {
+	n := &notifier{}
+	stale := time.Now().Add(-time.Hour).UnixNano()
+
+	n.reportAlive.Store(stale)
+	release := n.holdReportAlive(t.Context(), time.Minute)
+	deadline := time.Now().Add(2 * time.Second)
+	for n.reportAlive.Load() == stale {
+		if time.Now().After(deadline) {
+			t.Fatal("a held report loop was never stamped alive")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	release()
+	release() // idempotent
+
+	// Released: nothing stamps it any more, so a wedge after this is caught.
+	time.Sleep(50 * time.Millisecond)
+	n.reportAlive.Store(stale)
+	time.Sleep(50 * time.Millisecond)
+	if n.reportAlive.Load() != stale {
+		t.Fatal("the report loop was still stamped after the hold was released")
+	}
+
+	// Capped: a hold that outlives max stops stamping on its own.
+	n2 := &notifier{}
+	_ = n2.holdReportAlive(t.Context(), 20*time.Millisecond)
+	time.Sleep(60 * time.Millisecond)
+	n2.reportAlive.Store(stale)
+	time.Sleep(50 * time.Millisecond)
+	if n2.reportAlive.Load() != stale {
+		t.Fatal("a hold past its cap kept the report loop alive; a real wedge would never be restarted")
+	}
+}

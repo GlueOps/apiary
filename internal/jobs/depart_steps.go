@@ -603,6 +603,18 @@ func RemoveNodeDir(ctx context.Context, r Runner, nodeName string) error {
 	return nil
 }
 
+// stopPmxcfs ends every pmxcfs and FAILS if one survives — the same command the
+// agent's disarm runs (agent/internal/fleetops/disarm.go), duplicated because the
+// two modules share no code.
+//
+// pkill, not killall: killall is psmisc, which a stock PVE 9 host does not have,
+// and `killall pmxcfs 2>/dev/null || true` turned "command not found" into
+// success. The local-mode pmxcfs then held its lock and `systemctl start
+// pve-cluster` failed, leaving the node with /etc/pve unmounted.
+const stopPmxcfs = `pkill -x pmxcfs; ` +
+	`for i in $(seq 40); do pgrep -x pmxcfs >/dev/null || exit 0; sleep 0.5; done; ` +
+	`echo "pmxcfs did not exit within 20s:" $(pgrep -ax pmxcfs) >&2; exit 1`
+
 // MakeStandalone converts a removed node back into a cluster of one.
 //
 // The Proxmox documentation says a removed node must be REINSTALLED before it
@@ -631,8 +643,7 @@ func MakeStandalone(
 
 	steps := []string{
 		"systemctl stop pve-cluster corosync 2>&1 || true",
-		"killall pmxcfs 2>/dev/null || true",
-		"sleep 2",
+		stopPmxcfs,
 		// Local mode. Without this every rm below fails read-only.
 		"pmxcfs -l",
 		"sleep 2",
@@ -675,8 +686,7 @@ func MakeStandalone(
 		steps = append(steps, fmt.Sprintf("rm -f %s", shellQuote(f)))
 	}
 	steps = append(steps,
-		"killall pmxcfs 2>/dev/null || true",
-		"sleep 2",
+		stopPmxcfs,
 		"systemctl start pve-cluster",
 		"sleep 3",
 	)
