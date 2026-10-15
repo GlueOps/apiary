@@ -27,6 +27,55 @@ import (
 // fixture that internal/repo already has, and cmd/worker.go keeps only the
 // wiring: resolve the tenant database, call these.
 
+var (
+	// ErrMachineIDHeldElsewhere means another record already carries this
+	// machine's id: the host is in the fleet twice, and binding the id here
+	// would only move the duplicate.
+	ErrMachineIDHeldElsewhere = errors.New("this machine's id already belongs to another hypervisor record")
+	// ErrMachineIDMismatch means the record already belongs to a DIFFERENT
+	// machine, so its address now reaches some other host.
+	ErrMachineIDMismatch = errors.New("this hypervisor record belongs to a different machine")
+)
+
+// ClaimMachineID binds a machine id, read off the host over SSH, to the record
+// onboarding is working on, so the agent's enrolment adopts that record.
+//
+// Idempotent: claiming the id a record already carries is a no-op, which is
+// what a retried onboard does. It refuses rather than repairs in both other
+// cases, because each means two records disagree about which host is which,
+// and only an operator knows which one to keep.
+func ClaimMachineID(ctx context.Context, db *gorm.DB, hypervisorID uuid.UUID, machineID string) error {
+	digest := tenant.MachineIDDigest(machineID)
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var other tenant.Hypervisor
+		switch err := tx.Select("id", "address").
+			Where("machine_id = ? AND id <> ?", digest, hypervisorID).First(&other).Error; {
+		case err == nil:
+			return fmt.Errorf("%w (record %s, address %q)", ErrMachineIDHeldElsewhere, other.ID, other.Address)
+		case !errors.Is(err, gorm.ErrRecordNotFound):
+			return err
+		}
+
+		res := tx.Model(&tenant.Hypervisor{}).
+			Where("id = ? AND (machine_id IS NULL OR machine_id = ?)", hypervisorID, digest).
+			Updates(map[string]any{"machine_id": digest, "updated_at": time.Now().UTC()})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 1 {
+			return nil
+		}
+		var exists int64
+		if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", hypervisorID).Count(&exists).Error; err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("hypervisor record %s no longer exists", hypervisorID)
+		}
+		return ErrMachineIDMismatch
+	})
+}
+
 // Heartbeated reports whether the agent on this machine has checked in since the
 // given instant.
 //

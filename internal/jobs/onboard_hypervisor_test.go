@@ -299,3 +299,55 @@ func TestOnboardRestartsAfterEnrolling(t *testing.T) {
 			"credential that was just replaced")
 	}
 }
+
+// The machine id must be bound to the onboarded record BEFORE the agent enrols.
+// Enrolment finds its record by machine id first, and its only other evidence is
+// the address the request came from, which on a dual-stack host is the other
+// family: seven hosts declared on IPv4 became fourteen records.
+func TestOnboardClaimsTheMachineIDBeforeEnrolling(t *testing.T) {
+	r := &fakeRunner{}
+	d := freshHost(deps(r, mgmtSets("194.36.65.187"), false))
+	in := input()
+	in.HypervisorID = uuid.New()
+
+	var claimed string
+	enrolsBeforeClaim := -1
+	d.ClaimMachineID = func(_ context.Context, _, hvID uuid.UUID, machineID string) error {
+		if hvID != in.HypervisorID {
+			t.Errorf("claimed onto %s, want the record being onboarded %s", hvID, in.HypervisorID)
+		}
+		claimed = machineID
+		enrolsBeforeClaim = r.indexOf("apiary-agent enrol")
+		return nil
+	}
+
+	if err := Onboard(context.Background(), d, in); err != nil {
+		t.Fatalf("onboard failed: %v", err)
+	}
+	if claimed != in.MachineID {
+		t.Fatalf("claimed %q, want the host's machine id %q", claimed, in.MachineID)
+	}
+	if enrolsBeforeClaim != -1 {
+		t.Fatal("the agent enrolled before its machine id was bound to this record, so enrolment " +
+			"could not find it and created a second one")
+	}
+}
+
+// A refused claim means two records disagree about which host is which.
+// Enrolling anyway is exactly how the duplicate gets made.
+func TestOnboardStopsWhenTheClaimIsRefused(t *testing.T) {
+	r := &fakeRunner{}
+	d := freshHost(deps(r, mgmtSets("194.36.65.187"), false))
+	in := input()
+	in.HypervisorID = uuid.New()
+	refused := errors.New("this machine's id already belongs to another hypervisor record")
+	d.ClaimMachineID = func(context.Context, uuid.UUID, uuid.UUID, string) error { return refused }
+
+	err := Onboard(context.Background(), d, in)
+	if !errors.Is(err, refused) {
+		t.Fatalf("got %v, want the refusal surfaced", err)
+	}
+	if r.indexOf("apiary-agent enrol") != -1 {
+		t.Fatal("enrolled after the claim was refused")
+	}
+}

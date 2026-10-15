@@ -236,6 +236,13 @@ func runWorker() error {
 				}
 				return repo.Heartbeated(ctx, db, machineID, since)
 			},
+			ClaimMachineID: func(ctx context.Context, orgID, hvID uuid.UUID, machineID string) error {
+				db, err := fleetRepoFor(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				return repo.ClaimMachineID(ctx, db, hvID, machineID)
+			},
 			// One source for the agent binary, shared with the self-upgrade endpoint.
 			// Onboarding and upgrading install the same bytes, so a host brought in
 			// today runs what an upgraded host runs.

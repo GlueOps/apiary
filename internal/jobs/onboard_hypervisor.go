@@ -74,6 +74,24 @@ type OnboardDeps struct {
 	// onboard would have ended in ErrNoHeartbeat however healthy the host.
 	Heartbeated func(ctx context.Context, orgID uuid.UUID, machineID string, since time.Time) (bool, error)
 
+	// ClaimMachineID writes this host's machine id onto the record being
+	// onboarded, BEFORE the agent enrols.
+	//
+	// Enrolment finds its machine record by machine id first and by address
+	// second, and the address it has is where the enrolment REQUEST came from.
+	// On a dual-stack host that is often a different family from the address an
+	// operator declared: a host declared as 95.216.2.244 enrols from
+	// 2a01:4f9:2a:1be0::2, matches nothing, and creates a second record that
+	// takes the agent, while the declared row keeps the cluster membership and
+	// is left with no agent to act on it. Seven hosts produced fourteen rows.
+	//
+	// This is the evidence that cannot disagree with itself: we are logged in to
+	// this host, at this record's address, and it just told us its id.
+	//
+	// Raw id, digested by the implementation, for the same reason as
+	// Heartbeated. Nil skips the claim, for tests that do not exercise it.
+	ClaimMachineID func(ctx context.Context, orgID, hypervisorID uuid.UUID, machineID string) error
+
 	// RecordOutcome concludes the machine record the ticker claimed, writing
 	// `provisioned` or `failed` and releasing the lease. It reports whether the
 	// lease was still held; false means a later tick already took the row.
@@ -253,6 +271,18 @@ func Onboard(ctx context.Context, d OnboardDeps, in OnboardInput) error {
 		machineID, err = ReadMachineID(ctx, runner)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Bind the id to THIS record before the agent enrols, so enrolment adopts it
+	// rather than creating a second one. See OnboardDeps.ClaimMachineID.
+	//
+	// Fatal: enrolling after a failed claim is exactly how the duplicate is made,
+	// and a refusal here (the id belongs to another record, or this record
+	// already belongs to another machine) is something an operator must see.
+	if d.ClaimMachineID != nil && in.HypervisorID != uuid.Nil {
+		if err := d.ClaimMachineID(ctx, in.OrganizationID, in.HypervisorID, machineID); err != nil {
+			return fmt.Errorf("onboard: %w", err)
 		}
 	}
 
