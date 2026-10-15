@@ -197,7 +197,9 @@ func (b *Bee) reportLoop(ctx context.Context) {
 		// management access is not yet established is how one becomes unreachable
 		// at the moment it most needs not to be.
 		if d, _ := b.desiredMembership.Load().(*desiredMembership); d != nil {
+			release := b.notify.holdReportAlive(ctx, membershipHoldMax)
 			b.convergeMembership(ctx, d.revision, d.digest)
+			release()
 		}
 
 		// ALWAYS pause, whether or not a task came back.
@@ -216,6 +218,12 @@ func (b *Bee) reportLoop(ctx context.Context) {
 		}
 	}
 }
+
+// membershipHoldMax bounds how long a membership convergence keeps the report
+// loop marked alive. A join is pvecm add plus a four-minute settle window, so
+// ten minutes covers a slow one with room to spare and still lets the watchdog
+// restart an agent that is genuinely stuck.
+const membershipHoldMax = 10 * time.Minute
 
 type heartbeatOpts struct {
 	wait              time.Duration

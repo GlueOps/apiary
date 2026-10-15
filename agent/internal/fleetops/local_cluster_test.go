@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -144,5 +145,54 @@ func TestGuestsOnAnUnknownNodeIsEmptyNotAnError(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("guests = %+v, want none", got)
+	}
+}
+
+// pvecm add's exit code is not the outcome: it exits 0 when its join task fails.
+// Live, "unable to copy ssh ID: Permission denied" was followed by exit 0 and the
+// agent reported the join accepted. A join that took effect leaves a corosync
+// configuration on this host; one that failed before doing anything does not.
+func TestAJoinThatLeftNoCorosyncConfigIsAFailure(t *testing.T) {
+	cl, dir := fixture(t, "")
+	opts := &proxmoxJoinOptions{Hostname: "10.0.0.1", Fingerprint: "AA:BB"}
+
+	if _, err := cl.JoinCluster(context.Background(), opts); err == nil {
+		t.Fatal("a join that left no corosync configuration was reported as accepted")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "corosync.conf"), []byte("totem {}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.JoinCluster(context.Background(), opts); err != nil {
+		t.Fatalf("a join that took effect was refused: %v", err)
+	}
+}
+
+// Link 0 reaches pvecm as --link0, so the cluster is formed and joined on the
+// address the control plane registered rather than whatever the node name
+// resolves to.
+func TestLink0IsPassedToPvecm(t *testing.T) {
+	r := &recordingRunner{}
+	dir := t.TempDir()
+	oc := CorosyncConf
+	CorosyncConf = filepath.Join(dir, "corosync.conf")
+	t.Cleanup(func() { CorosyncConf = oc })
+	if err := os.WriteFile(CorosyncConf, []byte("totem {}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := NewLocalCluster(r)
+
+	_, _ = cl.JoinCluster(context.Background(), &proxmoxJoinOptions{
+		Hostname: "10.0.0.1", Fingerprint: "AA:BB", Link0: "10.0.0.7"})
+	_, _ = cl.CreateCluster(context.Background(), &proxmoxCreateOptions{
+		ClusterName: "lab-a", Link0: "10.0.0.7"})
+
+	for i, c := range r.cmds {
+		if !strings.Contains(strings.Join(c, " "), "--link0 10.0.0.7") {
+			t.Fatalf("command %d = %v, want --link0 10.0.0.7", i, c)
+		}
+	}
+	if len(r.cmds) != 2 {
+		t.Fatalf("ran %d commands, want 2", len(r.cmds))
 	}
 }

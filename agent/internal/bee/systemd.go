@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -63,6 +64,41 @@ func (n *notifier) Status(format string, args ...any) {
 }
 
 func (n *notifier) Stopping() { n.send("STOPPING=1") }
+
+// holdReportAlive keeps the report loop marked alive while it runs one long but
+// BOUNDED operation, for at most max. The returned func ends the hold.
+//
+// A cluster join is that operation: pvecm add, then up to four minutes waiting
+// for the membership to settle. The report loop runs it in place, so its
+// liveness stamp went stale after two minutes and systemd killed the agent
+// mid-join — observed on a host that was SIGABRTed by the watchdog on every
+// attempt, restarted, and tried again.
+//
+// Capped, so this cannot become the thing the watchdog exists to catch: an
+// operation still running after max stops being held, and a wedged loop is
+// restarted exactly as before.
+func (n *notifier) holdReportAlive(ctx context.Context, max time.Duration) func() {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		limit := time.After(max)
+		for {
+			n.reportAlive.Store(time.Now().UnixNano())
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case <-limit:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+	var once sync.Once
+	return func() { once.Do(func() { close(done) }) }
+}
 
 // Watchdog feeds systemd for as long as BOTH loops are running.
 //

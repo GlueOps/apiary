@@ -2,6 +2,7 @@ package fleetops
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,86 @@ func TestDisarmFailsRatherThanHangingOnAStalledStep(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Disarm did not return; it would hold the bee's only task slot forever")
+	}
+}
+
+// failingRunner fails the command containing failOn at once, printing why, and
+// succeeds at everything else.
+type failingRunner struct {
+	failOn string
+	ran    []string
+}
+
+func (f *failingRunner) Run(_ context.Context, log func(string, string, ...any),
+	_ string, args ...string) error {
+	cmd := strings.Join(args, " ")
+	f.ran = append(f.ran, cmd)
+	if strings.Contains(cmd, f.failOn) {
+		log("stderr", "%s", "[main] crit: unable to acquire pmxcfs lock: Resource temporarily unavailable")
+		return fmt.Errorf("exit status 255")
+	}
+	return nil
+}
+
+// A step that FAILS is not a step that STALLED, and the output says why.
+//
+// Live: pmxcfs refused to start within a second on a held lock, and the task
+// reported `stalled at "pmxcfs -l" after 2m0s` — cancel() ran before the
+// deadline was checked, so every failure read as a timeout, and the step's
+// output had been discarded, so nothing said what the lock was.
+func TestADisarmStepThatFailsIsNotReportedAsAStall(t *testing.T) {
+	r := &failingRunner{failOn: "pmxcfs -l"}
+	var phases []string
+	err := Disarm(context.Background(), Deps{Runner: r},
+		testEnv(&phases, nil, nil), `{"disposition":"accept-exposure"}`)
+	if err == nil {
+		t.Fatal("a failed step reported success")
+	}
+	if strings.Contains(err.Error(), "stalled") {
+		t.Fatalf("err = %v, want a failure, not a stall", err)
+	}
+	if !strings.Contains(err.Error(), "unable to acquire pmxcfs lock") {
+		t.Fatalf("err = %v, want the step's own output in it", err)
+	}
+}
+
+// pmxcfs is stopped with pkill and WAITED for, never with killall.
+//
+// killall is psmisc, absent on a stock PVE 9 host, and `killall … || true`
+// turned "command not found" into success: the local-mode pmxcfs survived, held
+// its lock, and pve-cluster could not start. Five hosts were left with /etc/pve
+// unmounted that way.
+func TestDisarmStopsPmxcfsWithoutKillall(t *testing.T) {
+	dir := t.TempDir()
+	oldCoro, oldPVEConf, oldSecrets, oldPVE := CorosyncConf, PVECorosyncConf, clusterSecretFiles, PVEDir
+	CorosyncConf = filepath.Join(dir, "corosync.conf")
+	PVECorosyncConf = filepath.Join(dir, "pve-corosync.conf")
+	clusterSecretFiles = []string{filepath.Join(dir, "authkey.key")}
+	PVEDir = dir
+	t.Cleanup(func() {
+		CorosyncConf, PVECorosyncConf, clusterSecretFiles, PVEDir = oldCoro, oldPVEConf, oldSecrets, oldPVE
+	})
+
+	r := &recordingRunner{}
+	var phases []string
+	_ = Disarm(context.Background(), Deps{Runner: r}, testEnv(&phases, nil, nil),
+		`{"disposition":"accept-exposure"}`)
+
+	stops := 0
+	for _, c := range r.cmds {
+		line := strings.Join(c, " ")
+		if strings.Contains(line, "killall") {
+			t.Fatalf("disarm runs killall, which a PVE 9 host does not have: %q", line)
+		}
+		if strings.Contains(line, "pkill -x pmxcfs") {
+			if !strings.Contains(line, "pgrep -x pmxcfs") || !strings.Contains(line, "exit 1") {
+				t.Fatalf("pmxcfs is killed but not waited for, or a survivor is not a failure: %q", line)
+			}
+			stops++
+		}
+	}
+	if stops != 2 {
+		t.Fatalf("pmxcfs stopped %d time(s), want 2 (before local mode and before pve-cluster starts)", stops)
 	}
 }
 

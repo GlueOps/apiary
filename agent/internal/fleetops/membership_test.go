@@ -124,22 +124,20 @@ func TestDecideMatchesTheControlPlaneTable(t *testing.T) {
 	}
 }
 
-// A standalone host cannot see whether its cluster exists, so it must ASK every
-// published peer before forming one. Creating first would split a cluster in two
-// the moment two hosts converged at once — both finding no peer, both creating.
-func TestJoinIsTriedAgainstEveryPeerBeforeCreating(t *testing.T) {
-	// The fake never becomes a member, so the post-create verification would
-	// otherwise poll for its full four-minute settle window. These vars exist to
-	// be shortened; the wait is the point of the real one, not of this one.
+// A REFUSED JOIN NEVER FORMS A SECOND CLUSTER.
+//
+// Join targets are NAMED members — ones the control plane has observed in the
+// cluster — so when every one of them refuses, the cluster demonstrably exists.
+// This used to create anyway, on the theory that refusals meant "nobody is in it
+// yet", which is a second cluster of the same name that cannot be merged.
+func TestARefusedJoinNeverFormsASecondCluster(t *testing.T) {
 	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
 	// The join pins each peer before trying it, and this must not write to the
 	// real /root/.ssh on whatever machine runs the suite.
 	knownHostsFixture(t, "")
 
 	cl := &fakeCluster{joinErr: errRefused{}}
-	d := Deps{
-		Cluster: cl, Node: "pve3",
-	}
+	d := Deps{Cluster: cl, Node: "pve3"}
 	var phases []string
 	e := testEnv(&phases, nil, nil)
 
@@ -149,16 +147,113 @@ func TestJoinIsTriedAgainstEveryPeerBeforeCreating(t *testing.T) {
 	if cl.joinAttempts != 2 {
 		t.Fatalf("join attempts = %d, want 2 (one per published peer)", cl.joinAttempts)
 	}
-	if verb != VerbCreate {
-		t.Fatalf("verb = %q, want create once every peer refused", verb)
+	if cl.created != nil {
+		t.Fatalf("formed %q after its members refused; that is a split cluster", cl.created.ClusterName)
 	}
-	if cl.created == nil {
-		t.Fatal("no cluster was created after every peer refused")
+	if err == nil || verb == VerbCreate {
+		t.Fatalf("verb = %q, err = %v; want a failed join", verb, err)
 	}
-	if cl.created.ClusterName != "lab-a" {
-		t.Fatalf("created %q, want lab-a", cl.created.ClusterName)
+}
+
+// An arriving member is not a join target: it has no node name because it is not
+// in a cluster, and pvecm add through it fails. Live, five hosts assigned at once
+// each tried another arriving host before the one real member.
+func TestUnnamedPeersAreNotJoinTargets(t *testing.T) {
+	d := want("lab-a", "pve3", "pve1", "pve3")
+	d.Members = append(d.Members, DesiredMember{
+		HypervisorID: "h-arriving", Address: "10.0.0.9", Fingerprint: "AA:BB",
+		HostKeys: []string{"ssh-ed25519 K"},
+	})
+	got := d.joinTargets()
+	if len(got) != 1 || got[0].Node != "pve1" {
+		t.Fatalf("join targets = %+v, want just pve1", got)
 	}
-	_ = err
+}
+
+// arrivals is a composition where nobody is in the cluster yet.
+func arrivals(cluster, selfID string, ids ...string) Desired {
+	d := Desired{Cluster: cluster, SelfID: selfID}
+	for _, id := range ids {
+		d.Members = append(d.Members, DesiredMember{
+			HypervisorID: id, Address: "10.0.1." + id[len(id)-1:], Fingerprint: "AA:BB",
+			HostKeys: []string{"ssh-ed25519 K"},
+		})
+	}
+	return d
+}
+
+// ONE FOUNDER. Several hosts assigned to an empty cluster at once all find no
+// member to join; if each formed it on finding that, the fleet would hold several
+// clusters of the same name. The lowest hypervisor id forms it and the rest wait.
+func TestOnlyTheFounderFormsANewCluster(t *testing.T) {
+	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
+	knownHostsFixture(t, "")
+
+	for _, tc := range []struct {
+		self   string
+		create bool
+	}{
+		{"h1", true},
+		{"h2", false},
+		{"h3", false},
+	} {
+		cl := &fakeCluster{}
+		var phases []string
+		verb, err := joinOrCreate(t.Context(), Deps{Cluster: cl}, testEnv(&phases, nil, nil),
+			arrivals("lab-n", tc.self, "h3", "h1", "h2"))
+		if tc.create {
+			if cl.created == nil || verb != VerbCreate {
+				t.Fatalf("%s: verb = %q, created = %+v; the founder must form the cluster", tc.self, verb, cl.created)
+			}
+			continue
+		}
+		if cl.created != nil {
+			t.Fatalf("%s formed the cluster too; only h1 may", tc.self)
+		}
+		if cl.joinAttempts != 0 {
+			t.Fatalf("%s tried to join through an arriving host", tc.self)
+		}
+		if verb != VerbWait || err != nil {
+			t.Fatalf("%s: verb = %q, err = %v; want wait", tc.self, verb, err)
+		}
+	}
+}
+
+// Link 0 is the address the control plane reaches this host on, passed
+// explicitly. Left to pvecm, a dual-stack host resolves its own name to IPv6, and
+// corosync refuses a cluster formed on IPv4 that receives an IPv6 node:
+// "Nodes for link 0 have different IP families".
+func TestJoinAndCreatePassTheHostsOwnAddressAsLink0(t *testing.T) {
+	defer swapSettle(t, 200*time.Millisecond, 10*time.Millisecond)()
+	knownHostsFixture(t, "")
+
+	// want()'s addresses ("10.0.0.pve3") are not IPs, and a corosync link must be
+	// one, so nothing is passed and pvecm keeps its own default.
+	cl := &fakeCluster{joinErr: errRefused{}}
+	var phases []string
+	_, _ = joinOrCreate(t.Context(), Deps{Cluster: cl, Node: "pve3"}, testEnv(&phases, nil, nil),
+		want("lab-a", "pve3", "pve1", "pve3"))
+	if cl.joined == nil || cl.joined.Link0 != "" {
+		t.Fatalf("joined with %+v; a non-IP address must not be passed as link0", cl.joined)
+	}
+
+	w := want("lab-a", "pve3", "pve1", "pve3")
+	for i := range w.Members {
+		w.Members[i].Address = map[string]string{"pve1": "95.216.247.245", "pve3": "95.216.40.166"}[w.Members[i].Node]
+	}
+	cl = &fakeCluster{joinErr: errRefused{}}
+	_, _ = joinOrCreate(t.Context(), Deps{Cluster: cl, Node: "pve3"}, testEnv(&phases, nil, nil), w)
+	if cl.joined == nil || cl.joined.Link0 != "95.216.40.166" {
+		t.Fatalf("joined with %+v, want link0 95.216.40.166 (this host's own address)", cl.joined)
+	}
+
+	founder := arrivals("lab-n", "h1", "h1", "h2")
+	founder.Members[0].Address = "95.216.77.99"
+	cl = &fakeCluster{}
+	_, _ = joinOrCreate(t.Context(), Deps{Cluster: cl}, testEnv(&phases, nil, nil), founder)
+	if cl.created == nil || cl.created.Link0 != "95.216.77.99" {
+		t.Fatalf("created with %+v, want link0 95.216.77.99", cl.created)
+	}
 }
 
 // A peer with no fingerprint is not a usable join target: pvecm accepts a

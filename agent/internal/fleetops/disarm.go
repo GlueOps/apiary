@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,24 @@ import (
 // are seconds, not minutes — but finite, which is the point. A var so a test can
 // shorten it.
 var disarmStepTimeout = 2 * time.Minute
+
+// stopPmxcfs ends every pmxcfs and FAILS if one survives.
+//
+// pkill, not killall: killall is psmisc, which a stock PVE 9 host does not have.
+// The step used to be `killall pmxcfs 2>/dev/null || true`, which turned
+// "command not found" into success — so the local-mode pmxcfs this disarm starts
+// was never stopped, held its lock, and `systemctl start pve-cluster` failed
+// with "unable to acquire pmxcfs lock". Observed on five hosts at once: each was
+// left with pve-cluster down and /etc/pve unmounted, which also took root's
+// authorized_keys with it.
+//
+// Waited on, not slept on: pmxcfs tears its filesystem down before it exits,
+// and starting another before it has is the same lock failure. pkill's own exit
+// status is not checked, because "nothing to kill" is the normal case on the
+// first stop.
+const stopPmxcfs = `pkill -x pmxcfs; ` +
+	`for i in $(seq 40); do pgrep -x pmxcfs >/dev/null || exit 0; sleep 0.5; done; ` +
+	`echo "pmxcfs did not exit within 20s:" $(pgrep -ax pmxcfs) >&2; exit 1`
 
 // PVEDir is the pmxcfs mount the writability probe writes into. A var so a test
 // can point it at a temporary tree, as the other paths already allow.
@@ -136,8 +155,7 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 
 	steps := []string{
 		"systemctl stop pve-cluster corosync 2>&1 || true",
-		"killall pmxcfs 2>/dev/null || true",
-		"sleep 2",
+		stopPmxcfs,
 		// Local mode, so /etc/pve is writable without quorum — which this node no
 		// longer has and is never getting back.
 		"pmxcfs -l",
@@ -159,8 +177,7 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 		steps = append(steps, "rm -f "+f)
 	}
 	steps = append(steps,
-		"killall pmxcfs 2>/dev/null || true",
-		"sleep 2",
+		stopPmxcfs,
 		"systemctl start pve-cluster",
 		"sleep 3",
 	)
@@ -222,14 +239,19 @@ func Disarm(ctx context.Context, d Deps, e *Env, rawSpec string) error {
 	// not, and quietly blocks everything else the agent would do.
 	for _, cmd := range steps {
 		stepCtx, cancel := context.WithTimeout(ctx, disarmStepTimeout)
-		err := d.Runner.Run(stepCtx, discard, "sh", "-c", cmd)
+		out := newOutputTail(20)
+		err := d.Runner.Run(stepCtx, out.log, "sh", "-c", cmd)
+		// Read BEFORE cancel. After it, stepCtx.Err() is always non-nil, which
+		// reported every failed step as a two-minute stall — a pmxcfs that
+		// refused to start within a second was logged as "stalled after 2m0s".
+		stalled := errors.Is(stepCtx.Err(), context.DeadlineExceeded)
 		cancel()
 		if err != nil {
-			if stepCtx.Err() != nil && ctx.Err() == nil {
+			if stalled && ctx.Err() == nil {
 				return fmt.Errorf("standalone conversion stalled at %q after %s; the host needs "+
-					"looking at directly", cmd, disarmStepTimeout)
+					"looking at directly%s", cmd, disarmStepTimeout, out.suffix())
 			}
-			return fmt.Errorf("standalone conversion at %q: %w", cmd, err)
+			return fmt.Errorf("standalone conversion at %q: %w%s", cmd, err, out.suffix())
 		}
 	}
 

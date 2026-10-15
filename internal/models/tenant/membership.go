@@ -397,11 +397,14 @@ func (m Membership) strayOwnedBy(self Self, obs Observed) (string, bool) {
 
 // JoinTargets is every member this host could join through, best first.
 //
-// A join needs a peer that is ALREADY in the cluster, and the joining node
-// cannot tell which of the desired members that is — it has no cluster to read.
-// So it is handed all of them and tries in order; a peer that is itself
-// standalone refuses the join, which is the correct outcome rather than an
-// error to prevent.
+// A join needs a peer that is ALREADY in the cluster. The joining node cannot
+// read the cluster, but the composition says which members are in it: a member
+// has a node name only once it has joined one. Unnamed members are arriving,
+// like the joiner, and are excluded — they used to be offered on the theory
+// that a standalone peer simply refuses, but trying one is a pvecm add against a
+// host with nothing to give, and with every member refusing the agent then
+// formed a second cluster of the same name. Must agree with the agent's
+// joinTargets (agent/internal/fleetops/membership.go).
 //
 // Members with no fingerprint are excluded rather than tried without one.
 // `pvecm add` accepts a missing fingerprint by prompting, which in a
@@ -410,7 +413,7 @@ func (m Membership) strayOwnedBy(self Self, obs Observed) (string, bool) {
 func (m Membership) JoinTargets(self Self) []MembershipMember {
 	out := make([]MembershipMember, 0, len(m.Members))
 	for _, mem := range m.Members {
-		if isSelfMember(mem, self) || mem.Fingerprint == "" || mem.Address == "" {
+		if mem.Node == "" || isSelfMember(mem, self) || mem.Fingerprint == "" || mem.Address == "" {
 			continue
 		}
 		out = append(out, mem)
