@@ -84,6 +84,10 @@ type Bee struct {
 	executors map[string]Executor
 	notify    *notifier
 
+	// corosyncReload repairs a running corosync left behind its own
+	// configuration file; see fleetops.CorosyncReload.
+	corosyncReload *fleetops.CorosyncReload
+
 	// firewall is what this host is enforcing, as established by this process.
 	firewall appliedFirewall
 
@@ -131,6 +135,9 @@ func New(opts Options, executors map[string]Executor) *Bee {
 		opts.LogBatch = 200
 	}
 	b := &Bee{opts: opts, executors: executors, notify: newNotifier()}
+	if opts.Fleet.Runner != nil {
+		b.corosyncReload = &fleetops.CorosyncReload{Runner: opts.Fleet.Runner}
+	}
 	// Sent until a control plane says it does not know the field. See the 422
 	// handling in heartbeatLocked.
 	b.sendDigest.Store(true)
@@ -202,6 +209,16 @@ func (b *Bee) reportLoop(ctx context.Context) {
 			release()
 		}
 
+		// EVERY cycle, not only while a composition is being converged. The drift
+		// it repairs is on a member that is already converged by every measure
+		// convergence has — its files and pmxcfs agree with the composition; only
+		// corosync's loaded configuration is stale — so the membership path above
+		// has nothing to act on, and it is the NEWCOMER that cannot become
+		// quorate.
+		b.corosyncReload.Check(ctx, func(format string, args ...any) {
+			slog.WarnContext(ctx, "membership: "+fmt.Sprintf(format, args...))
+		})
+
 		// ALWAYS pause, whether or not a task came back.
 		//
 		// The obvious version — loop immediately when a task arrives — spins at
@@ -220,9 +237,11 @@ func (b *Bee) reportLoop(ctx context.Context) {
 }
 
 // membershipHoldMax bounds how long a membership convergence keeps the report
-// loop marked alive. A join is pvecm add plus a four-minute settle window, so
-// ten minutes covers a slow one with room to spare and still lets the watchdog
-// restart an agent that is genuinely stuck.
+// loop marked alive. A join is pvecm add, bounded by fleetops.JoinTimeout, plus
+// a four-minute settle window, so ten minutes covers a slow one with room to
+// spare and still lets the watchdog restart an agent that is genuinely stuck.
+// JoinTimeout plus the settle window must stay below it: when it did not bound
+// pvecm add, a join that hung ended in the watchdog restarting the agent.
 const membershipHoldMax = 10 * time.Minute
 
 type heartbeatOpts struct {
