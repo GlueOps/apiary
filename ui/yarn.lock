@@ -3681,11 +3681,15 @@ __metadata:
   linkType: hard
 
 "lucide-react@npm:^1.33.0":
-  version: 1.47.0
-  resolution: "lucide-react@npm:1.47.0"
+  version: 1.61.0
+  resolution: "lucide-react@npm:1.61.0"
   peerDependencies:
+    "@types/react": "*"
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10/0318399360986fd90fde9a664b738eadc22897de1b6ad62851eae2da699d63b03db8ef3dea60db52c5ede94ff7f3c6502d61f07f39766180d358cb6df12413e2
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10/94967ade6a5ed65e12606558411caa7de6c8318a024a52d311c90dd7c93cfc7fd8d5eabcba546485ff2f1692218e9a725702418a7307e54604cf699f1bd7d630
   languageName: node
   linkType: hard
 
