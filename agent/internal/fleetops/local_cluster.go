@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Paths this reads. Vars so tests can point them at a fixture tree.
@@ -302,6 +303,20 @@ func (l *localCluster) CreateCluster(ctx context.Context, opts *proxmoxCreateOpt
 	return "cluster created", nil
 }
 
+// JoinTimeout bounds a single pvecm add.
+//
+// Without it a join that cannot complete ran until the agent's report-loop hold
+// expired, and the watchdog then restarted the whole agent — an agent crash
+// standing in for a failed join. Observed live: a node added seconds after
+// another reached a member still running the previous corosync configuration,
+// which had no link to it, and pvecm add waited for quorum that could never
+// form until the ten-minute hold ran out.
+//
+// Four minutes, plus the four-minute settle that follows a join, stays inside
+// membershipHoldMax (agent/internal/bee/bee.go) with room for the work around
+// them. A var so a test can shorten it.
+var JoinTimeout = 4 * time.Minute
+
 // JoinCluster adds this host to an existing cluster.
 //
 // --use_ssh, which is what makes this tokenless. pvecm authenticates to the peer
@@ -328,7 +343,15 @@ func (l *localCluster) JoinCluster(ctx context.Context, opts *proxmoxJoinOptions
 	}
 	args = append(args, linkArgs(opts.Link0, opts.Link1, opts.Link2, opts.Link3)...)
 	out := newOutputTail(20)
-	if err := l.runner.Run(ctx, out.log, "pvecm", args...); err != nil {
+	jctx, cancel := context.WithTimeout(ctx, JoinTimeout)
+	defer cancel()
+	if err := l.runner.Run(jctx, out.log, "pvecm", args...); err != nil {
+		if jctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+			return "", fmt.Errorf("pvecm add %s did not finish within %s; it waits for the "+
+				"cluster to accept the new configuration, so a member that cannot reach this "+
+				"host on its link0 address holds it indefinitely%s",
+				opts.Hostname, JoinTimeout, out.suffix())
+		}
 		return "", fmt.Errorf("pvecm add %s: %w%s", opts.Hostname, err, out.suffix())
 	}
 	// THE EXIT CODE IS NOT THE OUTCOME. pvecm add runs the join as a task and
