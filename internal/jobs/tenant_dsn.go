@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/glueops/apiary/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -61,35 +62,23 @@ func deriveTenantDBURL(provisionerURL, prefix, orgID string) (dbName string, ten
 	return dbName, u.String(), nil
 }
 
-// DefaultTenantDatabasePrefix names tenant databases when DATABASE_PREFIX is
-// unset. It is what every tenant was called before the prefix was configurable,
-// so leaving the setting out changes nothing.
-const DefaultTenantDatabasePrefix = "tenant"
-
-// tenantPrefix resolves the configured prefix, falling back to the default.
-//
-// A trailing underscore is dropped because the separator is added here: both
-// "apiary" and "apiary_" name databases apiary_<uuid>, never apiary__<uuid>.
-func tenantPrefix(prefix string) string {
-	p := strings.TrimRight(strings.TrimSpace(prefix), "_")
-	if p == "" {
-		return DefaultTenantDatabasePrefix
-	}
-	return p
-}
-
 // tenantDBName is the database a NEW tenant is created in.
 //
 // It is only ever used to choose a name at provisioning time. An existing
 // tenant's database is whatever its stored DSN says, which is what makes the
 // prefix safe to change: tenants provisioned under an earlier prefix keep the
 // name they were given.
+//
+// One known gap: a provisioning job that created its database and failed before
+// storing the DSN, then retried after the prefix changed, creates a second
+// database under the new name and leaves the first behind. Nothing records the
+// first, so it is found only by listing databases on the server.
 func tenantDBName(prefix, orgID string) (string, error) {
 	id, err := uuid.Parse(strings.TrimSpace(orgID))
 	if err != nil {
 		return "", fmt.Errorf("invalid org id: %w", err)
 	}
-	return tenantPrefix(prefix) + "_" + strings.ReplaceAll(id.String(), "-", ""), nil
+	return utils.TenantDatabasePrefix(prefix) + "_" + strings.ReplaceAll(id.String(), "-", ""), nil
 }
 
 func tenantRoleName(prefix, orgID string) (string, error) {
@@ -97,7 +86,7 @@ func tenantRoleName(prefix, orgID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid org id: %w", err)
 	}
-	return tenantPrefix(prefix) + "_role_" + strings.ReplaceAll(id.String(), "-", ""), nil
+	return utils.TenantDatabasePrefix(prefix) + "_role_" + strings.ReplaceAll(id.String(), "-", ""), nil
 }
 
 // databaseFromDSN is the database a DSN connects to.

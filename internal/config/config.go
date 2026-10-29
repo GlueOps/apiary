@@ -262,7 +262,7 @@ func Load() (*Config, error) {
 		v.SetDefault("smtp.from", "noreply@example.com")
 
 		v.SetDefault("provisioner.database.url", "")
-		v.SetDefault("database.prefix", "tenant")
+		v.SetDefault("database.prefix", utils.DefaultTenantDatabasePrefix)
 		v.SetDefault("tenant.pool.max_size", 64)
 		v.SetDefault("tenant.pool.max_conns", 4)
 		v.SetDefault("tenant.pool.max_idle_conns", 2)
@@ -620,10 +620,7 @@ var databasePrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // Lowercase only: the names are quoted when created, so an uppercase prefix
 // would make a database every unquoted psql reference fails to find.
 func checkDatabasePrefix(prefix string) error {
-	p := strings.TrimRight(strings.TrimSpace(prefix), "_")
-	if p == "" {
-		return nil
-	}
+	p := utils.TenantDatabasePrefix(prefix)
 	if !databasePrefixPattern.MatchString(p) {
 		return fmt.Errorf("config: DATABASE_PREFIX %q must be lowercase letters, digits and underscores, starting with a letter", prefix)
 	}

@@ -44,21 +44,22 @@ func NewTenantDestroyerService(controlDB *gorm.DB, controlDBURL, provisionerDBUR
 //
 // An org with no stored DSN never finished provisioning; its database, if one
 // was created at all, has the name provisioning would have given it.
+//
+// A legacy org whose DSN was stored in plaintext still names its database, and
+// is read as it is. Refusing it, as connecting does, would leave the destroy
+// failing on every retry and the org never cleaned up.
 func (d *TenantDestroyerService) tenantDatabase(org *control.Organization) (string, error) {
 	if org.ConnectionString == "" {
 		return tenantDBName(d.databasePrefix, org.ID.String())
 	}
-	ct, err1 := utils.DecodeB64(org.ConnectionString)
-	iv, err2 := utils.DecodeB64(org.ConnectionStringIV)
-	tag, err3 := utils.DecodeB64(org.ConnectionStringTag)
-	if err1 != nil || err2 != nil || err3 != nil {
-		return "", fmt.Errorf("decode connection string components")
+	dsn, err := org.DecryptConnectionString(d.dsnKey)
+	if errors.Is(err, control.ErrConnectionStringNotEncrypted) {
+		dsn, err = org.ConnectionString, nil
 	}
-	plain, err := utils.DecryptAESGCMWithAAD(ct, d.dsnKey, iv, tag, []byte(org.ID.String()))
 	if err != nil {
-		return "", fmt.Errorf("decrypt connection string: %w", err)
+		return "", err
 	}
-	return databaseFromDSN(string(plain))
+	return databaseFromDSN(dsn)
 }
 
 func (d *TenantDestroyerService) DestroyOrganization(ctx context.Context, organizationID string) error {

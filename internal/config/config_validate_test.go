@@ -1137,6 +1137,23 @@ func TestCfgtValidateWorkerRequiresASeparateProvisionerDSN(t *testing.T) {
 			wantErr: true, wantErrHas: "PROVISIONER_DATABASE_URL",
 		},
 		{
+			// The startup gate, not just the helper: a prefix PostgreSQL would
+			// mangle stops the worker before it names a tenant with it.
+			name: "an invalid database prefix is refused",
+			mutate: func(c *Config) {
+				c.ProvisionerDatabaseURL = "postgres://provisioner:pw@db:5432/apiary"
+				c.DatabasePrefix = "Apiary"
+			},
+			wantErr: true, wantErrHas: "DATABASE_PREFIX",
+		},
+		{
+			name: "a valid database prefix is accepted",
+			mutate: func(c *Config) {
+				c.ProvisionerDatabaseURL = "postgres://provisioner:pw@db:5432/apiary"
+				c.DatabasePrefix = "apiary_"
+			},
+		},
+		{
 			// ValidateWorker runs Validate first; a broken base config must fail
 			// here too rather than being skipped because the worker has its own path.
 			name: "base config errors still propagate",

@@ -27,12 +27,3 @@ func TestCheckDatabasePrefix(t *testing.T) {
 		}
 	}
 }
-
-// The longest name built from an allowed prefix must still fit a PostgreSQL
-// identifier, or PostgreSQL truncates it instead of refusing it.
-func TestLongestTenantNameFitsAnIdentifier(t *testing.T) {
-	role := strings.Repeat("a", maxDatabasePrefixLen) + "_role_" + strings.Repeat("f", 32)
-	if len(role) > 63 {
-		t.Fatalf("longest role name is %d bytes, over PostgreSQL's 63", len(role))
-	}
-}

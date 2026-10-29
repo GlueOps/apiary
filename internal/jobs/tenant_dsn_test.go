@@ -252,3 +252,25 @@ func TestDestroyerDropsTheStoredDatabaseNotOneDerivedFromThePrefix(t *testing.T)
 		t.Fatalf("provisioned org: db = %q, want the stored %q", got, legacy)
 	}
 }
+
+// A legacy org whose DSN predates sealing stores it in plaintext with no IV or
+// tag. Connecting refuses it, but a destroy must still find its database:
+// failing here retries forever and the org is never cleaned up.
+func TestDestroyerReadsALegacyPlaintextDSN(t *testing.T) {
+	d, err := NewTenantDestroyerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, "apiary", mustMasterKey(t))
+	if err != nil {
+		t.Fatalf("NewTenantDestroyerService: %v", err)
+	}
+	org := control.Organization{
+		ConnectionString: "postgres://tenant_role_x:pw@db.internal:5432/tenant_legacy?sslmode=disable",
+	}
+	org.ID = uuid.MustParse(testOrgID)
+
+	got, err := d.tenantDatabase(&org)
+	if err != nil {
+		t.Fatalf("a plaintext legacy DSN must resolve, got %v", err)
+	}
+	if got != "tenant_legacy" {
+		t.Fatalf("db = %q, want tenant_legacy", got)
+	}
+}

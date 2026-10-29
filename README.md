@@ -191,6 +191,10 @@ Key configuration (see `.env.example`):
 # Database
 DATABASE_URL=postgres://...
 ENCRYPTION_MASTER_KEY=<base64-32-bytes>
+# Names each NEW tenant's database <prefix>_<org uuid> and role
+# <prefix>_role_<org uuid>. Default "tenant". Lowercase letters, digits and _,
+# at most 25 characters. Existing tenants keep their names.
+DATABASE_PREFIX=tenant
 
 # JWT
 JWT_SECRET=<random-secret>
