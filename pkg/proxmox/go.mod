@@ -1,6 +1,6 @@
 module github.com/glueops/apiary/pkg/proxmox
 
-go 1.26.9
+go 1.27.3
 
 require (
 	github.com/buger/goterm v1.0.4
