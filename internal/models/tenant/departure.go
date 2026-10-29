@@ -49,6 +49,9 @@ const (
 	RefusePlacementsHeld = "placements_held"
 	RefuseHiveTooSmall   = "hive_too_small"
 	RefuseNotAMember     = "not_a_member"
+	// RefuseAlreadyDeparting: a departure was requested for this host and has
+	// not finished. Requesting it again would overwrite the first request.
+	RefuseAlreadyDeparting = "already_departing"
 
 	// RefuseCredentialsUndecided is raised when the caller has not said what to
 	// do about the secrets the departing node has already seen. It is the one
@@ -246,6 +249,22 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 			Summary: "the host belongs to no cluster",
 			Detail:  "this host does not belong to a cluster",
 			Remedy:  "Nothing to do — it is already standalone.",
+		}}
+	}
+
+	// Already on its way out. Answered alone, like not_a_member: every gate below
+	// was passed when the departure was requested, and passing them again would
+	// re-record it — resetting the age that shows a stalled departure, replacing
+	// the operator's credential decision, and re-snapshotting the root key the
+	// rotation check compares against.
+	if d := req.Hypervisor.DepartingAt; d != nil {
+		return []DepartureRefusal{{
+			Code:    RefuseAlreadyDeparting,
+			Summary: "a departure has already been requested for this host",
+			Detail: fmt.Sprintf("its departure was requested %s ago and has not finished",
+				time.Since(*d).Truncate(time.Minute)),
+			Remedy: "Wait for a remaining member to remove it from the cluster. A departure " +
+				"that does not finish usually means no remaining member is quorate to evict it.",
 		}}
 	}
 

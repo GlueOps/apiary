@@ -209,3 +209,46 @@ func viewHasCode(vs []RefusalView, code string) bool {
 	}
 	return false
 }
+
+// ASKING AGAIN IS REFUSED, and changes nothing. MarkDeparting overwrites
+// departing_at, the credential decision and the root-key snapshot, so a
+// second request on a stalled node would hide its age and replace the
+// operator's first decision.
+func TestADepartingNodeCannotBeDepartedAgain(t *testing.T) {
+	db := departureDB(t)
+	ctx := context.Background()
+	_, ids := seedDepartableHive(t, db, 5, 3)
+
+	if rs, err := requestDeparture(ctx, db, ids[0], tenant.CredentialsRotate, tenant.DrainThresholds{}); err != nil || len(rs) != 0 {
+		t.Fatalf("first departure must pass: refusals %v, err %v", rs, err)
+	}
+	stalled := time.Now().UTC().Add(-3 * time.Hour)
+	if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", ids[0]).
+		Update("departing_at", stalled).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rs, err := requestDeparture(ctx, db, ids[0], tenant.CredentialsAcceptExposure, tenant.DrainThresholds{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 || rs[0].Code != tenant.RefuseAlreadyDeparting {
+		t.Fatalf("re-requesting a departing node must refuse with %s alone, got %v",
+			tenant.RefuseAlreadyDeparting, rs)
+	}
+	if !strings.Contains(rs[0].Detail, "3h0m0s ago") {
+		t.Fatalf("the refusal must give the departure's age, got %q", rs[0].Detail)
+	}
+
+	var hv tenant.Hypervisor
+	if err := db.First(&hv, "id = ?", ids[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+	if hv.DepartingAt == nil || !hv.DepartingAt.Equal(stalled.Truncate(time.Microsecond)) {
+		t.Fatalf("departing_at was rewritten: %v, want %v", hv.DepartingAt, stalled)
+	}
+	if hv.CredentialDisposition != tenant.CredentialsRotate {
+		t.Fatalf("the credential decision was replaced: %q, want %q",
+			hv.CredentialDisposition, tenant.CredentialsRotate)
+	}
+}

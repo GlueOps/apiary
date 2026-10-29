@@ -151,6 +151,9 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	cycleSeedBee(t, db, &peer, sourcePeerAddr)
 	destPeer := cycleAnyHypervisor(t, db, dest.ID)
 	cycleSeedBee(t, db, &destPeer, destPeerAddr)
+	// So the gate below counts the peer as a survivor, rather than passing at a
+	// minimum of one only because nobody is counted at all.
+	cycleObserveMembership(t, db, source)
 
 	// ---- 2. THE GATE REFUSES AN UNCORDONED NODE -----------------------------
 	if rs := cycleGate(t, db, source, moving); !cycleHas(rs, tenant.RefuseNotCordoned) {
@@ -196,6 +199,9 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	t.Log("[gate] ok  refused: a minimum of 2 is a floor the departure would break")
 
 	lowerMinimum(1)
+	if got := cycleRemaining(t, db, source, moving); got != 1 {
+		t.Fatalf("[gate] the peer must be counted as the one survivor, got %d remaining", got)
+	}
 	if rs := cycleGate(t, db, source, moving); len(rs) != 0 {
 		t.Fatalf("[gate] a cordoned, empty node leaving one behind under a minimum of 1 must "+
 			"be allowed, got %v", cycleCodes(rs))
@@ -480,6 +486,39 @@ func cycleSeedBee(t *testing.T, db *gorm.DB, hv *tenant.Hypervisor, addr string)
 	hv.BeeID = &bee.ID
 	hv.Address = addr
 	hv.MachineID = &machineID
+}
+
+// cycleObserveMembership records, for every machine in hive, a fresh report
+// from its agent that it is in the cluster — which is what the departure gate
+// counts as a member. The lab drives the cluster over SSH with no agent
+// running, so without this every node reads as unobserved, the remaining
+// count is zero, and a passing gate could only be the dismantling exception.
+func cycleObserveMembership(t *testing.T, db *gorm.DB, hive tenant.Hive) {
+	t.Helper()
+	var hvs []tenant.Hypervisor
+	if err := db.Where("hive_id = ?", hive.ID).Find(&hvs).Error; err != nil {
+		t.Fatalf("load %s members: %v", hive.Name, err)
+	}
+	now := time.Now().UTC()
+	for _, hv := range hvs {
+		beeID := hv.BeeID
+		if beeID == nil {
+			bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, LastSeenAt: &now}
+			if err := db.Create(&bee).Error; err != nil {
+				t.Fatalf("seed bee for %s: %v", cycleName(hv), err)
+			}
+			if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
+				Update("bee_id", bee.ID).Error; err != nil {
+				t.Fatalf("link bee to %s: %v", cycleName(hv), err)
+			}
+			beeID = &bee.ID
+		}
+		if err := db.Model(&tenant.Bee{}).Where("id = ?", *beeID).Updates(map[string]any{
+			"observed_cluster": hive.Name, "observed_membership_at": now,
+		}).Error; err != nil {
+			t.Fatalf("observe %s membership: %v", cycleName(hv), err)
+		}
+	}
 }
 
 // cycleName renders a machine's node name for a log line. Nullable now: a
