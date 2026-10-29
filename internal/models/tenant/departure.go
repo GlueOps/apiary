@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// DefaultHiveMinimumNodes is the smallest hive a departure may be started from.
+// DefaultHiveMinimumNodes is the fewest nodes a departure may leave a hive with.
 //
 // Three, because of corosync arithmetic that was observed doing damage rather
 // than reasoned about: removing one node from a TWO-node cluster drops the
@@ -17,16 +17,18 @@ import (
 // unmanageable. Removing one of three leaves two of three, still quorate, and
 // none of it happens.
 //
-// So this is not a redundancy preference. Below three, the departure procedure
-// breaks the cluster it is leaving.
+// So departing FROM fewer than three breaks the cluster it is leaving, and
+// leaving fewer than three is the redundancy margin on top: a two-node
+// survivor loses quorum the moment either node fails, and then cannot run the
+// next departure at all. The default is the floor an operator reads it as.
 const DefaultHiveMinimumNodes = 3
 
-// EffectiveMinimumNodes is the smallest node count a departure may be started FROM, not
-// the count it may leave behind.
+// EffectiveMinimumNodes is the fewest nodes a departure may LEAVE the cluster
+// with, counting every departure already under way as gone.
 //
-// Stated that way round because it is the number an operator can check before
-// asking for anything: "this hive has four nodes, so a host may leave it." The
-// other phrasing needs the arithmetic done first and gets it wrong by one.
+// A floor on what remains, rather than a size a departure may start from,
+// because it is the only reading that composes: departures checked one at a
+// time against what is left cannot add up to more than any one would allow.
 //
 // A knob rather than the constant because a test fleet is legitimately smaller
 // than three, and the alternative to a knob is an operator disabling the gate
@@ -47,6 +49,9 @@ const (
 	RefusePlacementsHeld = "placements_held"
 	RefuseHiveTooSmall   = "hive_too_small"
 	RefuseNotAMember     = "not_a_member"
+	// RefuseAlreadyDeparting: a departure was requested for this host and has
+	// not finished. Requesting it again would overwrite the first request.
+	RefuseAlreadyDeparting = "already_departing"
 
 	// RefuseCredentialsUndecided is raised when the caller has not said what to
 	// do about the secrets the departing node has already seen. It is the one
@@ -163,6 +168,15 @@ type DepartureRequest struct {
 	// refuses, in the same spirit as every other gate here: a check that cannot
 	// reach a decision denies rather than guesses.
 	CredentialDisposition string
+
+	// RemainingNodes is how many members the cluster will still have once this
+	// host and every other departure already requested have left. The departure
+	// minimum is a floor on this number; see repo.HiveMembers.RemainingAfter.
+	RemainingNodes int
+
+	// NotCounted names the hive's other machines left out of RemainingNodes, each
+	// with why, so a refusal explains a count lower than the node list shows.
+	NotCounted []string
 }
 
 // CheckDeparture returns every reason the host may not leave, or nil.
@@ -238,19 +252,44 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 		}}
 	}
 
+	// Already on its way out. Answered alone, like not_a_member: every gate below
+	// was passed when the departure was requested, and passing them again would
+	// re-record it — resetting the age that shows a stalled departure, replacing
+	// the operator's credential decision, and re-snapshotting the root key the
+	// rotation check compares against.
+	if d := req.Hypervisor.DepartingAt; d != nil {
+		return []DepartureRefusal{{
+			Code:    RefuseAlreadyDeparting,
+			Summary: "a departure has already been requested for this host",
+			Detail: fmt.Sprintf("its departure was requested %s ago and has not finished",
+				time.Since(*d).Truncate(time.Minute)),
+			Remedy: "Wait for a remaining member to remove it from the cluster. A departure " +
+				"that does not finish usually means no remaining member is quorate to evict it.",
+		}}
+	}
+
 	// The hive-size gate runs even when the node is not drained, because it is
 	// the one refusal an operator cannot resolve by waiting — it needs another
 	// host added, or the knob changed deliberately. Reporting it only after the
 	// drain completes wastes the whole drain.
-	if min := req.Hive.EffectiveMinimumNodes(); req.HiveNodeCount < min {
+	//
+	// A FLOOR: the cluster may not be LEFT with fewer than the minimum.
+	//
+	// ONE EXCEPTION: leaving nobody, under a minimum of one. That is not a
+	// cluster shrunk below its floor but a cluster dismantled — there is no
+	// survivor whose quorum could suffer — and it is only reachable on a hive
+	// whose operator lowered the minimum to one on purpose.
+	min := req.Hive.EffectiveMinimumNodes()
+	dismantling := req.RemainingNodes == 0 && min <= 1
+	if req.RemainingNodes < min && !dismantling {
 		out = append(out, DepartureRefusal{
 			Code:    RefuseHiveTooSmall,
-			Summary: "the cluster has fewer nodes than its departure minimum",
-			Detail: fmt.Sprintf("hive %q has %d node(s) and the departure minimum is %d",
-				req.Hive.Name, req.HiveNodeCount, min),
-			Remedy: "Add a node, or lower this fleet's minimum deliberately if it is a test " +
-				"cluster. Removing a node from a cluster this small loses quorum part-way " +
-				"through and leaves the survivors read-only with their guests unmanageable.",
+			Summary: "the departure would leave the cluster below its minimum",
+			Detail:  tooSmallDetail(req, min),
+			Remedy: "Add a node first, wait for a node that is arriving to finish joining, or " +
+				"lower this cluster's minimum deliberately if it is a test cluster. Shrinking a " +
+				"cluster this far risks quorum and leaves the survivors read-only with their " +
+				"guests unmanageable if another node fails.",
 		})
 	}
 
@@ -356,4 +395,17 @@ func DepartureRefusalsError(rs []DepartureRefusal) error {
 		parts = append(parts, r.Code+" ("+r.Detail+")")
 	}
 	return fmt.Errorf("departure refused: %s", strings.Join(parts, "; "))
+}
+
+// tooSmallDetail says what the remaining count is and, when the hive has
+// machines it left out, which and why. The node list shows every machine
+// assigned to the hive, so "would be left with 2" beside four listed nodes
+// is only actionable once it names the two that were not counted.
+func tooSmallDetail(req DepartureRequest, min int) string {
+	d := fmt.Sprintf("hive %q would be left with %d node(s) and its minimum is %d",
+		req.Hive.Name, req.RemainingNodes, min)
+	if len(req.NotCounted) > 0 {
+		d += "; not counted: " + strings.Join(req.NotCounted, ", ")
+	}
+	return d
 }

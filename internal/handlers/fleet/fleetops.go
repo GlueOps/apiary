@@ -470,7 +470,7 @@ type HiveDetailView struct {
 
 	CPUOvercommitRatio float64 `json:"cpu_overcommit_ratio"`
 
-	MinimumNodes          int `json:"minimum_nodes" doc:"Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only."`
+	MinimumNodes          int `json:"minimum_nodes" doc:"Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only."`
 	EffectiveMinimumNodes int `json:"effective_minimum_nodes" doc:"What minimum_nodes resolves to, so a client does not reimplement the zero-means-default rule."`
 
 	NodeCount int `json:"node_count"`
@@ -508,7 +508,7 @@ type UpdateHiveRequest struct {
 		CredentialID       *string  `json:"credential_id,omitempty" doc:"A credential id to bind, or \"\" to unbind. Omit the field to leave the binding unchanged."`
 		InsecureSkipVerify *bool    `json:"insecure_skip_verify,omitempty" doc:"Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive."`
 		CPUOvercommitRatio *float64 `json:"cpu_overcommit_ratio,omitempty" minimum:"1"`
-		MinimumNodes       *int     `json:"minimum_nodes,omitempty" minimum:"1" doc:"Lower this only for a test fleet. Below three, a departure strands the nodes that remain."`
+		MinimumNodes       *int     `json:"minimum_nodes,omitempty" minimum:"1" doc:"The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster's last node."`
 	}
 }
 
@@ -1051,8 +1051,9 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			"it does NOT join anything. A migration is a departure and then an arrival, and the " +
 			"fleetless state between them is real rather than a window to hurry through.\n\n" +
 			"Refused with 409 and a list of reason codes when the host is not drained, the hive is " +
-			"too small, or the capacity observation is too stale to decide. The same gate runs again " +
-			"inside the job, against state read in one transaction.",
+			"too small, or the capacity observation is too stale to decide. The gate and the " +
+			"departure are one transaction holding the hive's lock, so two departures from one " +
+			"hive are decided one after the other.",
 		Tags:     []string{"Fleet"},
 		Security: apimiddleware.SecurityUserOrKey,
 	}, func(ctx context.Context, in *DepartRequest) (*DepartResponse, error) {
@@ -1069,26 +1070,17 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 			return nil, err
 		}
 
-		var hv tenant.Hypervisor
-		if err := db.WithContext(ctx).First(&hv, "id = ?", id).Error; err != nil {
-			return nil, mapErr(ctx, err)
+		if deps.Jobs == nil {
+			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
 		}
-		refusals, err := departureRefusals(ctx, db, hv, thresholds)
+		refusals, err := requestDeparture(ctx, db, id, in.Body.CredentialDisposition, thresholds)
 		if err != nil {
 			return nil, mapErr(ctx, err)
 		}
 		if len(refusals) > 0 {
-			// Checked here as well as in the job. Not redundant: this is what turns
-			// an operator's click into an immediate, explained refusal instead of a
-			// job that fails somewhere they have to go and look for it. The job's
-			// own check remains authoritative, because state moves between the two.
 			auditRefused(ctx, db, p, tenant.AuditHypervisorDepart, tenant.AuditTargetHypervisor,
 				&id, refusalCodes(refusalViews(refusals)), nil)
 			return nil, refusalConflict("this hypervisor cannot leave its hive yet", refusalViews(refusals))
-		}
-
-		if deps.Jobs == nil {
-			return nil, huma.NewError(http.StatusServiceUnavailable, "the job queue is not available")
 		}
 		// DESIRED STATE FIRST, then the host-side work.
 		//
@@ -1117,9 +1109,8 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		// member learns in one step both that it should no longer be there and
 		// that removing it is authorised. The row is cleared once a quorate peer
 		// observes it actually gone.
-		if err := repo.MarkDeparting(ctx, db, id, in.Body.CredentialDisposition); err != nil {
-			return nil, mapErr(ctx, err)
-		}
+		//
+		// requestDeparture above marked it, in the transaction that checked it.
 		// NOTHING IS DISPATCHED. The whole departure is convergent now.
 		//
 		// MarkDeparting above publishes the node into the composition's Departing
@@ -1920,13 +1911,49 @@ func hiveDetail(h tenant.Hive, nodes int) HiveDetailView {
 // Reads the placement count and the hive node count in ONE transaction with the
 // hypervisor, for the same reason the job's snapshot does: a verdict assembled
 // from separate reads describes no state that ever existed.
+// requestDeparture checks a departure and, if nothing refuses it, records it —
+// in ONE transaction holding the hive's row lock.
+//
+// The lock is what makes the minimum hold. Checked and marked separately, two
+// departures from a four-node hive with a minimum of three each see the other
+// node still present, each count three remaining, and both pass, leaving two.
+// Nothing later re-checks: a departure is convergent and dispatches no job. Under
+// the lock the second waits, then counts the first as departing, and is refused.
+//
+// The hypervisor is re-read under the lock, because its hive and departing_at
+// are exactly what a concurrent request may just have changed.
+func requestDeparture(
+	ctx context.Context, db *gorm.DB, id uuid.UUID, disposition string, th tenant.DrainThresholds,
+) ([]tenant.DepartureRefusal, error) {
+	var refusals []tenant.DepartureRefusal
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var hv tenant.Hypervisor
+		if err := tx.First(&hv, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if hv.HiveID != nil {
+			if err := tx.Exec(`SELECT 1 FROM hives WHERE id = ? FOR UPDATE`, *hv.HiveID).Error; err != nil {
+				return fmt.Errorf("lock the hive: %w", err)
+			}
+			if err := tx.First(&hv, "id = ?", id).Error; err != nil {
+				return err
+			}
+		}
+		var err error
+		if refusals, err = departureRefusals(ctx, tx, hv, th); err != nil || len(refusals) > 0 {
+			return err
+		}
+		return repo.MarkDeparting(ctx, tx, id, disposition)
+	})
+	return refusals, err
+}
+
 func departureRefusals(
 	ctx context.Context, db *gorm.DB, hv tenant.Hypervisor, th tenant.DrainThresholds,
 ) ([]tenant.DepartureRefusal, error) {
 	var (
 		hive   tenant.Hive
 		held   int64
-		nodes  int64
 		result []tenant.DepartureRefusal
 	)
 	// A machine in no cluster has nothing to depart from, and the gate says so
@@ -1948,17 +1975,16 @@ func departureRefusals(
 			Count(&held).Error; err != nil {
 			return err
 		}
-		// OBSERVED members, not rows. A machine assigned to a hive and not yet
-		// joined is not a node of that cluster, and counting it let a departure
-		// take lab-b from two real members to one.
-		observed, err := repo.ObservedHiveNodeCount(ctx, tx, *hv.HiveID, hive.Name)
+		// OBSERVED members, not rows; see repo.LoadHiveMembers.
+		members, err := repo.LoadHiveMembers(ctx, tx, *hv.HiveID, hive.Name)
 		if err != nil {
 			return err
 		}
-		nodes = int64(observed)
 		drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), th)
 		result = tenant.CheckDepartureState(tenant.DepartureRequest{
-			Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: int(nodes),
+			Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: members.Present(),
+			RemainingNodes: members.RemainingAfter(hv.ID),
+			NotCounted:     members.NotCountedAfter(hv.ID),
 		})
 		return nil
 	})
@@ -2003,6 +2029,16 @@ func buildHypervisorViews(
 	counts, err := nodeCounts(ctx, db)
 	if err != nil {
 		return nil, err
+	}
+	// Each hive's members, for the departure minimum. One query per hive on the
+	// page, not per node.
+	members := make(map[uuid.UUID]repo.HiveMembers, len(byHive))
+	for id, h := range byHive {
+		m, err := repo.LoadHiveMembers(ctx, db, id, h.Name)
+		if err != nil {
+			return nil, err
+		}
+		members[id] = m
 	}
 
 	// Held placements per node, in one query rather than one per node — this list
@@ -2074,6 +2110,8 @@ func buildHypervisorViews(
 			},
 			DepartureRefusals: refusalViews(tenant.CheckDepartureState(tenant.DepartureRequest{
 				Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: nodeCountFor(counts, hv),
+				RemainingNodes: remainingFor(members, hv),
+				NotCounted:     notCountedFor(members, hv),
 			})),
 		}
 		if hv.LastSyncedAt != nil {
@@ -2131,6 +2169,23 @@ func nodeCountFor(counts map[uuid.UUID]int, h tenant.Hypervisor) int {
 		return 0
 	}
 	return counts[*h.HiveID]
+}
+
+// remainingFor is how many members h's hive keeps once h and every departure
+// already requested have left, and zero for a machine in no hive.
+func remainingFor(members map[uuid.UUID]repo.HiveMembers, h tenant.Hypervisor) int {
+	if h.HiveID == nil {
+		return 0
+	}
+	return members[*h.HiveID].RemainingAfter(h.ID)
+}
+
+// notCountedFor names the machines remainingFor left out of h's hive.
+func notCountedFor(members map[uuid.UUID]repo.HiveMembers, h tenant.Hypervisor) []string {
+	if h.HiveID == nil {
+		return nil
+	}
+	return members[*h.HiveID].NotCountedAfter(h.ID)
 }
 
 // DeclareHostsRequest names machines to bring into the fleet.

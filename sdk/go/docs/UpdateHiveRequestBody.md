@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 **CredentialId** | Pointer to **string** | A credential id to bind, or \&quot;\&quot; to unbind. Omit the field to leave the binding unchanged. | [optional] 
 **Description** | Pointer to **string** |  | [optional] 
 **InsecureSkipVerify** | Pointer to **bool** | Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive. | [optional] 
-**MinimumNodes** | Pointer to **int64** | Lower this only for a test fleet. Below three, a departure strands the nodes that remain. | [optional] 
+**MinimumNodes** | Pointer to **int64** | The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster&#39;s last node. | [optional] 
 **Name** | Pointer to **string** | Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric. | [optional] 
 
 ## Methods

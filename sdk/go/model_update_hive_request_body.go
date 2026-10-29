@@ -29,7 +29,7 @@ type UpdateHiveRequestBody struct {
 	Description *string `json:"description,omitempty"`
 	// Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive.
 	InsecureSkipVerify *bool `json:"insecure_skip_verify,omitempty"`
-	// Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
+	// The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster's last node.
 	MinimumNodes *int64 `json:"minimum_nodes,omitempty"`
 	// Also the Proxmox cluster name when this cluster is created on its first node, so it must be a legal one: letters, digits and hyphens, starting and ending alphanumeric.
 	Name *string `json:"name,omitempty"`

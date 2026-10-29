@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 **EffectiveMinimumNodes** | **int64** | What minimum_nodes resolves to, so a client does not reimplement the zero-means-default rule. | 
 **Id** | **string** |  | 
 **InsecureSkipVerify** | **bool** |  | 
-**MinimumNodes** | **int64** | Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only. | 
+**MinimumNodes** | **int64** | Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only. | 
 **Name** | **string** |  | 
 **NodeCount** | **int64** |  | 
 **Provider** | **string** |  | 

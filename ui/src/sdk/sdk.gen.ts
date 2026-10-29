@@ -1358,7 +1358,7 @@ export const fleetHypervisorsCordon = <ThrowOnError extends boolean = false>(opt
  *
  * Queues the departure. The host is left standalone and belonging to no fleet; it does NOT join anything. A migration is a departure and then an arrival, and the fleetless state between them is real rather than a window to hurry through.
  *
- * Refused with 409 and a list of reason codes when the host is not drained, the hive is too small, or the capacity observation is too stale to decide. The same gate runs again inside the job, against state read in one transaction.
+ * Refused with 409 and a list of reason codes when the host is not drained, the hive is too small, or the capacity observation is too stale to decide. The gate and the departure are one transaction holding the hive's lock, so two departures from one hive are decided one after the other.
  */
 export const fleetHypervisorsDepart = <ThrowOnError extends boolean = false>(options: Options<FleetHypervisorsDepartData, ThrowOnError>): RequestResult<FleetHypervisorsDepartResponses, FleetHypervisorsDepartErrors, ThrowOnError> => (options.client ?? client).post<FleetHypervisorsDepartResponses, FleetHypervisorsDepartErrors, ThrowOnError>({
     security: [

@@ -154,10 +154,11 @@ func TestCheckDepartureAllowsTheDrainedCase(t *testing.T) {
 	now := time.Now()
 	h := hyp(now)
 	req := DepartureRequest{
-		Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
-		Hypervisor:    h,
-		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
-		HiveNodeCount: 4,
+		Hive:           Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+		Hypervisor:     h,
+		Drain:          DrainStateAt(now, h, 0, DrainThresholds{}),
+		HiveNodeCount:  4,
+		RemainingNodes: 3,
 	}
 	if rs := CheckDepartureState(req); len(rs) != 0 {
 		t.Fatalf("a cordoned, empty, freshly-synced node in a 4-node hive must be allowed; refused with %v", codes(rs))
@@ -169,10 +170,11 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	base := func() DepartureRequest {
 		h := hyp(now)
 		return DepartureRequest{
-			Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
-			Hypervisor:    h,
-			Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
-			HiveNodeCount: 4,
+			Hive:           Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+			Hypervisor:     h,
+			Drain:          DrainStateAt(now, h, 0, DrainThresholds{}),
+			HiveNodeCount:  4,
+			RemainingNodes: 3,
 		}
 	}
 
@@ -241,9 +243,9 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		// them, since the column defaults to 0.
 		req := base()
 		req.Hive.MinimumNodes = 0
-		req.HiveNodeCount = 2
+		req.HiveNodeCount, req.RemainingNodes = 3, 2
 		if !hasCode(CheckDepartureState(req), RefuseHiveTooSmall) {
-			t.Fatal("MinimumNodes=0 must mean the default of 3, so a 2-node hive is refused")
+			t.Fatal("MinimumNodes=0 must mean the default of 3, so leaving 2 is refused")
 		}
 	})
 
@@ -269,30 +271,53 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		}
 	})
 
-	t.Run("a two-node hive is refused however well drained", func(t *testing.T) {
+	t.Run("a departure that would leave fewer than the minimum is refused", func(t *testing.T) {
+		// The minimum is a FLOOR on what remains, not a size to start from.
 		req := base()
-		req.HiveNodeCount = 2
+		req.HiveNodeCount, req.RemainingNodes = 3, 2
 		rs := CheckDepartureState(req)
 		if !hasCode(rs, RefuseHiveTooSmall) {
-			t.Fatalf("a 2-node hive must refuse: delnode loses quorum part-way; got %v", codes(rs))
+			t.Fatalf("leaving 2 under a minimum of 3 must refuse; got %v", codes(rs))
 		}
 	})
 
-	t.Run("a three-node hive at the default minimum is allowed", func(t *testing.T) {
+	t.Run("leaving exactly the minimum is allowed", func(t *testing.T) {
 		req := base()
 		req.Hive.MinimumNodes = 0 // unset -> default 3
-		req.HiveNodeCount = 3
+		req.HiveNodeCount, req.RemainingNodes = 4, 3
 		if rs := CheckDepartureState(req); len(rs) != 0 {
-			t.Fatalf("exactly at the minimum must be allowed; refused with %v", codes(rs))
+			t.Fatalf("leaving exactly the minimum must be allowed; refused with %v", codes(rs))
+		}
+	})
+
+	t.Run("a departure already under way is not counted as remaining", func(t *testing.T) {
+		// Four present, one already departing: this one would leave two.
+		req := base()
+		req.HiveNodeCount, req.RemainingNodes = 4, 2
+		if !hasCode(CheckDepartureState(req), RefuseHiveTooSmall) {
+			t.Fatal("a second departure while the first is running must count what remains")
 		}
 	})
 
 	t.Run("the knob lets a smaller test fleet through", func(t *testing.T) {
 		req := base()
 		req.Hive.MinimumNodes = 2
-		req.HiveNodeCount = 2
+		req.HiveNodeCount, req.RemainingNodes = 3, 2
 		if rs := CheckDepartureState(req); len(rs) != 0 {
-			t.Fatalf("an explicit minimum of 2 must permit a 2-node hive; refused with %v", codes(rs))
+			t.Fatalf("an explicit minimum of 2 must permit leaving 2; refused with %v", codes(rs))
+		}
+	})
+
+	t.Run("dismantling the last node is allowed only under a minimum of one", func(t *testing.T) {
+		req := base()
+		req.HiveNodeCount, req.RemainingNodes = 1, 0
+		req.Hive.MinimumNodes = 1
+		if rs := CheckDepartureState(req); len(rs) != 0 {
+			t.Fatalf("a minimum of 1 must permit dismantling a one-node cluster; refused with %v", codes(rs))
+		}
+		req.Hive.MinimumNodes = 2
+		if !hasCode(CheckDepartureState(req), RefuseHiveTooSmall) {
+			t.Fatal("a minimum of 2 must refuse leaving nobody")
 		}
 	})
 
@@ -300,7 +325,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 		// The point of reporting it early: it is the one refusal waiting cannot
 		// fix, so discovering it after a full drain wastes the drain.
 		req := base()
-		req.HiveNodeCount = 2
+		req.HiveNodeCount, req.RemainingNodes = 2, 1
 		req.Hypervisor.ObservedGuests = 5
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
 		rs := CheckDepartureState(req)
@@ -311,7 +336,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 
 	t.Run("every reason is returned, not the first", func(t *testing.T) {
 		req := base()
-		req.HiveNodeCount = 1
+		req.HiveNodeCount, req.RemainingNodes = 1, 0
 		req.Hypervisor.Schedulable = true
 		req.Hypervisor.LastSyncedAt = ptime(now.Add(-time.Hour))
 		req.Drain = DrainStateAt(now, req.Hypervisor, 0, DrainThresholds{})
@@ -512,10 +537,11 @@ func TestCheckDepartureRequiresACredentialDecision(t *testing.T) {
 	now := time.Now()
 	h := hyp(now)
 	req := DepartureRequest{
-		Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
-		Hypervisor:    h,
-		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
-		HiveNodeCount: 4,
+		Hive:           Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+		Hypervisor:     h,
+		Drain:          DrainStateAt(now, h, 0, DrainThresholds{}),
+		HiveNodeCount:  4,
+		RemainingNodes: 3,
 	}
 
 	// The preview is about the cluster, and must not report an unanswered
@@ -561,10 +587,11 @@ func TestCheckDepartureDoesNotAskAboutCredentialsWhileStateRefuses(t *testing.T)
 	h := hyp(now)
 	h.Schedulable = true // uncordoned: a state refusal
 	req := DepartureRequest{
-		Hive:          Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
-		Hypervisor:    h,
-		Drain:         DrainStateAt(now, h, 0, DrainThresholds{}),
-		HiveNodeCount: 4,
+		Hive:           Hive{ID: *h.HiveID, Name: "dc1", MinimumNodes: 3},
+		Hypervisor:     h,
+		Drain:          DrainStateAt(now, h, 0, DrainThresholds{}),
+		HiveNodeCount:  4,
+		RemainingNodes: 3,
 	}
 
 	rs := CheckDeparture(req)

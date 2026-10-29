@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/glueops/apiary/internal/models/tenant"
+	"github.com/glueops/apiary/internal/repo"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -75,6 +76,15 @@ func DepartureSnapshotFromDB(ctx context.Context, db *gorm.DB, hypervisorID uuid
 			return fmt.Errorf("count hive nodes: %w", err)
 		}
 		snap.HiveNodeCount = int(nodes)
+
+		// The minimum is a floor on observed members remaining, counted the way
+		// the departure request counts it.
+		members, err := repo.LoadHiveMembers(ctx, tx, *hyp.HiveID, snap.Hive.Name)
+		if err != nil {
+			return fmt.Errorf("count remaining hive members: %w", err)
+		}
+		snap.RemainingNodes = members.RemainingAfter(hyp.ID)
+		snap.NotCounted = members.NotCountedAfter(hyp.ID)
 
 		// Peers: every other node in the hive. Their names are what has to be
 		// cleared off the departing host, because it carries the cluster's replica

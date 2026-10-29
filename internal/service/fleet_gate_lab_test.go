@@ -79,6 +79,9 @@ func TestDepartureGateAgainstLiveClusters(t *testing.T) {
 	}
 	t.Logf("[sync] ok  observed %d node(s) from the live cluster", n)
 
+	// No agent runs in the lab; record the membership one would report, so the
+	// gate counts these nodes as members. Before loading, because it links bees.
+	cycleObserveMembership(t, db, hive)
 	var nodes []tenant.Hypervisor
 	if err := db.Where("hive_id = ?", hive.ID).Order("name").Find(&nodes).Error; err != nil {
 		t.Fatalf("load nodes: %v", err)
@@ -180,10 +183,11 @@ func TestDepartureGateAgainstLiveClusters(t *testing.T) {
 		}
 		hv := *empty
 		hv.Schedulable = false
-		// Minimum lowered to what this cluster actually has, so the size refusal is
-		// not the thing being measured here.
+		// Minimum lowered to what this departure leaves, so the size refusal is
+		// not the thing being measured here. The minimum is a floor on what
+		// remains, so that is one fewer than the cluster has.
 		h := hive
-		h.MinimumNodes = len(nodes)
+		h.MinimumNodes = max(1, len(nodes)-1)
 
 		if rs := cycleGate(t, db, h, hv); len(rs) != 0 {
 			t.Fatalf("[gate] %s is empty and cordoned in a hive at its minimum and was still "+

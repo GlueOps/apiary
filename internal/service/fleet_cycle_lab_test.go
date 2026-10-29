@@ -151,6 +151,9 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	cycleSeedBee(t, db, &peer, sourcePeerAddr)
 	destPeer := cycleAnyHypervisor(t, db, dest.ID)
 	cycleSeedBee(t, db, &destPeer, destPeerAddr)
+	// So the gate below counts the peer as a survivor, rather than passing at a
+	// minimum of one only because nobody is counted at all.
+	cycleObserveMembership(t, db, source)
 
 	// ---- 2. THE GATE REFUSES AN UNCORDONED NODE -----------------------------
 	if rs := cycleGate(t, db, source, moving); !cycleHas(rs, tenant.RefuseNotCordoned) {
@@ -175,18 +178,35 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	}
 	t.Log("[gate] ok  refused: hive too small at the default minimum of 3")
 
-	if err := db.Model(&tenant.Hive{}).Where("id = ?", source.ID).
-		Update("minimum_nodes", 2).Error; err != nil {
-		t.Fatalf("lower the minimum: %v", err)
+	lowerMinimum := func(n int) {
+		t.Helper()
+		if err := db.Model(&tenant.Hive{}).Where("id = ?", source.ID).
+			Update("minimum_nodes", n).Error; err != nil {
+			t.Fatalf("lower the minimum: %v", err)
+		}
+		if err := db.First(&source, "id = ?", source.ID).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := db.First(&source, "id = ?", source.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if rs := cycleGate(t, db, source, moving); len(rs) != 0 {
-		t.Fatalf("[gate] a cordoned, empty node in a hive at its minimum must be allowed, got %v",
+
+	// The minimum is a floor on what REMAINS: a minimum of two still refuses,
+	// because departing one of two leaves one.
+	lowerMinimum(2)
+	if rs := cycleGate(t, db, source, moving); !cycleHas(rs, tenant.RefuseHiveTooSmall) {
+		t.Fatalf("[gate] departing one of two must be refused under a minimum of 2, got %v",
 			cycleCodes(rs))
 	}
-	t.Log("[gate] ok  allowed once the hive's minimum was lowered to 2")
+	t.Log("[gate] ok  refused: a minimum of 2 is a floor the departure would break")
+
+	lowerMinimum(1)
+	if got := cycleRemaining(t, db, source, moving); got != 1 {
+		t.Fatalf("[gate] the peer must be counted as the one survivor, got %d remaining", got)
+	}
+	if rs := cycleGate(t, db, source, moving); len(rs) != 0 {
+		t.Fatalf("[gate] a cordoned, empty node leaving one behind under a minimum of 1 must "+
+			"be allowed, got %v", cycleCodes(rs))
+	}
+	t.Log("[gate] ok  allowed once the hive's minimum was lowered to 1")
 
 	// ---- 5. DEPART ----------------------------------------------------------
 	//
@@ -468,6 +488,39 @@ func cycleSeedBee(t *testing.T, db *gorm.DB, hv *tenant.Hypervisor, addr string)
 	hv.MachineID = &machineID
 }
 
+// cycleObserveMembership records, for every machine in hive, a fresh report
+// from its agent that it is in the cluster — which is what the departure gate
+// counts as a member. The lab drives the cluster over SSH with no agent
+// running, so without this every node reads as unobserved, the remaining
+// count is zero, and a passing gate could only be the dismantling exception.
+func cycleObserveMembership(t *testing.T, db *gorm.DB, hive tenant.Hive) {
+	t.Helper()
+	var hvs []tenant.Hypervisor
+	if err := db.Where("hive_id = ?", hive.ID).Find(&hvs).Error; err != nil {
+		t.Fatalf("load %s members: %v", hive.Name, err)
+	}
+	now := time.Now().UTC()
+	for _, hv := range hvs {
+		beeID := hv.BeeID
+		if beeID == nil {
+			bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, LastSeenAt: &now}
+			if err := db.Create(&bee).Error; err != nil {
+				t.Fatalf("seed bee for %s: %v", cycleName(hv), err)
+			}
+			if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
+				Update("bee_id", bee.ID).Error; err != nil {
+				t.Fatalf("link bee to %s: %v", cycleName(hv), err)
+			}
+			beeID = &bee.ID
+		}
+		if err := db.Model(&tenant.Bee{}).Where("id = ?", *beeID).Updates(map[string]any{
+			"observed_cluster": hive.Name, "observed_membership_at": now,
+		}).Error; err != nil {
+			t.Fatalf("observe %s membership: %v", cycleName(hv), err)
+		}
+	}
+}
+
 // cycleName renders a machine's node name for a log line. Nullable now: a
 // machine in no cluster has none.
 func cycleName(h tenant.Hypervisor) string {
@@ -513,6 +566,17 @@ func cycleCount(t *testing.T, db *gorm.DB, hiveID uuid.UUID) int {
 	return int(n)
 }
 
+// cycleRemaining is what the hive keeps once hv leaves, counted the way the
+// departure job counts it.
+func cycleRemaining(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) int {
+	t.Helper()
+	m, err := repo.LoadHiveMembers(context.Background(), db, hive.ID, hive.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m.RemainingAfter(hv.ID)
+}
+
 func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) []tenant.DepartureRefusal {
 	t.Helper()
 	var held int64
@@ -532,6 +596,7 @@ func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor
 	// refuses everything, impossible to reach. cycleGateExecuting covers it.
 	return tenant.CheckDepartureState(tenant.DepartureRequest{
 		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+		RemainingNodes: cycleRemaining(t, db, hive, hv),
 	})
 }
 
@@ -550,6 +615,7 @@ func cycleGateExecuting(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.H
 	drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), tenant.DrainThresholds{})
 	return tenant.CheckDeparture(tenant.DepartureRequest{
 		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+		RemainingNodes:        cycleRemaining(t, db, hive, hv),
 		CredentialDisposition: disposition,
 	})
 }

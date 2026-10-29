@@ -32,7 +32,7 @@ type HiveDetailView struct {
 	EffectiveMinimumNodes int64 `json:"effective_minimum_nodes"`
 	Id string `json:"id"`
 	InsecureSkipVerify bool `json:"insecure_skip_verify"`
-	// Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only.
+	// Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only.
 	MinimumNodes int64 `json:"minimum_nodes"`
 	Name string `json:"name"`
 	NodeCount int64 `json:"node_count"`

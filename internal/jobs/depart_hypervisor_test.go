@@ -136,7 +136,9 @@ func newHarness(t *testing.T) *harness {
 		// harness describes a fully configured hive and the tests that care about
 		// the unconfigured case take them away deliberately.
 		Hive: tenant.Hive{
-			ID: hiveID, Name: "dc1", MinimumNodes: 3,
+			// Two, because the minimum is a floor: this is a three-node hive
+			// departing to two, which a minimum of three now refuses.
+			ID: hiveID, Name: "dc1", MinimumNodes: 2,
 			APIURL: "https://pve1.example:8006/api2/json", CredentialID: &credID,
 		},
 		Hypervisor: tenant.Hypervisor{
@@ -148,6 +150,7 @@ func newHarness(t *testing.T) *harness {
 		BeeID:            &beeID,
 		HeldPlacements:   0,
 		HiveNodeCount:    3,
+		RemainingNodes:   2,
 		DepartingAddress: "10.0.0.5",
 		RemainingAddress: "10.0.0.1",
 		PeerNames:        []string{"hv1", "hv2"},
@@ -307,7 +310,7 @@ func TestDepartOrderingIsLoadBearing(t *testing.T) {
 
 func TestDepartRefusesWhenTheClusterHasOnlyOneNodeLeft(t *testing.T) {
 	h := newHarness(t)
-	h.snapshot.HiveNodeCount = 1
+	h.snapshot.HiveNodeCount, h.snapshot.RemainingNodes = 1, 0
 	h.remaining.corosyncNodes = 1
 
 	if err := h.run(); err == nil {
@@ -510,7 +513,7 @@ func TestDepartingTheLastNodeDismantlesTheCluster(t *testing.T) {
 	h.snapshot.LastNode = true
 	h.snapshot.RemainingAddress = ""
 	h.snapshot.PeerNames = nil
-	h.snapshot.HiveNodeCount = 1
+	h.snapshot.HiveNodeCount, h.snapshot.RemainingNodes = 1, 0
 	// The operator's minimum still governs. Lowered here because dismantling a
 	// one-node cluster is only reachable on a fleet whose minimum permits it —
 	// the gate refusing at the default of 3 is correct, and is what stops this

@@ -2999,7 +2999,7 @@ paths:
       description: |-
         Queues the departure. The host is left standalone and belonging to no fleet; it does NOT join anything. A migration is a departure and then an arrival, and the fleetless state between them is real rather than a window to hurry through.
 
-        Refused with 409 and a list of reason codes when the host is not drained, the hive is too small, or the capacity observation is too stale to decide. The same gate runs again inside the job, against state read in one transaction.
+        Refused with 409 and a list of reason codes when the host is not drained, the hive is too small, or the capacity observation is too stale to decide. The gate and the departure are one transaction holding the hive's lock, so two departures from one hive are decided one after the other.
       operationId: fleet-hypervisors-depart
       parameters:
       - explode: false
@@ -6908,9 +6908,10 @@ components:
         insecure_skip_verify:
           type: boolean
         minimum_nodes:
-          description: "Smallest node count a departure may be started FROM. Zero\
-            \ means the default of 3. Below three, removing a node loses quorum part-way\
-            \ through and strands the remaining nodes read-only."
+          description: "Fewest nodes a departure may LEAVE the cluster with, counting\
+            \ departures already under way as gone. Zero means the default of 3. A\
+            \ cluster left with two loses quorum the moment either fails, and a departure\
+            \ from two strands the survivor read-only."
           format: int64
           type: integer
         name:
@@ -10511,8 +10512,8 @@ components:
             \ per hive."
           type: boolean
         minimum_nodes:
-          description: "Lower this only for a test fleet. Below three, a departure\
-            \ strands the nodes that remain."
+          description: The fewest nodes a departure may leave. Lower this only for
+            a test fleet. One also permits dismantling a cluster's last node.
           format: int64
           minimum: 1
           type: integer
