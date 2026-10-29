@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -127,6 +128,11 @@ type Config struct {
 	SMTPFrom          string
 
 	ProvisionerDatabaseURL string `show:"redact"`
+	// DatabasePrefix names each tenant provisioned from now on: its database is
+	// <prefix>_<org uuid> and its role <prefix>_role_<org uuid>. Unset, it is
+	// "tenant". Existing tenants keep the name they were given, so it is safe to
+	// change.
+	DatabasePrefix string
 
 	TenantPoolMaxSize            int
 	TenantPoolMaxConns           int
@@ -256,6 +262,7 @@ func Load() (*Config, error) {
 		v.SetDefault("smtp.from", "noreply@example.com")
 
 		v.SetDefault("provisioner.database.url", "")
+		v.SetDefault("database.prefix", "tenant")
 		v.SetDefault("tenant.pool.max_size", 64)
 		v.SetDefault("tenant.pool.max_conns", 4)
 		v.SetDefault("tenant.pool.max_idle_conns", 2)
@@ -314,6 +321,7 @@ func Load() (*Config, error) {
 			"smtp.password",
 			"smtp.from",
 			"provisioner.database.url",
+			"database.prefix",
 			"tenant.pool.max_size",
 			"tenant.pool.max_conns",
 			"tenant.pool.max_idle_conns",
@@ -372,6 +380,7 @@ func Load() (*Config, error) {
 			SMTPFrom:             v.GetString("smtp.from"),
 
 			ProvisionerDatabaseURL: v.GetString("provisioner.database.url"),
+			DatabasePrefix:         v.GetString("database.prefix"),
 
 			TenantPoolMaxSize:            v.GetInt("tenant.pool.max_size"),
 			TenantPoolMaxConns:           v.GetInt("tenant.pool.max_conns"),
@@ -571,6 +580,9 @@ func (c *Config) ValidateWorker() error {
 	if err := checkFleetSyncCadence(c); err != nil {
 		return err
 	}
+	if err := checkDatabasePrefix(c.DatabasePrefix); err != nil {
+		return err
+	}
 	provisioner := strings.TrimSpace(c.ProvisionerDatabaseURL)
 	if provisioner == "" && IsDevEnv(c.Env) {
 		slog.Warn("PROVISIONER_DATABASE_URL is unset; falling back to DATABASE_URL because " +
@@ -591,6 +603,32 @@ func (c *Config) ValidateWorker() error {
 				"the request-path role must not hold CREATEDB or CREATEROLE",
 			NormalizeEnv(c.Env),
 		)
+	}
+	return nil
+}
+
+// maxDatabasePrefixLen keeps the longest name built from the prefix — the role,
+// <prefix>_role_<32 hex> — inside PostgreSQL's 63-byte identifier limit.
+// PostgreSQL does not refuse a longer name, it truncates it, and truncation cuts
+// into the org uuid: two tenants would then be asked for the same database.
+const maxDatabasePrefixLen = 63 - len("_role_") - 32
+
+var databasePrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// checkDatabasePrefix refuses a tenant name prefix PostgreSQL would mangle.
+//
+// Lowercase only: the names are quoted when created, so an uppercase prefix
+// would make a database every unquoted psql reference fails to find.
+func checkDatabasePrefix(prefix string) error {
+	p := strings.TrimRight(strings.TrimSpace(prefix), "_")
+	if p == "" {
+		return nil
+	}
+	if !databasePrefixPattern.MatchString(p) {
+		return fmt.Errorf("config: DATABASE_PREFIX %q must be lowercase letters, digits and underscores, starting with a letter", prefix)
+	}
+	if len(p) > maxDatabasePrefixLen {
+		return fmt.Errorf("config: DATABASE_PREFIX %q is %d characters; at most %d fit in a PostgreSQL identifier alongside the org id", prefix, len(p), maxDatabasePrefixLen)
 	}
 	return nil
 }

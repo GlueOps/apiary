@@ -24,12 +24,15 @@ type TenantProvisionerService struct {
 	controlDB        *gorm.DB
 	controlDBURL     string
 	provisionerDBURL string
+	// databasePrefix names the database and role of each tenant provisioned from
+	// here on; see tenantDBName.
+	databasePrefix string
 
 	dekKey []byte
 	dsnKey []byte
 }
 
-func NewTenantProvisionerService(controlDB *gorm.DB, controlDBURL, provisionerDBURL string, masterKey []byte) (*TenantProvisionerService, error) {
+func NewTenantProvisionerService(controlDB *gorm.DB, controlDBURL, provisionerDBURL, databasePrefix string, masterKey []byte) (*TenantProvisionerService, error) {
 	if controlDB == nil {
 		return nil, fmt.Errorf("control db is nil")
 	}
@@ -54,6 +57,7 @@ func NewTenantProvisionerService(controlDB *gorm.DB, controlDBURL, provisionerDB
 		controlDB:        controlDB,
 		controlDBURL:     controlDBURL,
 		provisionerDBURL: provisionerDBURL,
+		databasePrefix:   databasePrefix,
 		dekKey:           dekKey,
 		dsnKey:           dsnKey,
 	}, nil
@@ -96,7 +100,7 @@ func (p *TenantProvisionerService) ProvisionOrganization(ctx context.Context, or
 		return err
 	}
 
-	dbName, tenantURL, err := deriveTenantDBURL(p.provisionerDBURL, org.ID.String())
+	dbName, tenantURL, err := deriveTenantDBURL(p.provisionerDBURL, p.databasePrefix, org.ID.String())
 	if err != nil {
 		return err
 	}
@@ -131,7 +135,7 @@ func (p *TenantProvisionerService) ProvisionOrganization(ctx context.Context, or
 		return fmt.Errorf("wrap tenant dek: %w", err)
 	}
 
-	roleName, err := tenantRoleName(org.ID.String())
+	roleName, err := tenantRoleName(p.databasePrefix, org.ID.String())
 	if err != nil {
 		return err
 	}
