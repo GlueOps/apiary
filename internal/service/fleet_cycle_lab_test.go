@@ -513,6 +513,17 @@ func cycleCount(t *testing.T, db *gorm.DB, hiveID uuid.UUID) int {
 	return int(n)
 }
 
+// cycleRemaining is what the hive keeps once hv leaves, counted the way the
+// departure job counts it.
+func cycleRemaining(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) int {
+	t.Helper()
+	m, err := repo.RemainingHiveMembers(context.Background(), db, hive.ID, hive.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo.RemainingAfter(m, hv.ID)
+}
+
 func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) []tenant.DepartureRefusal {
 	t.Helper()
 	var held int64
@@ -532,6 +543,7 @@ func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor
 	// refuses everything, impossible to reach. cycleGateExecuting covers it.
 	return tenant.CheckDepartureState(tenant.DepartureRequest{
 		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+		RemainingNodes: cycleRemaining(t, db, hive, hv),
 	})
 }
 
@@ -550,6 +562,7 @@ func cycleGateExecuting(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.H
 	drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), tenant.DrainThresholds{})
 	return tenant.CheckDeparture(tenant.DepartureRequest{
 		Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: cycleCount(t, db, hive.ID),
+		RemainingNodes:        cycleRemaining(t, db, hive, hv),
 		CredentialDisposition: disposition,
 	})
 }

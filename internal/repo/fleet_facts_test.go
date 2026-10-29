@@ -599,6 +599,74 @@ func TestObservedNodeCountIgnoresAssignedButUnjoinedMachines(t *testing.T) {
 	}
 }
 
+// A DEPARTURE ALREADY UNDER WAY IS NOT A REMAINING MEMBER.
+//
+// The live failure: dc1 had four nodes and a minimum of three. Two departures
+// were started a minute apart; the second was checked while the first was
+// still running, counted it as present, and passed — leaving two.
+func TestRemainingMembersExcludeDeparturesUnderWay(t *testing.T) {
+	db := factsDB(t)
+	ctx := context.Background()
+
+	hive := tenant.Hive{Name: "lab-" + uuid.NewString()[:8]}
+	if err := db.Create(&hive).Error; err != nil {
+		t.Fatal(err)
+	}
+	prefix := "198.51.100." + uuid.NewString()[:4] + "-"
+
+	add := func(node, observes string, fresh, departing bool) uuid.UUID {
+		t.Helper()
+		bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
+		if err := db.Create(&bee).Error; err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now()
+		if !fresh {
+			at = at.Add(-time.Hour)
+		}
+		if err := db.Model(&tenant.Bee{}).Where("id = ?", bee.ID).Updates(map[string]any{
+			"observed_cluster":       observes,
+			"observed_membership_at": at,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		n := node + "-" + uuid.NewString()[:6]
+		hv := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Name: &n, Address: prefix + node}
+		if err := db.Create(&hv).Error; err != nil {
+			t.Fatal(err)
+		}
+		if departing {
+			if err := db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
+				Update("departing_at", time.Now().UTC()).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+		return hv.ID
+	}
+
+	hv1 := add("1", hive.Name, true, false)
+	add("2", hive.Name, true, false)
+	add("3", hive.Name, true, true)   // its departure is running — not remaining
+	add("4", hive.Name, false, false) // agent gone quiet — not counted
+	add("5", "", true, false)         // assigned, never joined — not a member
+
+	members, err := RemainingHiveMembers(ctx, db, hive.ID, hive.Name)
+	if err != nil {
+		t.Fatalf("remaining: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("remaining members = %d, want 2", len(members))
+	}
+	// Departing hv1 as well leaves one.
+	if got := RemainingAfter(members, hv1); got != 1 {
+		t.Fatalf("remaining after hv1 = %d, want 1", got)
+	}
+	// A host that is not itself counted does not lower the number twice.
+	if got := RemainingAfter(members, uuid.New()); got != 2 {
+		t.Fatalf("remaining after an uncounted host = %d, want 2", got)
+	}
+}
+
 // AN OBSERVATION THAT MATCHES NO MACHINE MUST NOT REPORT SUCCESS.
 //
 // The predicate is the agent's identity; the row is the machine; onboarding

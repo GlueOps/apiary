@@ -1040,7 +1040,7 @@ export type HiveDetailView = {
     id: string;
     insecure_skip_verify: boolean;
     /**
-     * Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only.
+     * Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only.
      */
     minimum_nodes: number;
     name: string;
@@ -2277,7 +2277,7 @@ export type UpdateHiveRequestBody = {
      */
     insecure_skip_verify?: boolean;
     /**
-     * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
+     * The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster's last node.
      */
     minimum_nodes?: number;
     /**
@@ -2985,7 +2985,7 @@ export type HiveDetailViewWritable = {
     id: string;
     insecure_skip_verify: boolean;
     /**
-     * Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only.
+     * Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only.
      */
     minimum_nodes: number;
     name: string;
@@ -3670,7 +3670,7 @@ export type UpdateHiveRequestBodyWritable = {
      */
     insecure_skip_verify?: boolean;
     /**
-     * Lower this only for a test fleet. Below three, a departure strands the nodes that remain.
+     * The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster's last node.
      */
     minimum_nodes?: number;
     /**

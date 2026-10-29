@@ -97,6 +97,10 @@ type DepartureSnapshot struct {
 	// HiveNodeCount includes the node that is leaving.
 	HiveNodeCount int
 
+	// RemainingNodes is the observed members left once this node and every
+	// departure already requested have gone; the minimum is a floor on it.
+	RemainingNodes int
+
 	// DepartingAddress is where to reach the node being removed.
 	DepartingAddress string
 
@@ -189,6 +193,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		Hypervisor:            snap.Hypervisor,
 		Drain:                 drain,
 		HiveNodeCount:         snap.HiveNodeCount,
+		RemainingNodes:        snap.RemainingNodes,
 		CredentialDisposition: in.CredentialDisposition,
 	})
 	if len(refusals) > 0 {

@@ -524,7 +524,7 @@ export const Hypervisors = () => {
                     {cluster?.name ?? hiveNodes[0].hive_name}
                   </CardTitle>
                   <CardDescription>
-                    {hiveNodes.length} node{hiveNodes.length === 1 ? '' : 's'} · departures need at
+                    {hiveNodes.length} node{hiveNodes.length === 1 ? '' : 's'} · departures keep at
                     least {min}
                   </CardDescription>
                 </div>

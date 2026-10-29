@@ -64,8 +64,8 @@ type Hive struct {
 	// before this column existed does not make every host unschedulable.
 	CPUOvercommitRatio float64 `gorm:"type:numeric(5,2);not null;default:1.0" json:"cpu_overcommit_ratio"`
 
-	// MinimumNodes gates the fleet-cycle workflow: the smallest node count a
-	// departure may be started from. Zero means use DefaultHiveMinimumNodes.
+	// MinimumNodes gates departures: the fewest nodes a departure may LEAVE the
+	// cluster with. Zero means use DefaultHiveMinimumNodes.
 	//
 	// Per hive rather than global because a test fleet is legitimately smaller
 	// than a production one, and the alternative to a knob is an operator

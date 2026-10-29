@@ -118,7 +118,7 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
           </CardTitle>
           <CardDescription>
             {cluster.provider} · {cluster.node_count} node{cluster.node_count === 1 ? '' : 's'} ·
-            departures need at least {cluster.effective_minimum_nodes}
+            departures keep at least {cluster.effective_minimum_nodes}
           </CardDescription>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -202,7 +202,7 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`min-${cluster.id}`}>Minimum nodes for a departure</Label>
+            <Label htmlFor={`min-${cluster.id}`}>Minimum nodes to keep</Label>
             <Input
               id={`min-${cluster.id}`}
               type="number"
@@ -213,13 +213,14 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
             />
             {belowDefault ? (
               <p className="text-xs text-amber-500">
-                Below {DEFAULT_MINIMUM_NODES}, removing a node loses quorum part-way through and
-                leaves the remaining nodes read-only with their guests unmanageable. Only lower this
-                for a test fleet.
+                Below {DEFAULT_MINIMUM_NODES}, a departure can leave a cluster that loses quorum the
+                moment one more node fails, and departing from two leaves the survivor read-only with
+                its guests unmanageable. Only lower this for a test fleet.
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Blank means the default of {DEFAULT_MINIMUM_NODES}.
+                A departure is refused if it would leave fewer nodes than this, counting departures
+                already under way as gone. Blank means the default of {DEFAULT_MINIMUM_NODES}.
               </p>
             )}
           </div>

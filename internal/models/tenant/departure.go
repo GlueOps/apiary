@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// DefaultHiveMinimumNodes is the smallest hive a departure may be started from.
+// DefaultHiveMinimumNodes is the fewest nodes a departure may leave a hive with.
 //
-// Three, because of corosync arithmetic that was observed doing damage rather
+// Three, which is one more than the procedure itself needs, because of corosync arithmetic that was observed doing damage rather
 // than reasoned about: removing one node from a TWO-node cluster drops the
 // survivor to one of two expected votes, so it loses quorum — and the next step
 // of `pvecm delnode`, rewriting corosync.conf to lower the expected count, needs
@@ -17,16 +17,21 @@ import (
 // unmanageable. Removing one of three leaves two of three, still quorate, and
 // none of it happens.
 //
-// So this is not a redundancy preference. Below three, the departure procedure
-// breaks the cluster it is leaving.
+// So departing FROM fewer than three breaks the cluster it is leaving, and
+// leaving fewer than three is the redundancy margin on top: a two-node
+// survivor loses quorum the moment either node fails, and then cannot run the
+// next departure at all. The default is the floor an operator reads it as.
 const DefaultHiveMinimumNodes = 3
 
-// EffectiveMinimumNodes is the smallest node count a departure may be started FROM, not
-// the count it may leave behind.
+// EffectiveMinimumNodes is the fewest nodes a departure may LEAVE the cluster
+// with, counting every departure already under way as gone.
 //
-// Stated that way round because it is the number an operator can check before
-// asking for anything: "this hive has four nodes, so a host may leave it." The
-// other phrasing needs the arithmetic done first and gets it wrong by one.
+// It used to be the count a departure could be started FROM, on the theory
+// that an operator can check that number before asking. But "minimum nodes: 3"
+// reads as a floor, and the start-from reading let dc1 go from four nodes to
+// two — each step was individually permitted. A floor is also the only reading
+// that composes: two departures checked against what remains cannot both pass
+// where one would leave too few.
 //
 // A knob rather than the constant because a test fleet is legitimately smaller
 // than three, and the alternative to a knob is an operator disabling the gate
@@ -163,6 +168,12 @@ type DepartureRequest struct {
 	// refuses, in the same spirit as every other gate here: a check that cannot
 	// reach a decision denies rather than guesses.
 	CredentialDisposition string
+
+	// RemainingNodes is how many members the cluster will still have once this
+	// host and every other departure already requested have left. The departure
+	// minimum is a FLOOR on this number — see repo.RemainingHiveMembers for why it
+	// is not the count of members present now.
+	RemainingNodes int
 }
 
 // CheckDeparture returns every reason the host may not leave, or nil.
@@ -242,15 +253,29 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 	// the one refusal an operator cannot resolve by waiting — it needs another
 	// host added, or the knob changed deliberately. Reporting it only after the
 	// drain completes wastes the whole drain.
-	if min := req.Hive.EffectiveMinimumNodes(); req.HiveNodeCount < min {
+	//
+	// A FLOOR: the cluster may not be LEFT with fewer than the minimum. It used to
+	// be the smallest size a departure could START from, so a minimum of three
+	// still let a three-node cluster drop to two — which is not what "minimum
+	// nodes: 3" reads as, and was demonstrated live by taking dc1 from four to two.
+	//
+	// ONE EXCEPTION: leaving nobody, under a minimum of one. That is not a
+	// cluster shrunk below its floor but a cluster dismantled — there is no
+	// survivor whose quorum could suffer — and it is only reachable on a hive
+	// whose operator lowered the minimum to one on purpose.
+	min := req.Hive.EffectiveMinimumNodes()
+	dismantling := req.RemainingNodes == 0 && min <= 1
+	if req.RemainingNodes < min && !dismantling {
 		out = append(out, DepartureRefusal{
 			Code:    RefuseHiveTooSmall,
-			Summary: "the cluster has fewer nodes than its departure minimum",
-			Detail: fmt.Sprintf("hive %q has %d node(s) and the departure minimum is %d",
-				req.Hive.Name, req.HiveNodeCount, min),
-			Remedy: "Add a node, or lower this fleet's minimum deliberately if it is a test " +
-				"cluster. Removing a node from a cluster this small loses quorum part-way " +
-				"through and leaves the survivors read-only with their guests unmanageable.",
+			Summary: "the departure would leave the cluster below its minimum",
+			Detail: fmt.Sprintf("hive %q would be left with %d node(s) and its minimum is %d; "+
+				"nodes whose departure is already under way are not counted",
+				req.Hive.Name, req.RemainingNodes, min),
+			Remedy: "Add a node first, wait for a node that is arriving to finish joining, or " +
+				"lower this cluster's minimum deliberately if it is a test cluster. Shrinking a " +
+				"cluster this far risks quorum and leaves the survivors read-only with their " +
+				"guests unmanageable if another node fails.",
 		})
 	}
 

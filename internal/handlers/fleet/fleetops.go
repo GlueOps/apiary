@@ -470,7 +470,7 @@ type HiveDetailView struct {
 
 	CPUOvercommitRatio float64 `json:"cpu_overcommit_ratio"`
 
-	MinimumNodes          int `json:"minimum_nodes" doc:"Smallest node count a departure may be started FROM. Zero means the default of 3. Below three, removing a node loses quorum part-way through and strands the remaining nodes read-only."`
+	MinimumNodes          int `json:"minimum_nodes" doc:"Fewest nodes a departure may LEAVE the cluster with, counting departures already under way as gone. Zero means the default of 3. A cluster left with two loses quorum the moment either fails, and a departure from two strands the survivor read-only."`
 	EffectiveMinimumNodes int `json:"effective_minimum_nodes" doc:"What minimum_nodes resolves to, so a client does not reimplement the zero-means-default rule."`
 
 	NodeCount int `json:"node_count"`
@@ -508,7 +508,7 @@ type UpdateHiveRequest struct {
 		CredentialID       *string  `json:"credential_id,omitempty" doc:"A credential id to bind, or \"\" to unbind. Omit the field to leave the binding unchanged."`
 		InsecureSkipVerify *bool    `json:"insecure_skip_verify,omitempty" doc:"Accepts a self-signed API certificate. The sealed token is handed to whatever answers on that address, so set it deliberately and per hive."`
 		CPUOvercommitRatio *float64 `json:"cpu_overcommit_ratio,omitempty" minimum:"1"`
-		MinimumNodes       *int     `json:"minimum_nodes,omitempty" minimum:"1" doc:"Lower this only for a test fleet. Below three, a departure strands the nodes that remain."`
+		MinimumNodes       *int     `json:"minimum_nodes,omitempty" minimum:"1" doc:"The fewest nodes a departure may leave. Lower this only for a test fleet. One also permits dismantling a cluster's last node."`
 	}
 }
 
@@ -1956,9 +1956,14 @@ func departureRefusals(
 			return err
 		}
 		nodes = int64(observed)
+		remaining, err := repo.RemainingHiveMembers(ctx, tx, *hv.HiveID, hive.Name)
+		if err != nil {
+			return err
+		}
 		drain := tenant.DrainStateAt(time.Now().UTC(), hv, int(held), th)
 		result = tenant.CheckDepartureState(tenant.DepartureRequest{
 			Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: int(nodes),
+			RemainingNodes: repo.RemainingAfter(remaining, hv.ID),
 		})
 		return nil
 	})
@@ -2003,6 +2008,16 @@ func buildHypervisorViews(
 	counts, err := nodeCounts(ctx, db)
 	if err != nil {
 		return nil, err
+	}
+	// What each hive keeps once its requested departures finish, for the
+	// departure minimum. One query per hive on the page, not per node.
+	remaining := make(map[uuid.UUID]map[uuid.UUID]bool, len(byHive))
+	for id, h := range byHive {
+		m, err := repo.RemainingHiveMembers(ctx, db, id, h.Name)
+		if err != nil {
+			return nil, err
+		}
+		remaining[id] = m
 	}
 
 	// Held placements per node, in one query rather than one per node — this list
@@ -2074,6 +2089,7 @@ func buildHypervisorViews(
 			},
 			DepartureRefusals: refusalViews(tenant.CheckDepartureState(tenant.DepartureRequest{
 				Hive: hive, Hypervisor: hv, Drain: drain, HiveNodeCount: nodeCountFor(counts, hv),
+				RemainingNodes: remainingFor(remaining, hv),
 			})),
 		}
 		if hv.LastSyncedAt != nil {
@@ -2126,6 +2142,15 @@ func nodeNameOf(h tenant.Hypervisor) string {
 // The zero is what CheckDeparture reads as not_a_member, so this is not merely
 // avoiding a nil dereference — indexing the map with a zero uuid would hand the
 // gate a count belonging to no hive at all.
+// remainingFor is how many members h's hive keeps once h and every departure
+// already requested have left.
+func remainingFor(remaining map[uuid.UUID]map[uuid.UUID]bool, h tenant.Hypervisor) int {
+	if h.HiveID == nil {
+		return 0
+	}
+	return repo.RemainingAfter(remaining[*h.HiveID], h.ID)
+}
+
 func nodeCountFor(counts map[uuid.UUID]int, h tenant.Hypervisor) int {
 	if h.HiveID == nil {
 		return 0

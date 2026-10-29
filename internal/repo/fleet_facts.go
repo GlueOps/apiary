@@ -665,3 +665,47 @@ func ObservedHiveNodeCount(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, h
 		hiveID, hiveName).Scan(&n).Error
 	return int(n), err
 }
+
+// RemainingHiveMembers is the machines that will still be in the cluster once
+// every departure already requested has finished: observed members, reported
+// recently, with no departure recorded.
+//
+// The departure minimum is checked against THIS, not against the members
+// present now. Counting what is present let two departures started a minute
+// apart take dc1 from four nodes to two under a minimum of three: the second
+// was checked while the first was still running, counted it as a member, and
+// passed. A node stops counting the moment its departure is REQUESTED, whatever
+// phase it has reached — still voting, already evicted, or disarming — because
+// from the cluster's point of view all three are a node it is losing.
+//
+// Freshness follows ObservedHiveNodeCount, in the same direction: an agent that
+// has not reported is not counted, which makes the gate refuse more readily.
+func RemainingHiveMembers(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (map[uuid.UUID]bool, error) {
+	var ids []uuid.UUID
+	err := db.WithContext(ctx).Raw(`
+		SELECT h.id
+		  FROM hypervisors h
+		  JOIN bees b ON b.id = h.bee_id
+		 WHERE h.hive_id = ?
+		   AND h.departing_at IS NULL
+		   AND lower(b.observed_cluster) = lower(?)
+		   AND b.observed_membership_at > now() - interval '5 minutes'`,
+		hiveID, hiveName).Scan(&ids).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
+// RemainingAfter is how many members are left once hypervisorID has gone too.
+func RemainingAfter(members map[uuid.UUID]bool, hypervisorID uuid.UUID) int {
+	n := len(members)
+	if members[hypervisorID] {
+		n--
+	}
+	return n
+}
