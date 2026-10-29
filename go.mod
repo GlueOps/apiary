@@ -1,11 +1,12 @@
 module github.com/glueops/apiary
 
-go 1.26.9
+go 1.27.3
 
 require (
 	ariga.io/atlas-provider-gorm v0.6.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
+	github.com/glueops/apiary/pkg/proxmox v0.0.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/httprate v0.16.0
@@ -14,11 +15,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
+	github.com/lib/pq v1.12.3
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/riverqueue/river v0.47.0
 	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.47.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.47.0
+	github.com/riverqueue/river/rivertype v0.47.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.57.0
@@ -28,16 +31,6 @@ require (
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
-)
-
-require (
-	github.com/buger/goterm v1.0.4 // indirect
-	github.com/diskfs/go-diskfs v1.9.4 // indirect
-	github.com/djherbis/times v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/jinzhu/copier v0.4.0 // indirect
-	github.com/magefile/mage v1.17.2 // indirect
-	modernc.org/sqlite v1.58.0 // indirect
 )
 
 require (
@@ -55,14 +48,16 @@ require (
 	github.com/GoogleCloudPlatform/grpc-gcp-go/grpcgcp v1.5.3 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
+	github.com/buger/goterm v1.0.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
+	github.com/diskfs/go-diskfs v1.9.4 // indirect
+	github.com/djherbis/times v1.6.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
-	github.com/glueops/apiary/pkg/proxmox v0.0.0
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -78,15 +73,17 @@ require (
 	github.com/googleapis/gax-go/v2 v2.17.0 // indirect
 	github.com/googleapis/go-gorm-spanner v1.8.6 // indirect
 	github.com/googleapis/go-sql-spanner v1.17.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
-	github.com/lib/pq v1.12.3
+	github.com/magefile/mage v1.17.2 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/microsoft/go-mssqldb v1.11.0 // indirect
@@ -95,7 +92,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/riverqueue/river/riverdriver v0.47.0 // indirect
 	github.com/riverqueue/river/rivershared v0.47.0 // indirect
-	github.com/riverqueue/river/rivertype v0.47.0
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
@@ -137,6 +133,7 @@ require (
 	gorm.io/driver/mysql v1.5.7 // indirect
 	gorm.io/driver/sqlite v1.6.0 // indirect
 	gorm.io/driver/sqlserver v1.6.0 // indirect
+	modernc.org/sqlite v1.58.0 // indirect
 )
 
 replace github.com/glueops/apiary/pkg/proxmox => ./pkg/proxmox
