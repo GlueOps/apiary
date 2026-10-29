@@ -3,6 +3,7 @@ package database
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -339,24 +340,16 @@ func (m *TenantManager) openTenant(ctx context.Context, orgID string) (*TenantCo
 }
 
 func (m *TenantManager) decryptConnectionString(org *control.Organization) (string, error) {
-	if org.ConnectionStringIV == "" || org.ConnectionStringTag == "" {
+	dsn, err := org.DecryptConnectionString(m.dsnKey)
+	if errors.Is(err, control.ErrConnectionStringNotEncrypted) {
 		return "", fmt.Errorf(
 			"org %s has an unencrypted connection_string; re-provision it to store an encrypted, "+
 				"tenant-scoped DSN (F6)", org.ID)
 	}
-
-	ct, err1 := utils.DecodeB64(org.ConnectionString)
-	iv, err2 := utils.DecodeB64(org.ConnectionStringIV)
-	tag, err3 := utils.DecodeB64(org.ConnectionStringTag)
-	if err1 != nil || err2 != nil || err3 != nil {
-		return "", fmt.Errorf("failed to decode connection string components for org %s", org.ID)
-	}
-
-	plain, err := utils.DecryptAESGCMWithAAD(ct, m.dsnKey, iv, tag, []byte(org.ID.String()))
 	if err != nil {
-		return "", fmt.Errorf("failed to decrypt connection string for org %s: %w", org.ID, err)
+		return "", fmt.Errorf("org %s: %w", org.ID, err)
 	}
-	return string(plain), nil
+	return dsn, nil
 }
 
 // quietLogger is GORM's default logger with ONE flag changed.

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glueops/apiary/internal/models/control"
 	"github.com/glueops/apiary/internal/utils"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -32,7 +34,7 @@ func TestProvisionerAdminDBURLRefusesEmptyCredential(t *testing.T) {
 	if _, err := provisionerAdminDBURL("   "); err == nil {
 		t.Fatal("expected an error for a whitespace-only provisioner db url, got nil")
 	}
-	if _, _, err := deriveTenantDBURL("", testOrgID); err == nil {
+	if _, _, err := deriveTenantDBURL("", "", testOrgID); err == nil {
 		t.Fatal("expected an error for an empty provisioner db url in deriveTenantDBURL, got nil")
 	}
 }
@@ -44,7 +46,7 @@ func TestProvisioningURLsCarryTheProvisionerRoleOnly(t *testing.T) {
 	}
 	assertRole(t, adminURL, "apiary_provisioner")
 
-	dbName, tenantURL, err := deriveTenantDBURL(testProvisionerDSN, testOrgID)
+	dbName, tenantURL, err := deriveTenantDBURL(testProvisionerDSN, "", testOrgID)
 	if err != nil {
 		t.Fatalf("deriveTenantDBURL: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestDSNParseErrorsDoNotLeakThePassword(t *testing.T) {
 	for name, err := range map[string]error{
 		"admin": func() error { _, e := provisionerAdminDBURL(bad); return e }(),
 		"tenant": func() error {
-			_, _, e := deriveTenantDBURL(bad, testOrgID)
+			_, _, e := deriveTenantDBURL(bad, "", testOrgID)
 			return e
 		}(),
 		"role": func() error { _, e := tenantRoleDBURL(bad, "d", "r", "p"); return e }(),
@@ -120,23 +122,23 @@ func TestProvisionerAdminDBURLRejectsUnusableCredentials(t *testing.T) {
 
 func TestNewTenantProvisionerServiceRefusesAMissingProvisionerCredential(t *testing.T) {
 	master := mustMasterKey(t)
-	if _, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, "", master); err == nil {
+	if _, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, "", "", master); err == nil {
 		t.Fatal("expected an error when PROVISIONER_DATABASE_URL is empty, got nil")
 	}
-	if _, err := NewTenantProvisionerService(nil, testControlDSN, testProvisionerDSN, master); err == nil {
+	if _, err := NewTenantProvisionerService(nil, testControlDSN, testProvisionerDSN, "", master); err == nil {
 		t.Fatal("expected an error for a nil control db, got nil")
 	}
-	if _, err := NewTenantProvisionerService(&gorm.DB{}, "", testProvisionerDSN, master); err == nil {
+	if _, err := NewTenantProvisionerService(&gorm.DB{}, "", testProvisionerDSN, "", master); err == nil {
 		t.Fatal("expected an error for an empty control db url, got nil")
 	}
-	if _, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, master[:16]); err == nil {
+	if _, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, "", master[:16]); err == nil {
 		t.Fatal("expected an error for a short master key, got nil")
 	}
 }
 
 func TestProvisionerDerivesDistinctSubkeys(t *testing.T) {
 	master := mustMasterKey(t)
-	p, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, master)
+	p, err := NewTenantProvisionerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, "", master)
 	if err != nil {
 		t.Fatalf("NewTenantProvisionerService: %v", err)
 	}
@@ -177,5 +179,98 @@ func assertRole(t *testing.T, rawURL, wantUser string) {
 	}
 	if u.User == nil || u.User.Username() != wantUser {
 		t.Fatalf("dsn role = %v, want %q", u.User, wantUser)
+	}
+}
+
+func TestTenantNamesTakeTheConfiguredPrefix(t *testing.T) {
+	const hex = "6f1c0f2e1a2b4c3d8e4f5a6b7c8d9e01"
+	cases := []struct{ prefix, db, role string }{
+		{"", "tenant_" + hex, "tenant_role_" + hex},
+		{"apiary", "apiary_" + hex, "apiary_role_" + hex},
+		// The separator is added here, so a prefix written with one still gets one.
+		{"apiary_", "apiary_" + hex, "apiary_role_" + hex},
+	}
+	for _, c := range cases {
+		db, err := tenantDBName(c.prefix, testOrgID)
+		if err != nil {
+			t.Fatalf("tenantDBName(%q): %v", c.prefix, err)
+		}
+		role, err := tenantRoleName(c.prefix, testOrgID)
+		if err != nil {
+			t.Fatalf("tenantRoleName(%q): %v", c.prefix, err)
+		}
+		if db != c.db || role != c.role {
+			t.Errorf("prefix %q: got db %q role %q, want %q and %q", c.prefix, db, role, c.db, c.role)
+		}
+	}
+}
+
+// A destroy must drop the database the tenant was given, not the one the
+// current prefix would give it — otherwise changing DATABASE_PREFIX silently
+// orphans every existing tenant's data the first time one is deleted.
+func TestDestroyerDropsTheStoredDatabaseNotOneDerivedFromThePrefix(t *testing.T) {
+	master := mustMasterKey(t)
+	d, err := NewTenantDestroyerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, "apiary", master)
+	if err != nil {
+		t.Fatalf("NewTenantDestroyerService: %v", err)
+	}
+
+	org := control.Organization{}
+	org.ID = uuid.MustParse(testOrgID)
+
+	// Never finished provisioning: whatever was created has the derived name.
+	got, err := d.tenantDatabase(&org)
+	if err != nil {
+		t.Fatalf("tenantDatabase without a stored dsn: %v", err)
+	}
+	if want := "apiary_6f1c0f2e1a2b4c3d8e4f5a6b7c8d9e01"; got != want {
+		t.Fatalf("unprovisioned org: db = %q, want %q", got, want)
+	}
+
+	// Provisioned before the prefix changed: the stored DSN wins.
+	legacy := "tenant_6f1c0f2e1a2b4c3d8e4f5a6b7c8d9e01"
+	dsnKey, err := utils.DeriveKey(master, utils.KeyPurposeTenantDSN)
+	if err != nil {
+		t.Fatalf("derive dsn key: %v", err)
+	}
+	ct, iv, tag, err := utils.EncryptAESGCMWithAAD(
+		[]byte("postgres://tenant_role_x:pw@db.internal:5432/"+legacy+"?sslmode=disable"),
+		dsnKey, []byte(testOrgID),
+	)
+	if err != nil {
+		t.Fatalf("encrypt dsn: %v", err)
+	}
+	org.ConnectionString = utils.EncodeB64(ct)
+	org.ConnectionStringIV = utils.EncodeB64(iv)
+	org.ConnectionStringTag = utils.EncodeB64(tag)
+
+	got, err = d.tenantDatabase(&org)
+	if err != nil {
+		t.Fatalf("tenantDatabase with a stored dsn: %v", err)
+	}
+	if got != legacy {
+		t.Fatalf("provisioned org: db = %q, want the stored %q", got, legacy)
+	}
+}
+
+// A legacy org whose DSN predates sealing stores it in plaintext with no IV or
+// tag. Connecting refuses it, but a destroy must still find its database:
+// failing here retries forever and the org is never cleaned up.
+func TestDestroyerReadsALegacyPlaintextDSN(t *testing.T) {
+	d, err := NewTenantDestroyerService(&gorm.DB{}, testControlDSN, testProvisionerDSN, "apiary", mustMasterKey(t))
+	if err != nil {
+		t.Fatalf("NewTenantDestroyerService: %v", err)
+	}
+	org := control.Organization{
+		ConnectionString: "postgres://tenant_role_x:pw@db.internal:5432/tenant_legacy?sslmode=disable",
+	}
+	org.ID = uuid.MustParse(testOrgID)
+
+	got, err := d.tenantDatabase(&org)
+	if err != nil {
+		t.Fatalf("a plaintext legacy DSN must resolve, got %v", err)
+	}
+	if got != "tenant_legacy" {
+		t.Fatalf("db = %q, want tenant_legacy", got)
 	}
 }

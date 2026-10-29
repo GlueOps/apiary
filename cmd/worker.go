@@ -94,11 +94,14 @@ func runWorker() error {
 	// check inside it is a guard against a wiring mistake, not a race.
 	var riverClient *river.Client[pgx.Tx]
 
-	provisioner, err := jobs.NewTenantProvisionerService(controlDB, cfg.DatabaseURL, cfg.ProvisionerDatabaseURL, masterKey)
+	provisioner, err := jobs.NewTenantProvisionerService(controlDB, cfg.DatabaseURL, cfg.ProvisionerDatabaseURL, cfg.DatabasePrefix, masterKey)
 	if err != nil {
 		return fmt.Errorf("init tenant provisioner: %w", err)
 	}
-	destroyer := jobs.NewTenantDestroyerService(controlDB, cfg.DatabaseURL, cfg.ProvisionerDatabaseURL)
+	destroyer, err := jobs.NewTenantDestroyerService(controlDB, cfg.DatabaseURL, cfg.ProvisionerDatabaseURL, cfg.DatabasePrefix, masterKey)
+	if err != nil {
+		return fmt.Errorf("init tenant destroyer: %w", err)
+	}
 
 	river.AddWorker(workers, jobs.NewProvisionTenantWorker(provisioner))
 	river.AddWorker(workers, jobs.NewDestroyTenantWorker(destroyer))

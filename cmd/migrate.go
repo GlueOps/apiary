@@ -388,12 +388,6 @@ func init() {
 }
 
 func decryptOrgDSN(org control.Organization) (string, error) {
-	if org.ConnectionStringIV == "" || org.ConnectionStringTag == "" {
-		return "", fmt.Errorf(
-			"connection_string is not encrypted; re-provision the tenant to store an " +
-				"encrypted, tenant-scoped DSN (F6)")
-	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		return "", fmt.Errorf("load config: %w", err)
@@ -404,18 +398,13 @@ func decryptOrgDSN(org control.Organization) (string, error) {
 		return "", err
 	}
 
-	ct, err1 := utils.DecodeB64(org.ConnectionString)
-	iv, err2 := utils.DecodeB64(org.ConnectionStringIV)
-	tag, err3 := utils.DecodeB64(org.ConnectionStringTag)
-	if err1 != nil || err2 != nil || err3 != nil {
-		return "", fmt.Errorf("could not decode connection string components")
+	dsn, err := org.DecryptConnectionString(dsnKey)
+	if errors.Is(err, control.ErrConnectionStringNotEncrypted) {
+		return "", fmt.Errorf(
+			"connection_string is not encrypted; re-provision the tenant to store an " +
+				"encrypted, tenant-scoped DSN (F6)")
 	}
-
-	plain, err := utils.DecryptAESGCMWithAAD(ct, dsnKey, iv, tag, []byte(org.ID.String()))
-	if err != nil {
-		return "", fmt.Errorf("could not decrypt connection string: %w", err)
-	}
-	return string(plain), nil
+	return dsn, err
 }
 
 // ensureTenantSchemaGrant gives a tenant role CREATE on its own database's

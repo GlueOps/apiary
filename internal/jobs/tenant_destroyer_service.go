@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/glueops/apiary/internal/models/control"
+	"github.com/glueops/apiary/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -14,14 +15,51 @@ type TenantDestroyerService struct {
 	controlDB        *gorm.DB
 	controlDBURL     string
 	provisionerDBURL string
+	databasePrefix   string
+
+	dsnKey []byte
 }
 
-func NewTenantDestroyerService(controlDB *gorm.DB, controlDBURL, provisionerDBURL string) *TenantDestroyerService {
+func NewTenantDestroyerService(controlDB *gorm.DB, controlDBURL, provisionerDBURL, databasePrefix string, masterKey []byte) (*TenantDestroyerService, error) {
+	dsnKey, err := utils.DeriveKey(masterKey, utils.KeyPurposeTenantDSN)
+	if err != nil {
+		return nil, fmt.Errorf("derive tenant dsn key: %w", err)
+	}
 	return &TenantDestroyerService{
 		controlDB:        controlDB,
 		controlDBURL:     controlDBURL,
 		provisionerDBURL: provisionerDBURL,
+		databasePrefix:   databasePrefix,
+		dsnKey:           dsnKey,
+	}, nil
+}
+
+// tenantDatabase is the database an organization's data actually lives in.
+//
+// It is read from the org's stored DSN rather than derived from the configured
+// prefix. The prefix only names NEW tenants, so deriving it here would point a
+// destroy at the wrong name for every tenant provisioned before the prefix was
+// last changed — and DROP DATABASE IF EXISTS would succeed against nothing,
+// leaving the real database behind with nobody recording that it exists.
+//
+// An org with no stored DSN never finished provisioning; its database, if one
+// was created at all, has the name provisioning would have given it.
+//
+// A legacy org whose DSN was stored in plaintext still names its database, and
+// is read as it is. Refusing it, as connecting does, would leave the destroy
+// failing on every retry and the org never cleaned up.
+func (d *TenantDestroyerService) tenantDatabase(org *control.Organization) (string, error) {
+	if org.ConnectionString == "" {
+		return tenantDBName(d.databasePrefix, org.ID.String())
 	}
+	dsn, err := org.DecryptConnectionString(d.dsnKey)
+	if errors.Is(err, control.ErrConnectionStringNotEncrypted) {
+		dsn, err = org.ConnectionString, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return databaseFromDSN(dsn)
 }
 
 func (d *TenantDestroyerService) DestroyOrganization(ctx context.Context, organizationID string) error {
@@ -37,9 +75,9 @@ func (d *TenantDestroyerService) DestroyOrganization(ctx context.Context, organi
 		return fmt.Errorf("org status is %q, expected destroying", org.Status)
 	}
 
-	dbName, err := tenantDBName(organizationID)
+	dbName, err := d.tenantDatabase(&org)
 	if err != nil {
-		return fmt.Errorf("derive tenant db name: %w", err)
+		return fmt.Errorf("resolve tenant db name: %w", err)
 	}
 
 	adminURL, err := provisionerAdminDBURL(d.provisionerDBURL)
