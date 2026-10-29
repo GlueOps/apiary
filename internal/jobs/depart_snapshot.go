@@ -77,16 +77,14 @@ func DepartureSnapshotFromDB(ctx context.Context, db *gorm.DB, hypervisorID uuid
 		}
 		snap.HiveNodeCount = int(nodes)
 
-		// The minimum is checked against what REMAINS, from observed members, the
-		// same as the preview. This used to count hypervisor rows, the number the
-		// preview had already stopped trusting: rows include machines assigned
-		// and never joined, and nodes whose own departure is still running — and
-		// this is the check that runs last, right before the cluster is changed.
-		remaining, err := repo.RemainingHiveMembers(ctx, tx, *hyp.HiveID, snap.Hive.Name)
+		// The minimum is a floor on observed members remaining, counted the way
+		// the departure request counts it.
+		members, err := repo.LoadHiveMembers(ctx, tx, *hyp.HiveID, snap.Hive.Name)
 		if err != nil {
 			return fmt.Errorf("count remaining hive members: %w", err)
 		}
-		snap.RemainingNodes = repo.RemainingAfter(remaining, hyp.ID)
+		snap.RemainingNodes = members.RemainingAfter(hyp.ID)
+		snap.NotCounted = members.NotCountedAfter(hyp.ID)
 
 		// Peers: every other node in the hive. Their names are what has to be
 		// cleared off the departing host, because it carries the cluster's replica

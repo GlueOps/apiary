@@ -272,8 +272,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	})
 
 	t.Run("a departure that would leave fewer than the minimum is refused", func(t *testing.T) {
-		// The minimum is a FLOOR. It used to be the size a departure could start
-		// from, so a minimum of 3 let a 3-node cluster drop to 2.
+		// The minimum is a FLOOR on what remains, not a size to start from.
 		req := base()
 		req.HiveNodeCount, req.RemainingNodes = 3, 2
 		rs := CheckDepartureState(req)
@@ -292,8 +291,7 @@ func TestCheckDepartureRefusals(t *testing.T) {
 	})
 
 	t.Run("a departure already under way is not counted as remaining", func(t *testing.T) {
-		// The live failure: dc1 had four nodes, one departure was running, and a
-		// second was checked against all four. Four present, two remaining.
+		// Four present, one already departing: this one would leave two.
 		req := base()
 		req.HiveNodeCount, req.RemainingNodes = 4, 2
 		if !hasCode(CheckDepartureState(req), RefuseHiveTooSmall) {

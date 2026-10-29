@@ -8,7 +8,7 @@ import (
 
 // DefaultHiveMinimumNodes is the fewest nodes a departure may leave a hive with.
 //
-// Three, which is one more than the procedure itself needs, because of corosync arithmetic that was observed doing damage rather
+// Three, because of corosync arithmetic that was observed doing damage rather
 // than reasoned about: removing one node from a TWO-node cluster drops the
 // survivor to one of two expected votes, so it loses quorum — and the next step
 // of `pvecm delnode`, rewriting corosync.conf to lower the expected count, needs
@@ -26,12 +26,9 @@ const DefaultHiveMinimumNodes = 3
 // EffectiveMinimumNodes is the fewest nodes a departure may LEAVE the cluster
 // with, counting every departure already under way as gone.
 //
-// It used to be the count a departure could be started FROM, on the theory
-// that an operator can check that number before asking. But "minimum nodes: 3"
-// reads as a floor, and the start-from reading let dc1 go from four nodes to
-// two — each step was individually permitted. A floor is also the only reading
-// that composes: two departures checked against what remains cannot both pass
-// where one would leave too few.
+// A floor on what remains, rather than a size a departure may start from,
+// because it is the only reading that composes: departures checked one at a
+// time against what is left cannot add up to more than any one would allow.
 //
 // A knob rather than the constant because a test fleet is legitimately smaller
 // than three, and the alternative to a knob is an operator disabling the gate
@@ -171,9 +168,12 @@ type DepartureRequest struct {
 
 	// RemainingNodes is how many members the cluster will still have once this
 	// host and every other departure already requested have left. The departure
-	// minimum is a FLOOR on this number — see repo.RemainingHiveMembers for why it
-	// is not the count of members present now.
+	// minimum is a floor on this number; see repo.HiveMembers.RemainingAfter.
 	RemainingNodes int
+
+	// NotCounted names the hive's other machines left out of RemainingNodes, each
+	// with why, so a refusal explains a count lower than the node list shows.
+	NotCounted []string
 }
 
 // CheckDeparture returns every reason the host may not leave, or nil.
@@ -254,10 +254,7 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 	// host added, or the knob changed deliberately. Reporting it only after the
 	// drain completes wastes the whole drain.
 	//
-	// A FLOOR: the cluster may not be LEFT with fewer than the minimum. It used to
-	// be the smallest size a departure could START from, so a minimum of three
-	// still let a three-node cluster drop to two — which is not what "minimum
-	// nodes: 3" reads as, and was demonstrated live by taking dc1 from four to two.
+	// A FLOOR: the cluster may not be LEFT with fewer than the minimum.
 	//
 	// ONE EXCEPTION: leaving nobody, under a minimum of one. That is not a
 	// cluster shrunk below its floor but a cluster dismantled — there is no
@@ -269,9 +266,7 @@ func CheckDepartureState(req DepartureRequest) []DepartureRefusal {
 		out = append(out, DepartureRefusal{
 			Code:    RefuseHiveTooSmall,
 			Summary: "the departure would leave the cluster below its minimum",
-			Detail: fmt.Sprintf("hive %q would be left with %d node(s) and its minimum is %d; "+
-				"nodes whose departure is already under way are not counted",
-				req.Hive.Name, req.RemainingNodes, min),
+			Detail:  tooSmallDetail(req, min),
 			Remedy: "Add a node first, wait for a node that is arriving to finish joining, or " +
 				"lower this cluster's minimum deliberately if it is a test cluster. Shrinking a " +
 				"cluster this far risks quorum and leaves the survivors read-only with their " +
@@ -381,4 +376,17 @@ func DepartureRefusalsError(rs []DepartureRefusal) error {
 		parts = append(parts, r.Code+" ("+r.Detail+")")
 	}
 	return fmt.Errorf("departure refused: %s", strings.Join(parts, "; "))
+}
+
+// tooSmallDetail says what the remaining count is and, when the hive has
+// machines it left out, which and why. The node list shows every machine
+// assigned to the hive, so "would be left with 2" beside four listed nodes
+// is only actionable once it names the two that were not counted.
+func tooSmallDetail(req DepartureRequest, min int) string {
+	d := fmt.Sprintf("hive %q would be left with %d node(s) and its minimum is %d",
+		req.Hive.Name, req.RemainingNodes, min)
+	if len(req.NotCounted) > 0 {
+		d += "; not counted: " + strings.Join(req.NotCounted, ", ")
+	}
+	return d
 }

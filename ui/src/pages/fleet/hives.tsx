@@ -214,8 +214,8 @@ function HiveCard({ cluster, estates }: { cluster: HiveDetailView; estates: Esta
             {belowDefault ? (
               <p className="text-xs text-amber-500">
                 Below {DEFAULT_MINIMUM_NODES}, a departure can leave a cluster that loses quorum the
-                moment one more node fails, and departing from two leaves the survivor read-only with
-                its guests unmanageable. Only lower this for a test fleet.
+                moment one more node fails, and departing from two leaves the survivor read-only
+                with its guests unmanageable. Only lower this for a test fleet.
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">

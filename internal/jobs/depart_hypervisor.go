@@ -100,6 +100,7 @@ type DepartureSnapshot struct {
 	// RemainingNodes is the observed members left once this node and every
 	// departure already requested have gone; the minimum is a floor on it.
 	RemainingNodes int
+	NotCounted     []string
 
 	// DepartingAddress is where to reach the node being removed.
 	DepartingAddress string
@@ -194,6 +195,7 @@ func Depart(ctx context.Context, d DepartDeps, in DepartInput) error {
 		Drain:                 drain,
 		HiveNodeCount:         snap.HiveNodeCount,
 		RemainingNodes:        snap.RemainingNodes,
+		NotCounted:            snap.NotCounted,
 		CredentialDisposition: in.CredentialDisposition,
 	})
 	if len(refusals) > 0 {

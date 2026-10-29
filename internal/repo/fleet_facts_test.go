@@ -599,38 +599,34 @@ func TestObservedNodeCountIgnoresAssignedButUnjoinedMachines(t *testing.T) {
 	}
 }
 
-// A DEPARTURE ALREADY UNDER WAY IS NOT A REMAINING MEMBER.
+// A DEPARTURE ALREADY UNDER WAY IS NOT A REMAINING MEMBER — nor is a machine
+// whose agent has not reported this cluster recently.
 //
-// The live failure: dc1 had four nodes and a minimum of three. Two departures
-// were started a minute apart; the second was checked while the first was
-// still running, counted it as present, and passed — leaving two.
+// The live failure: four nodes, a minimum of three, two departures a minute
+// apart. The second counted the first as present and passed, leaving two.
 func TestRemainingMembersExcludeDeparturesUnderWay(t *testing.T) {
 	db := factsDB(t)
 	ctx := context.Background()
 
-	hive := tenant.Hive{Name: "lab-" + uuid.NewString()[:8]}
+	hive := tenant.Hive{Name: "Lab-" + uuid.NewString()[:8]}
 	if err := db.Create(&hive).Error; err != nil {
 		t.Fatal(err)
 	}
 	prefix := "198.51.100." + uuid.NewString()[:4] + "-"
 
-	add := func(node, observes string, fresh, departing bool) uuid.UUID {
+	add := func(node, observes string, seenAgo time.Duration, departing bool) uuid.UUID {
 		t.Helper()
 		bee := tenant.Bee{APIKeyID: uuid.New(), Status: tenant.BeeStatusOnline, EnrolledAt: time.Now().UTC()}
 		if err := db.Create(&bee).Error; err != nil {
 			t.Fatal(err)
 		}
-		at := time.Now()
-		if !fresh {
-			at = at.Add(-time.Hour)
-		}
 		if err := db.Model(&tenant.Bee{}).Where("id = ?", bee.ID).Updates(map[string]any{
 			"observed_cluster":       observes,
-			"observed_membership_at": at,
+			"observed_membership_at": time.Now().Add(-seenAgo),
 		}).Error; err != nil {
 			t.Fatal(err)
 		}
-		n := node + "-" + uuid.NewString()[:6]
+		n := node
 		hv := tenant.Hypervisor{BeeID: &bee.ID, HiveID: &hive.ID, Name: &n, Address: prefix + node}
 		if err := db.Create(&hv).Error; err != nil {
 			t.Fatal(err)
@@ -644,26 +640,46 @@ func TestRemainingMembersExcludeDeparturesUnderWay(t *testing.T) {
 		return hv.ID
 	}
 
-	hv1 := add("1", hive.Name, true, false)
-	add("2", hive.Name, true, false)
-	add("3", hive.Name, true, true)   // its departure is running — not remaining
-	add("4", hive.Name, false, false) // agent gone quiet — not counted
-	add("5", "", true, false)         // assigned, never joined — not a member
+	hv1 := add("hv1", hive.Name, 0, false)
+	// The agent reports the name in another case: corosync names are not
+	// case-significant to an operator, and refusing on case would block a
+	// healthy cluster.
+	add("hv2", strings.ToLower(hive.Name), 0, false)
+	add("hv3", hive.Name, 0, true)              // departure running — not remaining
+	add("hv4", hive.Name, 6*time.Minute, false) // just past the window — not counted
+	add("hv5", "", 0, false)                    // assigned, never joined — not a member
+	add("hv6", hive.Name, 4*time.Minute, false) // inside the window — counted
 
-	members, err := RemainingHiveMembers(ctx, db, hive.ID, hive.Name)
+	members, err := LoadHiveMembers(ctx, db, hive.ID, hive.Name)
 	if err != nil {
-		t.Fatalf("remaining: %v", err)
+		t.Fatalf("load members: %v", err)
 	}
-	if len(members) != 2 {
-		t.Fatalf("remaining members = %d, want 2", len(members))
+	// Present counts the departing node; remaining does not.
+	if got := members.Present(); got != 4 {
+		t.Fatalf("present = %d, want 4 (hv1, hv2, hv3, hv6)", got)
 	}
-	// Departing hv1 as well leaves one.
-	if got := RemainingAfter(members, hv1); got != 1 {
-		t.Fatalf("remaining after hv1 = %d, want 1", got)
+	if got := members.RemainingAfter(uuid.New()); got != 3 {
+		t.Fatalf("remaining = %d, want 3 (hv1, hv2, hv6)", got)
 	}
-	// A host that is not itself counted does not lower the number twice.
-	if got := RemainingAfter(members, uuid.New()); got != 2 {
-		t.Fatalf("remaining after an uncounted host = %d, want 2", got)
+	// Departing hv1 as well leaves two.
+	if got := members.RemainingAfter(hv1); got != 2 {
+		t.Fatalf("remaining after hv1 = %d, want 2", got)
+	}
+
+	got := strings.Join(members.NotCountedAfter(hv1), "; ")
+	for _, want := range []string{
+		"hv3 (departure requested 0s ago)",
+		"hv4 (no membership report in the last 5m0s)",
+		"hv5 (its agent does not report being in this cluster)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("not counted = %q, missing %q", got, want)
+		}
+	}
+	for _, counted := range []string{"hv1", "hv2", "hv6"} {
+		if strings.Contains(got, counted+" (") {
+			t.Errorf("not counted = %q, but %s is counted", got, counted)
+		}
 	}
 }
 

@@ -632,80 +632,131 @@ const KindDisarm = "fleet.datacenter.disarm"
 // silently matches nothing.
 const KindDistUpgrade = "fleet.host.dist-upgrade"
 
-// ObservedHiveNodeCount is how many of a hive's machines are actually IN its
-// cluster, as their own agents report.
-//
-// NOT A ROW COUNT. Under convergence a machine is given a hive_id as an
-// INTENTION and joins on its own afterwards, so the rows include hosts that are
-// not members yet — and the departure gate, which exists to stop a cluster being
-// taken below its minimum, was counting them.
-//
-// lab-b showed 3 nodes and had 2: pve5 had been assigned back and never joined.
-// A departure was allowed on that basis and took the cluster from two real
-// members to one, leaving the survivor below quorum and unable to evict the node
-// that had just left. The gate protecting the minimum was reading a number that
-// did not describe the cluster.
-//
-// Counts the DEPARTING machine too, which is the documented meaning of the
-// value: how many nodes the hive has right now, including the one about to
-// leave.
-//
-// A host whose agent has not reported recently is NOT counted. That direction is
-// deliberate: an uncounted node makes the gate refuse more readily, and refusing
-// a departure costs a retry while allowing one below the minimum costs quorum.
-func ObservedHiveNodeCount(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (int, error) {
-	var n int64
-	err := db.WithContext(ctx).Raw(`
-		SELECT count(*)
-		  FROM hypervisors h
-		  JOIN bees b ON b.id = h.bee_id
-		 WHERE h.hive_id = ?
-		   AND lower(b.observed_cluster) = lower(?)
-		   AND b.observed_membership_at > now() - interval '5 minutes'`,
-		hiveID, hiveName).Scan(&n).Error
-	return int(n), err
+// ObservedMembershipWindow is how recently an agent must have reported its
+// cluster membership to be counted as a member.
+const ObservedMembershipWindow = 5 * time.Minute
+
+// HiveMember is one machine assigned to a hive, as the departure gate sees it.
+type HiveMember struct {
+	ID   uuid.UUID
+	Name string
+	// Departing: a departure has been requested and not yet finalised.
+	Departing bool
+	// DepartingFor is how long ago that departure was requested.
+	DepartingFor time.Duration
+	// InCluster: its agent reports being in this hive's cluster.
+	InCluster bool
+	// Fresh: that report is within ObservedMembershipWindow.
+	Fresh bool
 }
 
-// RemainingHiveMembers is the machines that will still be in the cluster once
-// every departure already requested has finished: observed members, reported
-// recently, with no departure recorded.
+// Observed is whether the machine counts as a member at all: its own agent
+// reported, recently, that it is in this cluster.
+func (m HiveMember) Observed() bool { return m.InCluster && m.Fresh }
+
+// HiveMembers is every machine assigned to a hive.
+type HiveMembers []HiveMember
+
+// LoadHiveMembers reads every machine assigned to a hive with what its agent
+// last reported. The one query behind both counts the departure gate uses, so
+// the node count and the remaining count cannot drift apart.
 //
-// The departure minimum is checked against THIS, not against the members
-// present now. Counting what is present let two departures started a minute
-// apart take dc1 from four nodes to two under a minimum of three: the second
-// was checked while the first was still running, counted it as a member, and
-// passed. A node stops counting the moment its departure is REQUESTED, whatever
-// phase it has reached — still voting, already evicted, or disarming — because
-// from the cluster's point of view all three are a node it is losing.
-//
-// Freshness follows ObservedHiveNodeCount, in the same direction: an agent that
-// has not reported is not counted, which makes the gate refuse more readily.
-func RemainingHiveMembers(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (map[uuid.UUID]bool, error) {
-	var ids []uuid.UUID
+// ASSIGNMENT IS NOT MEMBERSHIP. Under convergence a machine gets a hive_id as an
+// intention and joins afterwards, so rows include hosts that are not members
+// yet; counting them let a departure take lab-b from two real members to one.
+// A host whose agent has not reported recently is not counted either: that
+// makes the gate refuse more readily, and a refused departure costs a retry
+// where one allowed below the minimum costs quorum.
+func LoadHiveMembers(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (HiveMembers, error) {
+	var rows []struct {
+		HiveMember
+		DepartingSecs float64
+	}
 	err := db.WithContext(ctx).Raw(`
-		SELECT h.id
+		SELECT h.id,
+		       coalesce(h.name, '') AS name,
+		       h.departing_at IS NOT NULL AS departing,
+		       coalesce(extract(epoch FROM now() - h.departing_at), 0) AS departing_secs,
+		       coalesce(lower(b.observed_cluster) = lower(?), false) AS in_cluster,
+		       coalesce(b.observed_membership_at > now() - make_interval(secs => ?), false) AS fresh
 		  FROM hypervisors h
-		  JOIN bees b ON b.id = h.bee_id
+		  LEFT JOIN bees b ON b.id = h.bee_id
 		 WHERE h.hive_id = ?
-		   AND h.departing_at IS NULL
-		   AND lower(b.observed_cluster) = lower(?)
-		   AND b.observed_membership_at > now() - interval '5 minutes'`,
-		hiveID, hiveName).Scan(&ids).Error
-	if err != nil {
-		return nil, err
+		 ORDER BY h.name`,
+		hiveName, ObservedMembershipWindow.Seconds(), hiveID).Scan(&rows).Error
+	out := make(HiveMembers, 0, len(rows))
+	for _, r := range rows {
+		r.HiveMember.DepartingFor = time.Duration(r.DepartingSecs * float64(time.Second))
+		out = append(out, r.HiveMember)
 	}
-	out := make(map[uuid.UUID]bool, len(ids))
-	for _, id := range ids {
-		out[id] = true
-	}
-	return out, nil
+	return out, err
 }
 
-// RemainingAfter is how many members are left once hypervisorID has gone too.
-func RemainingAfter(members map[uuid.UUID]bool, hypervisorID uuid.UUID) int {
-	n := len(members)
-	if members[hypervisorID] {
-		n--
+// Present is how many nodes the hive has right now, the departing ones included.
+func (ms HiveMembers) Present() int {
+	n := 0
+	for _, m := range ms {
+		if m.Observed() {
+			n++
+		}
 	}
 	return n
+}
+
+// RemainingAfter is how many members the hive keeps once hypervisorID and every
+// departure already requested have gone.
+//
+// The departure minimum is a floor on THIS number. A node stops counting the
+// moment its departure is requested, whatever phase it has reached — still
+// voting, already evicted, or disarming — because to the cluster all three are
+// a node it is losing.
+func (ms HiveMembers) RemainingAfter(hypervisorID uuid.UUID) int {
+	n := 0
+	for _, m := range ms {
+		if m.ID != hypervisorID && m.Observed() && !m.Departing {
+			n++
+		}
+	}
+	return n
+}
+
+// NotCountedAfter names the machines, other than hypervisorID, that are
+// assigned to the hive but not counted as remaining, each with the reason. It
+// is what turns "would be left with 2" on a hive the UI shows with 4 nodes into
+// something an operator can act on.
+func (ms HiveMembers) NotCountedAfter(hypervisorID uuid.UUID) []string {
+	var out []string
+	for _, m := range ms {
+		if m.ID == hypervisorID {
+			continue
+		}
+		name := m.Name
+		if name == "" {
+			name = m.ID.String()
+		}
+		switch {
+		case m.Departing:
+			// With its age, because a departure whose eviction has stalled keeps
+			// the node out of the count indefinitely, and an old one here is the
+			// first sign of that.
+			out = append(out, fmt.Sprintf("%s (departure requested %s ago)",
+				name, m.DepartingFor.Truncate(time.Minute)))
+		case !m.InCluster:
+			out = append(out, name+" (its agent does not report being in this cluster)")
+		case !m.Fresh:
+			out = append(out, fmt.Sprintf("%s (no membership report in the last %s)",
+				name, ObservedMembershipWindow))
+		}
+	}
+	return out
+}
+
+// ObservedHiveNodeCount is how many of a hive's machines are actually in its
+// cluster right now, departing ones included. See LoadHiveMembers.
+func ObservedHiveNodeCount(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveName string) (int, error) {
+	ms, err := LoadHiveMembers(ctx, db, hiveID, hiveName)
+	if err != nil {
+		return 0, err
+	}
+	return ms.Present(), nil
 }

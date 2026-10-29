@@ -175,18 +175,32 @@ func TestFleetCycleAgainstLiveClusters(t *testing.T) {
 	}
 	t.Log("[gate] ok  refused: hive too small at the default minimum of 3")
 
-	if err := db.Model(&tenant.Hive{}).Where("id = ?", source.ID).
-		Update("minimum_nodes", 2).Error; err != nil {
-		t.Fatalf("lower the minimum: %v", err)
+	lowerMinimum := func(n int) {
+		t.Helper()
+		if err := db.Model(&tenant.Hive{}).Where("id = ?", source.ID).
+			Update("minimum_nodes", n).Error; err != nil {
+			t.Fatalf("lower the minimum: %v", err)
+		}
+		if err := db.First(&source, "id = ?", source.ID).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := db.First(&source, "id = ?", source.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if rs := cycleGate(t, db, source, moving); len(rs) != 0 {
-		t.Fatalf("[gate] a cordoned, empty node in a hive at its minimum must be allowed, got %v",
+
+	// The minimum is a floor on what REMAINS: a minimum of two still refuses,
+	// because departing one of two leaves one.
+	lowerMinimum(2)
+	if rs := cycleGate(t, db, source, moving); !cycleHas(rs, tenant.RefuseHiveTooSmall) {
+		t.Fatalf("[gate] departing one of two must be refused under a minimum of 2, got %v",
 			cycleCodes(rs))
 	}
-	t.Log("[gate] ok  allowed once the hive's minimum was lowered to 2")
+	t.Log("[gate] ok  refused: a minimum of 2 is a floor the departure would break")
+
+	lowerMinimum(1)
+	if rs := cycleGate(t, db, source, moving); len(rs) != 0 {
+		t.Fatalf("[gate] a cordoned, empty node leaving one behind under a minimum of 1 must "+
+			"be allowed, got %v", cycleCodes(rs))
+	}
+	t.Log("[gate] ok  allowed once the hive's minimum was lowered to 1")
 
 	// ---- 5. DEPART ----------------------------------------------------------
 	//
@@ -517,11 +531,11 @@ func cycleCount(t *testing.T, db *gorm.DB, hiveID uuid.UUID) int {
 // departure job counts it.
 func cycleRemaining(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) int {
 	t.Helper()
-	m, err := repo.RemainingHiveMembers(context.Background(), db, hive.ID, hive.Name)
+	m, err := repo.LoadHiveMembers(context.Background(), db, hive.ID, hive.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return repo.RemainingAfter(m, hv.ID)
+	return m.RemainingAfter(hv.ID)
 }
 
 func cycleGate(t *testing.T, db *gorm.DB, hive tenant.Hive, hv tenant.Hypervisor) []tenant.DepartureRefusal {
