@@ -91,7 +91,7 @@ jobs:
       # and far smaller than emulating a full multi-stage Go build, which is what
       # this arrangement replaced.
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # GITHUB_TOKEN, not a PAT. It is scoped to this repository and expires with
       # the job, so a leaked build log cannot be replayed into a package push.
