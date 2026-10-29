@@ -686,7 +686,7 @@ func LoadHiveMembers(ctx context.Context, db *gorm.DB, hiveID uuid.UUID, hiveNam
 		hiveName, ObservedMembershipWindow.Seconds(), hiveID).Scan(&rows).Error
 	out := make(HiveMembers, 0, len(rows))
 	for _, r := range rows {
-		r.HiveMember.DepartingFor = time.Duration(r.DepartingSecs * float64(time.Second))
+		r.DepartingFor = time.Duration(r.DepartingSecs * float64(time.Second))
 		out = append(out, r.HiveMember)
 	}
 	return out, err
