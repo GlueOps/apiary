@@ -2,6 +2,7 @@ import {
   IconActivity,
   IconAlertTriangle,
   IconBuildingWarehouse,
+  IconCalendarTime,
   IconChevronRight,
   IconCloudUpload,
   IconCpu,
@@ -130,6 +131,7 @@ const navItems: NavEntry[] = [
       { title: 'Clusters', href: '/fleet/hives', icon: IconBuildingWarehouse },
       { title: 'Hypervisors', href: '/fleet/hypervisors', icon: IconServerBolt },
       { title: 'Agents', href: '/fleet', icon: IconCpu },
+      { title: 'Maintenance', href: '/fleet/maintenance', icon: IconCalendarTime },
     ],
   },
   {
