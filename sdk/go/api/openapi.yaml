@@ -3123,6 +3123,211 @@ paths:
       summary: Redrive a machine's onboarding
       tags:
       - Fleet
+  /api/v1/fleet/maintenance/runs:
+    get:
+      description: "Newest first, with every node's turn: what happened, and why a\
+        \ node was skipped, failed or left cordoned."
+      operationId: fleet-maintenance-runs-list
+      parameters:
+      - explode: false
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 20
+          format: int64
+          maximum: 100
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMaintenanceRunsResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List recent maintenance runs
+      tags:
+      - Fleet
+  /api/v1/fleet/maintenance/runs/{id}/stop:
+    post:
+      description: Stops the run AFTER the node in flight. That node's upgrade is
+        not aborted — a host part-way through a reboot is not something the control
+        plane can take back — and it is still watched until it is back or its deadline
+        passes. No further node starts.
+      operationId: fleet-maintenance-runs-stop
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceRunView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Stop a maintenance run
+      tags:
+      - Fleet
+  /api/v1/fleet/maintenance/schedules:
+    get:
+      operationId: fleet-maintenance-schedules-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMaintenanceSchedulesResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List maintenance windows
+      tags:
+      - Fleet
+    post:
+      description: |-
+        In each window the control plane dist-upgrades the scope's hypervisors ONE AT A TIME: it cordons the node, queues the upgrade, waits for the node to come back (agent heartbeating, and in a cluster, quorate), hands the cordon back, then moves on. The first node that fails or does not come back in time stops the run and stays cordoned.
+
+        A window GRANTS GUEST DOWNTIME: guests on a node reboot with it. It lifts no other condition of the upgrade gate — a stale observation or a reboot that would cost the cluster quorum still refuses, at that node's turn.
+
+        Machines with no agent, an offline agent, or a departure under way are skipped with the reason, and do not stop the run.
+      operationId: fleet-maintenance-schedules-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMaintenanceScheduleRequestBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceScheduleView"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Schedule a maintenance window
+      tags:
+      - Fleet
+  /api/v1/fleet/maintenance/schedules/{id}:
+    delete:
+      description: A run already in progress is not stopped by this — stop it separately.
+        Past runs are kept.
+      operationId: fleet-maintenance-schedules-delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Delete a maintenance window
+      tags:
+      - Fleet
+    put:
+      description: Replaces the window. The scope cannot be changed — delete and recreate.
+        A run already in progress keeps the window it started with.
+      operationId: fleet-maintenance-schedules-update
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceScheduleInput"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceScheduleView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Change a maintenance window
+      tags:
+      - Fleet
   /api/v1/fleet/tasks:
     post:
       description: |-
@@ -5375,6 +5580,87 @@ components:
           type: string
       required:
       - name
+    CreateMaintenanceScheduleRequestBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        duration_minutes: 71
+        enabled: true
+        hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        kind: recurring
+        name: name
+        once_at: 2000-01-23T04:56:07.000+00:00
+        reboot: if-needed
+        standalone: true
+        start_time: start_time
+        timezone: timezone
+        weekdays:
+        - 6
+        - 6
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        duration_minutes:
+          description: How long the window stays open. A node already rebooting when
+            it closes is allowed to finish; no new node starts.
+          format: int64
+          maximum: 720
+          minimum: 15
+          type: integer
+        enabled:
+          type: boolean
+        hive_id:
+          description: The cluster this window maintains.
+          format: uuid
+          type: string
+        kind:
+          enum:
+          - recurring
+          - once
+          type: string
+        name:
+          maxLength: 100
+          type: string
+        once_at:
+          description: "When a one-off window opens. A time in the past still opens\
+            \ the window now, provided the window has not already closed."
+          format: date-time
+          type: string
+        reboot:
+          description: Reboot policy each node's dist-upgrade runs with.
+          enum:
+          - if-needed
+          - always
+          - never
+          type: string
+        standalone:
+          description: "True maintains the standalone pool instead: every hypervisor\
+            \ in no cluster, resolved when each run starts."
+          type: boolean
+        start_time:
+          description: "Local time the window opens, HH:MM 24-hour, in timezone."
+          type: string
+        timezone:
+          description: "IANA zone name. Required for a recurring window: 02:00 means\
+            \ 02:00 local in summer and in winter."
+          type: string
+        weekdays:
+          description: "Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone."
+          items:
+            format: int64
+            type: integer
+          nullable: true
+          type: array
+          default: null
+      required:
+      - duration_minutes
+      - enabled
+      - kind
+      - name
+      - reboot
     CreateRequestBody:
       additionalProperties: false
       example:
@@ -7670,6 +7956,152 @@ components:
           default: null
       required:
       - hypervisors
+    ListMaintenanceRunsResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        runs:
+        - $schema: https://openapi-generator.tech
+          error: error
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          nodes:
+          - deadline: 2000-01-23T04:56:07.000+00:00
+            finished_at: 2000-01-23T04:56:07.000+00:00
+            hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            left_cordoned: true
+            name: name
+            reason: reason
+            started_at: 2000-01-23T04:56:07.000+00:00
+            status: pending
+            task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - deadline: 2000-01-23T04:56:07.000+00:00
+            finished_at: 2000-01-23T04:56:07.000+00:00
+            hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            left_cordoned: true
+            name: name
+            reason: reason
+            started_at: 2000-01-23T04:56:07.000+00:00
+            status: pending
+            task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          reboot: reboot
+          schedule_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          schedule_name: schedule_name
+          standalone: true
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: running
+          stop_requested: true
+          window_end: 2000-01-23T04:56:07.000+00:00
+          window_start: 2000-01-23T04:56:07.000+00:00
+        - $schema: https://openapi-generator.tech
+          error: error
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          nodes:
+          - deadline: 2000-01-23T04:56:07.000+00:00
+            finished_at: 2000-01-23T04:56:07.000+00:00
+            hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            left_cordoned: true
+            name: name
+            reason: reason
+            started_at: 2000-01-23T04:56:07.000+00:00
+            status: pending
+            task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - deadline: 2000-01-23T04:56:07.000+00:00
+            finished_at: 2000-01-23T04:56:07.000+00:00
+            hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            left_cordoned: true
+            name: name
+            reason: reason
+            started_at: 2000-01-23T04:56:07.000+00:00
+            status: pending
+            task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          reboot: reboot
+          schedule_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          schedule_name: schedule_name
+          standalone: true
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: running
+          stop_requested: true
+          window_end: 2000-01-23T04:56:07.000+00:00
+          window_start: 2000-01-23T04:56:07.000+00:00
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        runs:
+          items:
+            $ref: "#/components/schemas/MaintenanceRunView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - runs
+    ListMaintenanceSchedulesResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        schedules:
+        - $schema: https://openapi-generator.tech
+          duration_minutes: 0
+          enabled: true
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hive_name: hive_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          kind: recurring
+          last_window_at: 2000-01-23T04:56:07.000+00:00
+          name: name
+          next_openings:
+          - next_openings
+          - next_openings
+          once_at: 2000-01-23T04:56:07.000+00:00
+          open_now: true
+          reboot: reboot
+          standalone: true
+          start_time: start_time
+          timezone: timezone
+          weekdays:
+          - 6
+          - 6
+        - $schema: https://openapi-generator.tech
+          duration_minutes: 0
+          enabled: true
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hive_name: hive_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          kind: recurring
+          last_window_at: 2000-01-23T04:56:07.000+00:00
+          name: name
+          next_openings:
+          - next_openings
+          - next_openings
+          once_at: 2000-01-23T04:56:07.000+00:00
+          open_now: true
+          reboot: reboot
+          standalone: true
+          start_time: start_time
+          timezone: timezone
+          weekdays:
+          - 6
+          - 6
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        schedules:
+          items:
+            $ref: "#/components/schemas/MaintenanceScheduleView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - schedules
     ListMembersResponseBody:
       additionalProperties: false
       example:
@@ -8331,6 +8763,316 @@ components:
       - refresh_expires_in
       - refresh_token
       - token_type
+    MaintenanceRunNodeView:
+      additionalProperties: false
+      example:
+        deadline: 2000-01-23T04:56:07.000+00:00
+        finished_at: 2000-01-23T04:56:07.000+00:00
+        hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        left_cordoned: true
+        name: name
+        reason: reason
+        started_at: 2000-01-23T04:56:07.000+00:00
+        status: pending
+        task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        deadline:
+          format: date-time
+          type: string
+        finished_at:
+          format: date-time
+          type: string
+        hypervisor_id:
+          format: uuid
+          type: string
+        left_cordoned:
+          description: "The run cordoned this node and has not handed the cordon back:\
+            \ it failed, or somebody cordoned it by hand meanwhile."
+          type: boolean
+        name:
+          type: string
+        reason:
+          description: "Why it was skipped or failed, or why it was left cordoned."
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        status:
+          enum:
+          - pending
+          - upgrading
+          - succeeded
+          - failed
+          - skipped
+          type: string
+        task_id:
+          format: uuid
+          type: string
+      required:
+      - hypervisor_id
+      - left_cordoned
+      - name
+      - status
+    MaintenanceRunView:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        error: error
+        finished_at: 2000-01-23T04:56:07.000+00:00
+        hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        nodes:
+        - deadline: 2000-01-23T04:56:07.000+00:00
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          left_cordoned: true
+          name: name
+          reason: reason
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: pending
+          task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - deadline: 2000-01-23T04:56:07.000+00:00
+          finished_at: 2000-01-23T04:56:07.000+00:00
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          left_cordoned: true
+          name: name
+          reason: reason
+          started_at: 2000-01-23T04:56:07.000+00:00
+          status: pending
+          task_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        reboot: reboot
+        schedule_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        schedule_name: schedule_name
+        standalone: true
+        started_at: 2000-01-23T04:56:07.000+00:00
+        status: running
+        stop_requested: true
+        window_end: 2000-01-23T04:56:07.000+00:00
+        window_start: 2000-01-23T04:56:07.000+00:00
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        error:
+          type: string
+        finished_at:
+          format: date-time
+          type: string
+        hive_id:
+          format: uuid
+          type: string
+        id:
+          format: uuid
+          type: string
+        nodes:
+          items:
+            $ref: "#/components/schemas/MaintenanceRunNodeView"
+          nullable: true
+          type: array
+          default: null
+        reboot:
+          type: string
+        schedule_id:
+          format: uuid
+          type: string
+        schedule_name:
+          type: string
+        standalone:
+          type: boolean
+        started_at:
+          format: date-time
+          type: string
+        status:
+          enum:
+          - running
+          - succeeded
+          - failed
+          - stopped
+          - expired
+          type: string
+        stop_requested:
+          type: boolean
+        window_end:
+          format: date-time
+          type: string
+        window_start:
+          format: date-time
+          type: string
+      required:
+      - id
+      - nodes
+      - reboot
+      - standalone
+      - started_at
+      - status
+      - stop_requested
+      - window_end
+      - window_start
+    MaintenanceScheduleInput:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        duration_minutes: 71
+        enabled: true
+        kind: recurring
+        name: name
+        once_at: 2000-01-23T04:56:07.000+00:00
+        reboot: if-needed
+        start_time: start_time
+        timezone: timezone
+        weekdays:
+        - 6
+        - 6
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        duration_minutes:
+          description: How long the window stays open. A node already rebooting when
+            it closes is allowed to finish; no new node starts.
+          format: int64
+          maximum: 720
+          minimum: 15
+          type: integer
+        enabled:
+          type: boolean
+        kind:
+          enum:
+          - recurring
+          - once
+          type: string
+        name:
+          maxLength: 100
+          type: string
+        once_at:
+          description: "When a one-off window opens. A time in the past still opens\
+            \ the window now, provided the window has not already closed."
+          format: date-time
+          type: string
+        reboot:
+          description: Reboot policy each node's dist-upgrade runs with.
+          enum:
+          - if-needed
+          - always
+          - never
+          type: string
+        start_time:
+          description: "Local time the window opens, HH:MM 24-hour, in timezone."
+          type: string
+        timezone:
+          description: "IANA zone name. Required for a recurring window: 02:00 means\
+            \ 02:00 local in summer and in winter."
+          type: string
+        weekdays:
+          description: "Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone."
+          items:
+            format: int64
+            type: integer
+          nullable: true
+          type: array
+          default: null
+      required:
+      - duration_minutes
+      - enabled
+      - kind
+      - name
+      - reboot
+    MaintenanceScheduleView:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        duration_minutes: 0
+        enabled: true
+        hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        hive_name: hive_name
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        kind: recurring
+        last_window_at: 2000-01-23T04:56:07.000+00:00
+        name: name
+        next_openings:
+        - next_openings
+        - next_openings
+        once_at: 2000-01-23T04:56:07.000+00:00
+        open_now: true
+        reboot: reboot
+        standalone: true
+        start_time: start_time
+        timezone: timezone
+        weekdays:
+        - 6
+        - 6
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        duration_minutes:
+          format: int64
+          type: integer
+        enabled:
+          type: boolean
+        hive_id:
+          format: uuid
+          type: string
+        hive_name:
+          type: string
+        id:
+          format: uuid
+          type: string
+        kind:
+          enum:
+          - recurring
+          - once
+          type: string
+        last_window_at:
+          format: date-time
+          type: string
+        name:
+          type: string
+        next_openings:
+          description: "The next three times the window opens, UTC."
+          items:
+            type: string
+          nullable: true
+          type: array
+          default: null
+        once_at:
+          format: date-time
+          type: string
+        open_now:
+          description: The window is open at this moment.
+          type: boolean
+        reboot:
+          type: string
+        standalone:
+          type: boolean
+        start_time:
+          type: string
+        timezone:
+          type: string
+        weekdays:
+          items:
+            format: int64
+            type: integer
+          nullable: true
+          type: array
+          default: null
+      required:
+      - duration_minutes
+      - enabled
+      - id
+      - kind
+      - name
+      - next_openings
+      - open_now
+      - reboot
+      - standalone
+      - weekdays
     MemberView:
       additionalProperties: false
       example:
