@@ -110,6 +110,7 @@ func TestGooseMigrationsMatchTheModels(t *testing.T) {
 		&tenant.FirewallRuleset{}, &tenant.FirewallRule{}, &tenant.FirewallBinding{},
 		&tenant.FirewallSet{}, &tenant.FirewallSetElement{}, &tenant.FirewallSnapshot{},
 		&tenant.FleetTask{}, &tenant.FleetTaskLog{}, &tenant.SshKey{},
+		&tenant.MaintenanceSchedule{}, &tenant.MaintenanceRun{}, &tenant.MaintenanceRunNode{},
 	}
 
 	var missing []string

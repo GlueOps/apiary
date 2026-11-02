@@ -468,6 +468,11 @@ func runWorker() error {
 		// because it is the same shape — enumerate tenants, enqueue per row, do
 		// no remote work here — and shares its insert closure's reason for
 		// existing.
+		// Scheduled maintenance. Database work only — each node's upgrade is a
+		// task its own agent runs — so it needs no insert closure.
+		river.AddWorker(workers, jobs.NewMaintenanceTickWorker(controlDB, fleetRepoFor,
+			jobs.MaintenanceConfig{ObservationMaxAge: cfg.FleetObservationMaxAge}))
+
 		river.AddWorker(workers, jobs.NewClaimPendingOnboardsWorker(controlDB, fleetRepoFor,
 			func(ctx context.Context, args river.JobArgs) error {
 				if riverClient == nil {
@@ -549,6 +554,21 @@ func runWorker() error {
 				},
 				&river.PeriodicJobOpts{
 					ID:         "fleet-onboarding-tick",
+					RunOnStart: true,
+				},
+			),
+
+			// Maintenance tick. A minute is the resolution windows are scheduled
+			// at, and how soon the next node goes once the last is back.
+			// RunOnStart so a restarted worker does not leave a run in flight
+			// unwatched for an interval.
+			river.NewPeriodicJob(
+				river.PeriodicInterval(time.Minute),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return &jobs.MaintenanceTickArgs{}, &river.InsertOpts{}
+				},
+				&river.PeriodicJobOpts{
+					ID:         "fleet-maintenance-tick",
 					RunOnStart: true,
 				},
 			),
