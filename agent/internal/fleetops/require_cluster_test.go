@@ -136,8 +136,12 @@ func TestDistUpgradeNoLongerNeedsAProxmoxClient(t *testing.T) {
 		t.Fatalf("dist-upgrade refused without a Proxmox client: %v", err)
 	}
 
-	joined := strings.Join(ran, " | ")
-	if !strings.Contains(joined, "apt-get update") || !strings.Contains(joined, "dist-upgrade") {
+	var updated, upgraded bool
+	for _, c := range ran {
+		updated = updated || (strings.HasPrefix(c, "apt-get ") && strings.HasSuffix(c, " update"))
+		upgraded = upgraded || (strings.HasPrefix(c, "apt-get ") && strings.HasSuffix(c, " dist-upgrade"))
+	}
+	if !updated || !upgraded {
 		t.Fatalf("the upgrade never ran: %v", ran)
 	}
 }
