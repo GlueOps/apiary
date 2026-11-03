@@ -63,8 +63,18 @@ type Deps struct {
 
 	// Node is this host's Proxmox node name, used when pmxcfs cannot be read.
 	// Prefer Cluster.NodeName(), which is the value the cluster itself keys on.
-	Node   string
+	Node string
+
+	// Reboot asks for a reboot and does not return while one is under way: it
+	// returns the cancellation when the shutdown stops the agent, and nil only
+	// if the host is somehow still up long after it was asked. See RebootHost.
 	Reboot func(ctx context.Context) error
+
+	// Facts and RecordDir make the reboot provable: what the upgrade expects is
+	// recorded in RecordDir before the reboot and checked from Facts after it.
+	// Either missing means no proof — said in the task log, never guessed.
+	Facts     HostFacts
+	RecordDir string
 }
 
 // ErrNoCluster reports that this host has no Proxmox API client, so a task that
@@ -144,11 +154,18 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		spec.Reboot = rebootIfNeeded
 	}
 
-	// We are back from the reboot we caused.
-	if phase == phaseRebooting {
+	// We are back from the reboot we caused — or, the boot id will say, from an
+	// agent restart that happened before it.
+	if phase == phaseRebooting || phase == phaseVerifying {
 		e.Phase(phaseVerifying)
 		e.Logf("agent", "back after the reboot this task requested")
-		return verifyAfterReboot(ctx, d, e)
+		return verifyAfterReboot(ctx, d, e, spec)
+	}
+
+	pf := proofFor(d, e)
+	if pf == nil {
+		e.Logf("agent", "this agent has no record directory or host facts, so the reboot will not "+
+			"be proven; only cluster health is checked when it comes back")
 	}
 
 	// THE PREFLIGHT IS ABOUT THE REBOOT, so it runs only when one might happen.
@@ -195,6 +212,11 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 			}
 		}
 	}
+	// Before the phase changes, so a task resumed in phaseUpgrading always has
+	// the state from before ITS upgrade to diff against.
+	if err := pf.snapshotBefore(ctx, e); err != nil {
+		return err
+	}
 	e.Phase(phaseUpgrading)
 	// Detached, audited and resumable: see aptUpgrade. apt used to run here as
 	// the agent's own child, and anything that stopped the agent killed dpkg
@@ -203,7 +225,19 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		return err
 	}
 
+	x, err := pf.expect(ctx, e)
+	if err != nil {
+		return err
+	}
 	needs := rebootRequired()
+	if x != nil {
+		logProof(e, "changed", x.Changed)
+		// A new kernel needs a reboot whether or not anything wrote
+		// reboot-required — the kernel is the CVE fix most windows exist for.
+		// A new pve-qemu-kvm is recorded as a reason but does not trigger one on
+		// its own: it is the GUESTS that need restarting onto it, not the host.
+		needs = needs || (x.ExpectedKernel != "" && x.ExpectedKernel != x.RunningKernel)
+	}
 	switch {
 	case spec.Reboot == rebootNever:
 		if needs {
@@ -215,25 +249,63 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		return nil
 	}
 
-	down := time.Duration(spec.ExpectedDownSeconds) * time.Second
-	if down <= 0 {
-		down = 15 * time.Minute
-	}
-
 	// DECLARE, THEN ACT — and refuse to act if the declaration did not land.
 	//
 	// Without this the control plane sees a hypervisor stop answering and cannot
 	// tell that from a failure, because nothing distinguishes them. The whole
 	// unavailability model rests on the announcement arriving BEFORE the
 	// silence, so a failure to announce has to stop the reboot.
+	//
+	// The expectation is saved BEFORE the phase moves on: an agent resumed in
+	// phaseRebooting with no record cannot tell a reboot from a restart.
+	if err := pf.save(x); err != nil {
+		return fmt.Errorf("could not record what this reboot is expected to change, so it "+
+			"could not be verified; refusing to reboot: %w", err)
+	}
+	if x != nil {
+		logProof(e, "expectation", x)
+	}
 	e.Phase(phaseRebooting)
+	return declareAndReboot(ctx, d, e, spec, pf, x)
+}
+
+func rebootDowntime(spec DistUpgradeSpec) time.Duration {
+	if d := time.Duration(spec.ExpectedDownSeconds) * time.Second; d > 0 {
+		return d
+	}
+	return 15 * time.Minute
+}
+
+// declareAndReboot announces the downtime, reboots, and — if the agent is
+// somehow still running afterwards — goes straight to the check that will say
+// the reboot did not happen.
+func declareAndReboot(ctx context.Context, d Deps, e *Env, spec DistUpgradeSpec, pf *proof, x *RebootExpectation) error {
+	down := rebootDowntime(spec)
 	if err := e.Declare(ctx, down, "rebooting after dist-upgrade"); err != nil {
 		return fmt.Errorf("could not tell the control plane this host is about to reboot, so it "+
 			"would read the reboot as an outage; refusing to reboot: %w", err)
 	}
+	if x != nil {
+		x.RebootAttempts++
+		if err := pf.save(x); err != nil {
+			return fmt.Errorf("could not record the reboot attempt; refusing to reboot: %w", err)
+		}
+	}
 	e.Logf("agent", "declared up to %s of expected downtime; rebooting now", down)
 
-	return d.Reboot(ctx)
+	// NOT "return d.Reboot(ctx)". `systemctl reboot` returns as soon as systemd
+	// has queued the job, and returning nil here finished the task as DONE
+	// before the host went down — so the check after the reboot never ran, and
+	// "succeeded" was reported for a reboot nobody had seen happen. Reboot now
+	// waits for the shutdown to stop the agent, which bee treats as "resume on
+	// restart"; the check runs in the next boot.
+	if err := d.Reboot(ctx); err != nil {
+		return err
+	}
+	e.Logf("agent", "the reboot was requested but this agent is still running; checking whether "+
+		"the host rebooted")
+	e.Phase(phaseVerifying)
+	return verifyAfterReboot(ctx, d, e, spec)
 }
 
 // apiSettle bounds the wait for pmxcfs to come back after a reboot.
@@ -244,7 +316,17 @@ var (
 	apiSettleInterval = 5 * time.Second
 )
 
-func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
+func verifyAfterReboot(ctx context.Context, d Deps, e *Env, spec DistUpgradeSpec) error {
+	if err := proveReboot(ctx, d, e, spec); err != nil {
+		return err
+	}
+	if d.Cluster == nil {
+		// dist-upgrade no longer requires a cluster client, so this was a nil
+		// dereference waiting for the first host without one to reboot.
+		e.Logf("agent", "host is back; there is no cluster client here, so cluster health is "+
+			"not checked")
+		return nil
+	}
 	// THE HOST HAS JUST BOOTED, so pmxcfs may not be mounted yet. Reading once
 	// and failing turned "pve-cluster has not started in the second after a
 	// reboot" into a failed task, and a failed task is collected again —

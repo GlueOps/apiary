@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -155,6 +156,14 @@ func fleetDeps(cfg Config) fleetops.Deps {
 			"agent restart", "error", err)
 	} else {
 		d.Detached = det
+	}
+	// The reboot proof is recorded in the same directory, so it is pruned with
+	// the step records and survives the reboot it is about.
+	if _, err := os.Stat(dir); err == nil {
+		d.Facts = fleetops.LocalFacts(runner)
+		d.RecordDir = dir
+	} else {
+		slog.Warn("reboots after an upgrade will NOT be proven: no record directory", "error", err)
 	}
 	return d
 }
