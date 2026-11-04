@@ -39,7 +39,7 @@ var freeBytes = func(path string) (uint64, error) {
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, err
 	}
-	return uint64(st.Bavail) * uint64(st.Bsize), nil
+	return st.Bavail * uint64(st.Bsize), nil
 }
 
 // aptLockWait is how long apt waits for another dpkg user — Proxmox's daily
@@ -123,7 +123,7 @@ func aptUpgrade(ctx context.Context, d Deps, e *Env) error {
 		e.Logf("agent", "dpkg reports problems after the upgrade:\n%s", detail)
 		if err := repairDpkg(ctx, d, e, det, key("post")); err != nil {
 			if upErr != nil {
-				return fmt.Errorf("%w (the upgrade itself failed: %v)", err, upErr)
+				return fmt.Errorf("%w (the upgrade itself failed: %w)", err, upErr)
 			}
 			return err
 		}
