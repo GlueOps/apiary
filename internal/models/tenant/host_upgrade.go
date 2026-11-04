@@ -2,6 +2,7 @@ package tenant
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -48,6 +49,11 @@ type UpgradeRequest struct {
 	// HiveNodeCount is the number of nodes in this host's cluster, and ZERO for a
 	// host in none. Zero is a real answer, not missing data.
 	HiveNodeCount int
+	// HiveMembersDown names the OTHER members of the cluster that are not
+	// observed up right now. Each has already cost its vote, so a reboot loses
+	// one more on top of them. A member whose state is unknown is listed here:
+	// unknown is not up.
+	HiveMembersDown []string
 
 	// Reboot is the requested policy. Empty means the default, which MAY reboot.
 	Reboot string
@@ -140,14 +146,27 @@ func CheckHostUpgrade(req UpgradeRequest) []DepartureRefusal {
 	// protect and refusing would be arithmetic for its own sake. A single-node
 	// cluster does technically lose quorum while it is down; there is no one to
 	// notice.
-	if req.HiveNodeCount > 1 && !QuorumSurvivesLosing(req.HiveNodeCount, 1) {
+	//
+	// Counted against what is UP, not what is configured: a member already down
+	// has already cost its vote, and this reboot costs one more.
+	if req.HiveNodeCount > 1 && !QuorumSurvivesLosing(req.HiveNodeCount, 1+len(req.HiveMembersDown)) {
+		detail := fmt.Sprintf("the cluster has %d node(s), and losing one leaves it without "+
+			"quorum", req.HiveNodeCount)
+		remedy := "Add a node, or upgrade without a reboot. A cluster that loses quorum goes " +
+			"read-only and its guests become unmanageable until it returns."
+		if len(req.HiveMembersDown) > 0 {
+			detail = fmt.Sprintf("the cluster has %d node(s) and %d of the others are not "+
+				"observed up (%s); losing this one as well leaves it without quorum",
+				req.HiveNodeCount, len(req.HiveMembersDown), strings.Join(req.HiveMembersDown, ", "))
+			remedy = "Bring the members that are down back first, or upgrade without a reboot. " +
+				"A cluster that loses quorum goes read-only and its guests become unmanageable " +
+				"until it returns."
+		}
 		out = append(out, DepartureRefusal{
 			Code:    RefuseUpgradeQuorum,
 			Summary: "rebooting this node would cost the cluster quorum",
-			Detail: fmt.Sprintf("the cluster has %d node(s), and losing one leaves it without "+
-				"quorum", req.HiveNodeCount),
-			Remedy: "Add a node, or upgrade without a reboot. A cluster that loses quorum goes " +
-				"read-only and its guests become unmanageable until it returns.",
+			Detail:  detail,
+			Remedy:  remedy,
 		})
 	}
 
