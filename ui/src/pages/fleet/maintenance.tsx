@@ -455,7 +455,7 @@ function ScheduleRow({ s }: { s: MaintenanceScheduleView }) {
         {s.kind === 'once' && s.last_window_at
           ? 'done'
           : s.enabled
-            ? s.next_openings.length
+            ? s.next_openings?.length
               ? s.next_openings.map((t) => <div key={t}>{when(t)}</div>)
               : '—'
             : 'paused'}
@@ -491,8 +491,10 @@ function RunCard({ run }: { run: MaintenanceRunView }) {
     },
     onError: (e) => toast.error(errorDetail(e, 'Could not stop the run')),
   });
-  const done = run.nodes.filter((n) => n.status === 'succeeded').length;
-  const skipped = run.nodes.filter((n) => n.status === 'skipped').length;
+  // Nullable on the wire: the API sends null, not [], for a run with no nodes.
+  const nodes = run.nodes ?? [];
+  const done = nodes.filter((n) => n.status === 'succeeded').length;
+  const skipped = nodes.filter((n) => n.status === 'skipped').length;
 
   return (
     <Card>
@@ -506,8 +508,8 @@ function RunCard({ run }: { run: MaintenanceRunView }) {
               ) : null}
             </CardTitle>
             <CardDescription>
-              Window {when(run.window_start)} – {when(run.window_end)} · {done} of{' '}
-              {run.nodes.length} upgraded
+              Window {when(run.window_start)} – {when(run.window_end)} · {done} of {nodes.length}{' '}
+              upgraded
               {skipped ? ` · ${skipped} skipped` : ''}
             </CardDescription>
           </div>
@@ -525,7 +527,7 @@ function RunCard({ run }: { run: MaintenanceRunView }) {
         {run.error ? <p className="text-sm text-amber-500">{run.error}</p> : null}
       </CardHeader>
       <CardContent>
-        {run.nodes.length === 0 ? (
+        {nodes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No hypervisors were in scope.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -538,7 +540,7 @@ function RunCard({ run }: { run: MaintenanceRunView }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {run.nodes.map((n) => (
+                {nodes.map((n) => (
                   <TableRow key={n.hypervisor_id}>
                     <TableCell className="font-mono text-sm">{n.name}</TableCell>
                     <TableCell>
