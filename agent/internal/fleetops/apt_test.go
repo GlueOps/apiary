@@ -3,6 +3,8 @@ package fleetops
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,10 +25,11 @@ type fakeDetached struct {
 	forgot  []string
 	onRun   func(key string) // side effect, e.g. dpkg becoming clean after a repair
 	blockOn string           // RunDetached of this key waits for ctx
+	argv    map[string][]string
 }
 
 func newFakeDetached() *fakeDetached {
-	return &fakeDetached{state: map[string]StepState{}, fail: map[string]error{}}
+	return &fakeDetached{state: map[string]StepState{}, fail: map[string]error{}, argv: map[string][]string{}}
 }
 
 func (f *fakeDetached) State(_ context.Context, key string) (StepState, error) {
@@ -40,6 +43,7 @@ func (f *fakeDetached) Forget(_ context.Context, key string) error {
 }
 
 func (f *fakeDetached) RunDetached(ctx context.Context, _ func(string, string, ...any), key, name string, args ...string) error {
+	f.argv[key] = append([]string{name}, args...)
 	if f.state[key] == StepInterrupted {
 		return ErrStepInterrupted
 	}
@@ -294,6 +298,107 @@ func TestDetachedStepsNeedATaskID(t *testing.T) {
 	}
 	if len(det.ran) != 0 {
 		t.Fatalf("ran %v with no task id", det.ran)
+	}
+}
+
+// The repair resolves, it never removes: `apt-get -f install` without
+// --no-remove removed a package an operator had installed with dpkg -i, and the
+// upgrade and reboot then went ahead.
+func TestTheRepairNeverRemovesPackages(t *testing.T) {
+	r := &auditRunner{dirty: true}
+	det := newFakeDetached()
+	rebooted := false
+
+	_ = DistUpgrade(context.Background(), aptDeps(r, det, &rebooted), aptEnv(), "", `{"reboot":"never"}`)
+	argv := det.argv["task-1-pre-apt-fix"]
+	if len(argv) == 0 {
+		t.Fatalf("the repair did not run: %v", det.ran)
+	}
+	if !slices.Contains(argv, "--no-remove") {
+		t.Fatalf("repair argv = %v; without --no-remove apt may resolve by removing somebody's package", argv)
+	}
+}
+
+// When systemd cannot say whether the upgrade is still running, nothing is
+// audited, repaired or rebooted: any of those on top of a live apt is the
+// failure the detached runner exists to prevent.
+func TestAnUpgradeOfUnknownStateIsNeitherRepairedNorRebooted(t *testing.T) {
+	r := &auditRunner{}
+	det := newFakeDetached()
+	det.fail["task-1-apt-dist-upgrade"] = fmt.Errorf("step x: %w", ErrStepStateUnknown)
+	det.onRun = func(key string) {
+		if strings.HasSuffix(key, "apt-dist-upgrade") {
+			r.dirty = true // what an audit of a dpkg mid-unpack reads as
+		}
+	}
+	rebooted := false
+
+	err := DistUpgrade(context.Background(), aptDeps(r, det, &rebooted), aptEnv(), "",
+		`{"reboot":"always","allow_guest_downtime":true}`)
+	if !errors.Is(err, ErrStepStateUnknown) {
+		t.Fatalf("err = %v, want ErrStepStateUnknown", err)
+	}
+	if rebooted || det.ranStep("post-dpkg-configure") || det.ranStep("post-apt-fix") {
+		t.Fatalf("acted on an upgrade that may still be running (rebooted=%v): %v", rebooted, det.ran)
+	}
+	if r.audits != 1 {
+		t.Fatalf("audited %d times; only the preflight audit may run", r.audits)
+	}
+}
+
+// pveupdate holding the lists lock is waited out, not a failed upgrade.
+func TestAptUpdateWaitsOutABusyListsLock(t *testing.T) {
+	prev := aptListsLockRetryWait
+	aptListsLockRetryWait = time.Millisecond
+	t.Cleanup(func() { aptListsLockRetryWait = prev })
+
+	r := &auditRunner{}
+	det := newFakeDetached()
+	busy := errors.New("apt-get update: exit status 100\n  E: Could not get lock /var/lib/apt/lists/lock. It is held by process 4242 (apt-get)")
+	det.fail["task-1-apt-update"] = busy
+	det.fail["task-1-apt-update-retry1"] = busy
+	rebooted := false
+
+	if err := DistUpgrade(context.Background(), aptDeps(r, det, &rebooted), aptEnv(), "", `{"reboot":"never"}`); err != nil {
+		t.Fatalf("a busy lists lock failed the upgrade: %v", err)
+	}
+	if !det.ranStep("apt-update-retry2") || !det.ranStep("apt-dist-upgrade") {
+		t.Fatalf("did not retry the update and carry on: %v", det.ran)
+	}
+}
+
+// Any other update failure is not retried.
+func TestAptUpdateFailingOtherwiseIsNotRetried(t *testing.T) {
+	r := &auditRunner{}
+	det := newFakeDetached()
+	det.fail["task-1-apt-update"] = errors.New("apt-get update: exit status 100\n  E: The repository is not signed.")
+	rebooted := false
+
+	if err := DistUpgrade(context.Background(), aptDeps(r, det, &rebooted), aptEnv(), "", `{"reboot":"never"}`); err == nil {
+		t.Fatal("a failed update did not fail the upgrade")
+	}
+	if det.ranStep("retry1") || det.ranStep("apt-dist-upgrade") {
+		t.Fatalf("ran on after a real update failure: %v", det.ran)
+	}
+}
+
+// A root filesystem with 2 GiB free cannot take one Proxmox kernel (~945 MiB
+// installed, plus its ~119 MiB download) alongside the rest of a dist-upgrade.
+func TestTheRootFloorCoversAKernelUpgrade(t *testing.T) {
+	prev := freeBytes
+	freeBytes = func(p string) (uint64, error) {
+		if p == "/" {
+			return 2 << 30, nil
+		}
+		return 1 << 40, nil
+	}
+	t.Cleanup(func() { freeBytes = prev })
+
+	det := newFakeDetached()
+	rebooted := false
+	err := DistUpgrade(context.Background(), aptDeps(&auditRunner{}, det, &rebooted), aptEnv(), "", `{"reboot":"never"}`)
+	if !errors.Is(err, ErrInsufficientSpace) {
+		t.Fatalf("err = %v, want ErrInsufficientSpace for 2 GiB free on /", err)
 	}
 }
 

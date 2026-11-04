@@ -75,9 +75,23 @@ EnvironmentFile=-/etc/apiary-agent/agent.env
 # dist-upgrade` on a Proxmox host, and a sandbox that breaks it makes the unit
 # look hardened while quietly disabling the thing it exists for.
 #
+# WHERE APT RUNS NOW. apt-get and dpkg no longer run inside this unit. Each
+# package step is started with systemd-run as its own transient unit,
+# apiary-step-<task>-<step>.service — a sibling under PID 1 with systemd's
+# DEFAULT sandbox, none of the directives below — so a restart, watchdog kill
+# or crash of this unit cannot reach dpkg mid-install. Its output and exit
+# status are recorded in /var/lib/apiary-agent/steps/ (StateDirectory below),
+# which is how a restarted agent re-attaches instead of starting a second apt.
+# `systemctl list-units 'apiary-step-*'` shows one in flight.
+#
+# The directives below still matter for apt, for two reasons: the agent falls
+# back to running apt as its own child when it cannot create steps/, and it
+# still runs dpkg --audit, pvecm and systemctl itself. So the three removals
+# stand until each is measured again against a real dist-upgrade.
+#
 # Three directives were removed after a dist-upgrade failed three times on a
-# live node, each failing at the NEXT step so the previous fix looked like
-# progress rather than an answer:
+# live node, back when apt ran inside this unit, each failing at the NEXT step
+# so the previous fix looked like progress rather than an answer:
 #
 #   CAP_SETUID   apt drops to the _apt user (uid 42) to run its download
 #                methods. Without it: "seteuid 42 failed - Operation not
