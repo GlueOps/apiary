@@ -25,9 +25,19 @@ type fakeSystemd struct {
 	// noStart makes systemd-run "succeed" without running anything, which is
 	// what a step killed the instant it began looks like afterwards.
 	noStart bool
+	// showFails decides, per call (counted from 1), whether `systemctl show`
+	// fails — systemd unreachable mid daemon-reexec.
+	showFails func(call int) bool
+	shows     int
+	// path is the PATH the step sees. A transient unit gets systemd's own
+	// minimal environment, NOT the agent's, so the fake does not inherit the
+	// test process's either.
+	path string
 }
 
-func newFakeSystemd() *fakeSystemd { return &fakeSystemd{running: map[string]bool{}} }
+func newFakeSystemd() *fakeSystemd {
+	return &fakeSystemd{running: map[string]bool{}, path: "/usr/sbin:/usr/bin:/sbin:/bin"}
+}
 
 func (f *fakeSystemd) Run(ctx context.Context, log func(string, string, ...any), name string, args ...string) error {
 	switch name {
@@ -35,8 +45,13 @@ func (f *fakeSystemd) Run(ctx context.Context, log func(string, string, ...any),
 		if len(args) > 0 && args[0] == "show" {
 			unit := args[len(args)-1]
 			f.mu.Lock()
+			f.shows++
+			fail := f.showFails != nil && f.showFails(f.shows)
 			alive := f.running[unit]
 			f.mu.Unlock()
+			if fail {
+				return errors.New("Failed to connect to bus: Connection refused")
+			}
 			state := "inactive"
 			if alive {
 				state = "active"
@@ -46,7 +61,7 @@ func (f *fakeSystemd) Run(ctx context.Context, log func(string, string, ...any),
 		return nil
 	case "systemd-run":
 		var unit string
-		env := os.Environ()
+		env := []string{"PATH=" + f.path}
 		var cmd []string
 		for i, a := range args {
 			switch {
@@ -104,7 +119,8 @@ func (f *fakeSystemd) startCount() int {
 
 func testSystemdRunner(t *testing.T, f *fakeSystemd) *systemdRunner {
 	t.Helper()
-	return &systemdRunner{runner: f, dir: t.TempDir(), poll: 10 * time.Millisecond, interruptedAfter: 3}
+	return &systemdRunner{runner: f, dir: t.TempDir(), poll: 10 * time.Millisecond, interruptedAfter: 3,
+		unreachableFor: time.Minute}
 }
 
 type lineLog struct {
@@ -243,6 +259,87 @@ func TestDetachedArgumentsAreNotShellInterpreted(t *testing.T) {
 	}
 	if !l.has("$(touch ") {
 		t.Fatalf("the argument did not arrive verbatim: %v", l.lines)
+	}
+}
+
+// One failed `systemctl show` is systemd not answering, not the unit ending.
+// Reading it as an end started an audit and a repair under a live apt.
+func TestDetachedStepSurvivesSystemdFailingToAnswer(t *testing.T) {
+	f := newFakeSystemd()
+	f.showFails = func(n int) bool { return n%2 == 0 } // every other call, throughout
+	r := testSystemdRunner(t, f)
+	var l lineLog
+
+	if err := r.RunDetached(context.Background(), l.log, "task-7", "/bin/sh", "-c", "sleep 0.3; echo done"); err != nil {
+		t.Fatalf("err = %v; a flaky systemd must not end the wait while the step runs", err)
+	}
+	if !l.has("stdout: done") {
+		t.Fatalf("the waiter gave up before the step finished: %v", l.lines)
+	}
+}
+
+// Systemd that stays unreachable is reported as UNKNOWN — never interrupted,
+// never finished — so the caller neither repairs nor reruns on top of it.
+func TestDetachedStepWithSystemdGoneIsUnknownNotInterrupted(t *testing.T) {
+	f := newFakeSystemd()
+	f.showFails = func(int) bool { return true }
+	r := testSystemdRunner(t, f)
+	r.unreachableFor = 50 * time.Millisecond
+
+	err := r.RunDetached(context.Background(), discard, "task-8", "/bin/sh", "-c", "sleep 0.5")
+	if !errors.Is(err, ErrStepStateUnknown) || errors.Is(err, ErrStepInterrupted) {
+		t.Fatalf("err = %v, want ErrStepStateUnknown and not ErrStepInterrupted", err)
+	}
+	if _, err := r.State(context.Background(), "task-8"); !errors.Is(err, ErrStepStateUnknown) {
+		t.Fatalf("State err = %v, want ErrStepStateUnknown while systemd cannot answer", err)
+	}
+}
+
+// The step's environment is systemd's plus what the runner sets — so the
+// noninteractive frontend must arrive through --setenv, not by inheritance.
+func TestDetachedStepGetsANoninteractiveFrontend(t *testing.T) {
+	t.Setenv("DEBIAN_FRONTEND", "") // nothing to inherit even if the fake leaked
+	r := testSystemdRunner(t, newFakeSystemd())
+	var l lineLog
+	if err := r.RunDetached(context.Background(), l.log, "task-9", "/bin/sh", "-c",
+		`echo "DF=$DEBIAN_FRONTEND LC=$APT_LISTCHANGES_FRONTEND"`); err != nil {
+		t.Fatal(err)
+	}
+	if !l.has("DF=noninteractive LC=none") {
+		t.Fatalf("the step did not get the noninteractive frontend: %v", l.lines)
+	}
+}
+
+// The exit status is written to a temporary file and renamed into place, so a
+// reader can never see a half-written one. A fake mv, first on the step's PATH,
+// checks at the moment of the rename that the final file does not exist yet and
+// the temporary one holds the whole status.
+func TestDetachedResultIsRenamedIntoPlace(t *testing.T) {
+	f := newFakeSystemd()
+	bin := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "renamed")
+	mv := `#!/bin/sh
+src="$2"; dst="$3"
+[ -e "$dst" ] && { echo "rc existed before the rename" >&2; exit 1; }
+[ "$(cat "$src")" = "4" ] || { echo "tmp did not hold the status" >&2; exit 1; }
+echo ok > "` + marker + `"
+exec /bin/mv "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "mv"), []byte(mv), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.path = bin + ":" + f.path
+	r := testSystemdRunner(t, f)
+
+	err := r.RunDetached(context.Background(), discard, "task-10", "/bin/sh", "-c", "exit 4")
+	if err == nil || !strings.Contains(err.Error(), "exit status 4") {
+		t.Fatalf("err = %v, want exit status 4", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatal("the status was not written through a temporary file and renamed into place")
+	}
+	if _, err := os.Stat(r.path("task-10", "rc.tmp")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the temporary status file was left behind: %v", err)
 	}
 }
 

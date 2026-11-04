@@ -76,6 +76,11 @@ func (s StepState) String() string {
 // record a status.
 var ErrStepInterrupted = errors.New("the step was killed before it recorded an exit status")
 
+// ErrStepStateUnknown reports a step whose unit systemd could not be asked about
+// for longer than the runner tolerates. It is NOT a result: the step may still
+// be running, so a caller must not audit, repair or start anything on top of it.
+var ErrStepStateUnknown = errors.New("systemd could not be asked whether the step is still running")
+
 // systemdRunner runs each step as a transient systemd service.
 //
 // The unit is a sibling of the agent under PID 1, not a child, so stopping,
@@ -95,6 +100,14 @@ type systemdRunner struct {
 	// the result is renamed into place a moment before the unit exits, and a
 	// unit that is still activating reads as not active.
 	interruptedAfter int
+
+	// unreachableFor is how long systemd may fail to answer `systemctl show`
+	// before the step's state is reported unknown. A failed query is NOT an
+	// answer: during a daemon-reexec, which an upgrade of systemd itself
+	// triggers, a share of calls fail while every unit carries on. Reading one
+	// failure as "the step ended" started an audit and a repair alongside a
+	// still-running apt.
+	unreachableFor time.Duration
 }
 
 // NewSystemdRunner keeps step records under dir.
@@ -106,7 +119,10 @@ func NewSystemdRunner(r Runner, dir string) (DetachedRunner, error) {
 		return nil, fmt.Errorf("detached runner: create %s: %w", dir, err)
 	}
 	pruneStepRecords(dir, stepRecordMaxAge, time.Now())
-	return &systemdRunner{runner: r, dir: dir, poll: time.Second, interruptedAfter: 3}, nil
+	return &systemdRunner{
+		runner: r, dir: dir, poll: time.Second, interruptedAfter: 3,
+		unreachableFor: 2 * time.Minute,
+	}, nil
 }
 
 // stepRecordMaxAge bounds how long step records are kept. Long enough to
@@ -164,7 +180,7 @@ func (s *systemdRunner) State(ctx context.Context, key string) (StepState, error
 	} else if err != nil {
 		return 0, err
 	}
-	alive, err := s.alive(ctx, key)
+	alive, err := s.aliveTolerant(ctx, key)
 	if err != nil {
 		return 0, err
 	}
@@ -181,7 +197,7 @@ func (s *systemdRunner) State(ctx context.Context, key string) (StepState, error
 	} else if ok {
 		return StepFinished, nil
 	}
-	if alive, err := s.alive(ctx, key); err != nil {
+	if alive, err := s.aliveTolerant(ctx, key); err != nil {
 		return 0, err
 	} else if alive {
 		return StepRunning, nil
@@ -278,6 +294,7 @@ func (s *systemdRunner) start(ctx context.Context, key, name string, args []stri
 func (s *systemdRunner) wait(ctx context.Context, log func(stream, format string, args ...any), key, name string, args []string) error {
 	f := &logFollower{path: s.path(key, "log"), log: log}
 	gone := 0
+	var failingSince time.Time
 	for {
 		f.drain()
 		if _, ok, err := s.result(key); err != nil {
@@ -288,12 +305,25 @@ func (s *systemdRunner) wait(ctx context.Context, log func(stream, format string
 			return s.finish(key, name, args)
 		}
 		alive, err := s.alive(ctx, key)
-		if err != nil {
-			return err
+		switch {
+		case err != nil:
+			// Could not ask. Not alive and not gone: neither counter moves, and
+			// the loop keeps following the log and looking for the result.
+			if failingSince.IsZero() {
+				failingSince = time.Now()
+				log("agent", "systemd did not answer about step %s (%v); still waiting", key, err)
+			} else if time.Since(failingSince) >= s.unreachableFor {
+				f.drain()
+				f.flush()
+				return fmt.Errorf("step %s (%s): %w for %s: %w", key, name, ErrStepStateUnknown, s.unreachableFor, err)
+			}
+		case alive:
+			gone, failingSince = 0, time.Time{}
+		default:
+			failingSince = time.Time{}
+			gone++
 		}
-		if alive {
-			gone = 0
-		} else if gone++; gone >= s.interruptedAfter {
+		if gone >= s.interruptedAfter {
 			f.drain()
 			f.flush()
 			return fmt.Errorf("step %s (%s): %w", key, name, ErrStepInterrupted)
@@ -330,6 +360,29 @@ func (s *systemdRunner) result(key string) (int, bool, error) {
 		return 0, false, fmt.Errorf("detached runner: step %s recorded an unreadable status %q", key, strings.TrimSpace(string(b)))
 	}
 	return code, true, nil
+}
+
+// aliveTolerant is alive, retried while systemd fails to answer, for up to
+// unreachableFor. See unreachableFor for why one failure is not an answer.
+func (s *systemdRunner) aliveTolerant(ctx context.Context, key string) (bool, error) {
+	var since time.Time
+	for {
+		alive, err := s.alive(ctx, key)
+		if err == nil {
+			return alive, nil
+		}
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		if since.IsZero() {
+			since = time.Now()
+		} else if time.Since(since) >= s.unreachableFor {
+			return false, fmt.Errorf("step %s: %w for %s: %w", key, ErrStepStateUnknown, s.unreachableFor, err)
+		}
+		if !sleepCtx(ctx, s.poll) {
+			return false, ctx.Err()
+		}
+	}
 }
 
 // alive asks systemd whether the step's unit is still doing something.
