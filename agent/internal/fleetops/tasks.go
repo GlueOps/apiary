@@ -257,7 +257,7 @@ func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
 	// stays generous because being wrong in that direction costs a slow task and
 	// being wrong in the other costs a failed one.
 	//
-	// Waited for, bounded, and then not fatal. See below.
+	// Waited for, bounded, and then FATAL. See below.
 	deadline := time.Now().Add(apiSettleTimeout)
 	var err error
 	for {
@@ -277,14 +277,14 @@ func verifyAfterReboot(ctx context.Context, d Deps, e *Env) error {
 			e.Logf("agent", "host is up; not a cluster member")
 			return nil
 		}
-		// COULD NOT ASK, not WAS TOLD NO — the same distinction the preflight
-		// makes. The upgrade has already happened and the host has already come
-		// back; failing the task now cannot undo either, and the control plane
-		// gated this before it was queued. A node that has left a cluster has no
-		// local API credential at all, so it can never answer this.
-		e.Logf("agent", "host is back; the cluster could not be read after %s (%v), so its "+
-			"state is not confirmed here", apiSettleTimeout, err)
-		return nil
+		// COULD NOT ASK is not YES. A success here is what a rotation reads as
+		// "this node is voting again, take the next one", and a host whose
+		// pmxcfs never came back is exactly the one that is not voting. Failing
+		// cannot undo the upgrade, but it stops the rotation and leaves the node
+		// cordoned for somebody to look at. A standalone host reads as
+		// not-clustered above, not as unreadable, so it does not land here.
+		return fmt.Errorf("host is back but the cluster could not be read after %s (%w); its "+
+			"vote is not confirmed, so the rotation must not move on", apiSettleTimeout, err)
 	}
 
 	if !d.Cluster.Quorate() {

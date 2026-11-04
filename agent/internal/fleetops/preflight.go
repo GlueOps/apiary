@@ -161,9 +161,20 @@ func preflightReboot(ctx context.Context, cl Cluster, node string, allowGuestDow
 			r.blocked("the cluster is not quorate right now; rebooting a node while quorum is " +
 				"already lost is how a recoverable outage becomes a manual one")
 		}
-		if members := cl.MemberCount(); !quorumSurvivesLosing(members, 1) {
-			r.blocked("removing this node from the voting set leaves %d of %d members, which is "+
-				"not a majority; the cluster would go read-only", members-1, members)
+		// PRESENT members, not configured ones. A member that is already down
+		// has already cost its vote; counting it let a three-node cluster with
+		// one node off reboot a second and lose quorum. A node absent from the
+		// presence list is counted as down, so an empty list refuses.
+		members := cl.MemberCount()
+		othersUp := 0
+		for _, n := range cl.OnlineNodeNames() {
+			if n != node {
+				othersUp++
+			}
+		}
+		if !quorumSurvivesLosing(members, members-othersUp) {
+			r.blocked("rebooting this node leaves %d of %d members voting, which is not a "+
+				"majority; the cluster would go read-only", othersUp, members)
 		}
 	}
 
