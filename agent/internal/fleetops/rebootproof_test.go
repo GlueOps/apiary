@@ -15,6 +15,7 @@ type fakeFacts struct {
 	boot, running, pin string
 	kernels            []string
 	pkgs               map[string]string
+	grub               GrubSelection
 }
 
 func (f *fakeFacts) BootID() (string, error)        { return f.boot, nil }
@@ -22,7 +23,8 @@ func (f *fakeFacts) RunningKernel() (string, error) { return f.running, nil }
 func (f *fakeFacts) InstalledKernels() ([]string, error) {
 	return append([]string{}, f.kernels...), nil
 }
-func (f *fakeFacts) PinnedKernel() (string, error) { return f.pin, nil }
+func (f *fakeFacts) PinnedKernel() (string, error)       { return f.pin, nil }
+func (f *fakeFacts) GrubDefault() (GrubSelection, error) { return f.grub, nil }
 func (f *fakeFacts) Packages(context.Context) (map[string]string, error) {
 	return maps.Clone(f.pkgs), nil
 }
@@ -186,7 +188,7 @@ func TestBootingTheOldKernelIsANamedFailureNotAnotherReboot(t *testing.T) {
 	h := newProofHost(t)
 	_ = h.run(specAlways)
 
-	h.bootInto(oldKernel) // e.g. a grub default someone set by hand
+	h.bootInto(oldKernel) // e.g. the new kernel failed and a person picked the old one
 	err := h.run(specAlways)
 	if !errors.Is(err, ErrBootedOldKernel) {
 		t.Fatalf("err = %v, want ErrBootedOldKernel", err)

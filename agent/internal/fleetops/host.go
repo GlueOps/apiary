@@ -24,8 +24,7 @@ import (
 // nil means the host is still up rebootWait later. The caller then checks the
 // boot id, which will say the reboot did not happen.
 func RebootHost(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "systemctl", "reboot")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := rebootCommand(ctx); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -43,3 +42,9 @@ func RebootHost(ctx context.Context) error {
 // shutdown that stops guests in order can be slow; ten minutes without it is a
 // reboot that is not coming.
 var rebootWait = 10 * time.Minute
+
+// rebootCommand queues the reboot. A var so the wait above can be tested
+// without rebooting the machine running the tests.
+var rebootCommand = func(ctx context.Context) ([]byte, error) {
+	return exec.CommandContext(ctx, "systemctl", "reboot").CombinedOutput()
+}

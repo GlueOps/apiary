@@ -231,7 +231,9 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 	}
 	needs := rebootRequired()
 	if x != nil {
-		logProof(e, "changed", x.Changed)
+		// A count and a sample, not the list: the full list is in the record
+		// file, and a full PVE upgrade's would not fit in one log line.
+		logProof(e, "changed", summarizeChanged(x.Changed, x.ChangedKnown))
 		// A new kernel needs a reboot whether or not anything wrote
 		// reboot-required — the kernel is the CVE fix most windows exist for.
 		// A new pve-qemu-kvm is recorded as a reason but does not trigger one on
@@ -245,7 +247,11 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		}
 		return nil
 	case spec.Reboot == "if-needed" && !needs:
-		e.Logf("agent", "no reboot required")
+		if x != nil && len(x.RebootReasons) > 0 {
+			e.Logf("agent", "no reboot required (noted, not a trigger: %s)", strings.Join(x.RebootReasons, ", "))
+		} else {
+			e.Logf("agent", "no reboot required")
+		}
 		return nil
 	}
 
@@ -263,7 +269,7 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 			"could not be verified; refusing to reboot: %w", err)
 	}
 	if x != nil {
-		logProof(e, "expectation", x)
+		logProof(e, "expectation", logExpectation(x))
 	}
 	e.Phase(phaseRebooting)
 	return declareAndReboot(ctx, d, e, spec, pf, x)

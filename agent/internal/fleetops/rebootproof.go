@@ -57,6 +57,9 @@ type HostFacts interface {
 	// PinnedKernel is the kernel proxmox-boot-tool will boot next if one is
 	// pinned, "" when none is.
 	PinnedKernel() (string, error)
+	// GrubDefault is what GRUB will boot when nothing is pinned: GRUB_DEFAULT
+	// and the grubenv block. Zero on a host without GRUB configuration.
+	GrubDefault() (GrubSelection, error)
 	// Packages is the installed version of every package.
 	Packages(ctx context.Context) (map[string]string, error)
 }
@@ -71,12 +74,14 @@ type PackageChange struct {
 
 // RebootExpectation is recorded before the reboot and checked after it.
 type RebootExpectation struct {
-	TaskID         string          `json:"task_id"`
-	BootID         string          `json:"boot_id"`
-	RunningKernel  string          `json:"running_kernel"`
-	ExpectedKernel string          `json:"expected_kernel,omitempty"`
-	KernelPinned   bool            `json:"kernel_pinned,omitempty"`
-	Changed        []PackageChange `json:"changed"`
+	TaskID         string `json:"task_id"`
+	BootID         string `json:"boot_id"`
+	RunningKernel  string `json:"running_kernel"`
+	ExpectedKernel string `json:"expected_kernel,omitempty"`
+	// KernelSource is how ExpectedKernel was decided: a pin, a GRUB entry, or
+	// the newest image. Named in the failure, because each is fixed elsewhere.
+	KernelSource string          `json:"kernel_source,omitempty"`
+	Changed      []PackageChange `json:"changed"`
 	// ChangedKnown is false when the before-snapshot was never taken (an agent
 	// upgraded mid-task), so an empty Changed is not read as "nothing changed".
 	ChangedKnown   bool      `json:"changed_known"`
@@ -137,12 +142,15 @@ func (p *proof) expect(ctx context.Context, e *Env) (*RebootExpectation, error) 
 	if x.RunningKernel, err = p.facts.RunningKernel(); err != nil {
 		return nil, fmt.Errorf("could not read the running kernel: %w", err)
 	}
-	x.ExpectedKernel, x.KernelPinned, err = expectedKernel(p.facts)
+	x.ExpectedKernel, x.KernelSource, err = expectedKernel(p.facts)
 	if err != nil {
 		// Recorded as unknown rather than refused: the boot id still proves the
 		// reboot, and a missing /boot glob is not a reason to leave a CVE open.
+		// Unknown also means the kernel does not FORCE a reboot under if-needed:
+		// a reboot for a kernel nobody can say will boot is how a GRUB-held host
+		// was rebooted, failed and rebooted again every window.
 		e.Logf("agent", "could not work out which kernel the host will boot (%v); the kernel "+
-			"will not be checked after the reboot", err)
+			"will not force a reboot or be checked after one", err)
 	}
 
 	after, err := p.facts.Packages(ctx)
@@ -214,12 +222,9 @@ func (p *proof) check(ctx context.Context, x *RebootExpectation) rebootVerdict {
 			v.Err = fmt.Errorf("could not read the running kernel: %w", err)
 			return v
 		case running != x.ExpectedKernel:
-			why := "the newest installed"
-			if x.KernelPinned {
-				why = "the pinned kernel"
-			}
 			v.Err = fmt.Errorf("%w: running %s, expected %s (%s); the host rebooted but the "+
-				"upgrade's kernel is not in effect", ErrBootedOldKernel, running, x.ExpectedKernel, why)
+				"upgrade's kernel is not in effect", ErrBootedOldKernel, running, x.ExpectedKernel,
+				orUnknownSource(x.KernelSource))
 			return v
 		}
 	}
@@ -257,30 +262,222 @@ func (p *proof) check(ctx context.Context, x *RebootExpectation) rebootVerdict {
 	return v
 }
 
-// logExpectation emits the record as one stable, machine-readable line.
+// maxProofLineBytes bounds one reboot-proof line. Well under the control
+// plane's 8 KiB per line: past that a line is cut and stops being JSON, and a
+// full PVE upgrade changes hundreds of packages. The whole list is in the
+// record file; the log carries a count and a sample.
+const maxProofLineBytes = 4096
+
+// changedSampleSize is how many changed packages a log line names.
+const changedSampleSize = 20
+
+// changedSummary is what the log says about the changed packages.
+type changedSummary struct {
+	Count  int             `json:"changed_count"`
+	Known  bool            `json:"changed_known"`
+	Sample []PackageChange `json:"changed_sample,omitempty"`
+}
+
+func summarizeChanged(cs []PackageChange, known bool) changedSummary {
+	s := changedSummary{Count: len(cs), Known: known}
+	// Kernels and PVE itself first: they are what a person reading the log is
+	// looking for, and alphabetical order would bury them under lib*.
+	ranked := append([]PackageChange(nil), cs...)
+	weight := func(p string) int {
+		switch {
+		case strings.HasPrefix(p, "proxmox-kernel-"), strings.HasPrefix(p, "pve-kernel-"):
+			return 0
+		case strings.HasPrefix(p, "pve-"), strings.HasPrefix(p, "proxmox-"):
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(ranked, func(i, j int) bool { return weight(ranked[i].Package) < weight(ranked[j].Package) })
+	if len(ranked) > changedSampleSize {
+		ranked = ranked[:changedSampleSize]
+	}
+	s.Sample = ranked
+	return s
+}
+
+// expectationLog is the expectation as logged: everything but the full list.
+type expectationLog struct {
+	TaskID         string   `json:"task_id"`
+	BootID         string   `json:"boot_id"`
+	RunningKernel  string   `json:"running_kernel"`
+	ExpectedKernel string   `json:"expected_kernel,omitempty"`
+	KernelSource   string   `json:"kernel_source,omitempty"`
+	RebootReasons  []string `json:"reboot_reasons,omitempty"`
+	RebootAttempts int      `json:"reboot_attempts"`
+	changedSummary
+}
+
+func logExpectation(x *RebootExpectation) expectationLog {
+	return expectationLog{
+		TaskID: x.TaskID, BootID: x.BootID, RunningKernel: x.RunningKernel,
+		ExpectedKernel: x.ExpectedKernel, KernelSource: x.KernelSource,
+		RebootReasons: x.RebootReasons, RebootAttempts: x.RebootAttempts,
+		changedSummary: summarizeChanged(x.Changed, x.ChangedKnown),
+	}
+}
+
+// logProof emits one stable, machine-readable line, never longer than
+// maxProofLineBytes. A value that would be is replaced by a marker saying so,
+// rather than cut into something that is no longer JSON.
 func logProof(e *Env, what string, v any) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
-	e.Logf("agent", "%s %s: %s", proofLogPrefix, what, b)
+	line := fmt.Sprintf("%s %s: %s", proofLogPrefix, what, b)
+	if len(line) > maxProofLineBytes {
+		line = fmt.Sprintf(`%s %s: {"omitted":"%d bytes; see the record file"}`, proofLogPrefix, what, len(b))
+	}
+	e.Logf("agent", "%s", line)
 }
 
-// expectedKernel is the kernel the next boot should run: the pinned one if
-// proxmox-boot-tool has one pinned, otherwise the newest image in /boot.
-func expectedKernel(f HostFacts) (kernel string, pinned bool, err error) {
+// GrubSelection is what GRUB is configured to boot.
+type GrubSelection struct {
+	// Default is GRUB_DEFAULT after /etc/default/grub.d is applied; "" unset.
+	Default string
+	// Env is the grubenv block: saved_entry, next_entry.
+	Env map[string]string
+}
+
+// expectedKernel is the kernel the next boot will run, decided the way the
+// bootloader decides it, or an error saying it cannot be told:
+//
+//   - a proxmox-boot-tool pin wins (it is what PVE's own tooling sets);
+//   - then GRUB's one-shot next_entry (grub-reboot), which 00_header honours
+//     whatever GRUB_DEFAULT says;
+//   - then GRUB_DEFAULT: unset, 0, or "saved" with nothing saved is the first
+//     entry, which update-grub makes the newest kernel; "saved" is saved_entry;
+//     a title or id names its kernel.
+//
+// An entry that cannot be resolved to exactly one installed kernel — a
+// non-zero index, a submenu path, a shell expression, a title naming no
+// kernel — is an error, not a guess. The caller then neither forces a reboot
+// for the kernel nor fails on it.
+func expectedKernel(f HostFacts) (kernel, source string, err error) {
 	if pin, err := f.PinnedKernel(); err == nil && pin != "" {
-		return pin, true, nil
+		return pin, "pinned with proxmox-boot-tool", nil
 	}
 	ks, err := f.InstalledKernels()
 	if err != nil {
-		return "", false, err
+		return "", "", err
 	}
 	if len(ks) == 0 {
-		return "", false, errors.New("no kernel images found in /boot")
+		return "", "", errors.New("no kernel images found in /boot")
 	}
 	sort.Slice(ks, func(i, j int) bool { return compareKernel(ks[i], ks[j]) < 0 })
-	return ks[len(ks)-1], false, nil
+	newest := ks[len(ks)-1]
+
+	grub, err := f.GrubDefault()
+	if err != nil {
+		return "", "", fmt.Errorf("could not read the GRUB configuration: %w", err)
+	}
+	if next := grub.Env["next_entry"]; next != "" {
+		return resolveGrubEntry(next, ks, newest, "GRUB next_entry")
+	}
+	switch def := grub.Default; def {
+	case "", "0":
+		return newest, "the newest installed", nil
+	case "saved":
+		saved := grub.Env["saved_entry"]
+		if saved == "" {
+			return newest, "the newest installed", nil
+		}
+		return resolveGrubEntry(saved, ks, newest, "GRUB saved_entry")
+	default:
+		return resolveGrubEntry(def, ks, newest, "GRUB_DEFAULT")
+	}
+}
+
+func resolveGrubEntry(entry string, ks []string, newest, source string) (string, string, error) {
+	if entry == "0" {
+		return newest, source + " 0, the newest installed", nil
+	}
+	if strings.ContainsAny(entry, "$`") {
+		return "", "", fmt.Errorf("%s is %q, a shell expression", source, entry)
+	}
+	var match string
+	for _, k := range ks {
+		if containsRelease(entry, k) {
+			if match != "" {
+				return "", "", fmt.Errorf("%s %q names more than one installed kernel", source, entry)
+			}
+			match = k
+		}
+	}
+	if match == "" {
+		return "", "", fmt.Errorf("%s is %q, which names no installed kernel", source, entry)
+	}
+	return match, source + " " + strconv.Quote(entry), nil
+}
+
+// containsRelease reports whether s names kernel release k as a whole: in
+// "gnulinux-6.8.12-10-pve-advanced", 6.8.12-10-pve and not 6.8.12-1-pve.
+func containsRelease(s, k string) bool {
+	part := func(c byte) bool {
+		return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.' || c == '_' || c == '+' || c == '~'
+	}
+	for i := 0; ; {
+		j := strings.Index(s[i:], k)
+		if j < 0 {
+			return false
+		}
+		start, end := i+j, i+j+len(k)
+		boundedLeft := start == 0 || !part(s[start-1])
+		// "-<digit>" continues a release (6.8.12 in 6.8.12-4); "-advanced" does not.
+		continues := end < len(s) && (part(s[end]) ||
+			s[end] == '-' && end+1 < len(s) && s[end+1] >= '0' && s[end+1] <= '9')
+		if boundedLeft && !continues {
+			return true
+		}
+		i = start + 1
+	}
+}
+
+func orUnknownSource(s string) string {
+	if s == "" {
+		return "the newest installed"
+	}
+	return s
+}
+
+// parseGrubDefault applies GRUB_DEFAULT assignments in order, as the shell
+// sourcing /etc/default/grub and then grub.d would: the last one wins.
+func parseGrubDefault(files []string) string {
+	var def string
+	for _, f := range files {
+		for line := range strings.SplitSeq(f, "\n") {
+			line = strings.TrimSpace(line)
+			v, ok := strings.CutPrefix(line, "GRUB_DEFAULT=")
+			if !ok {
+				continue
+			}
+			v = strings.TrimSpace(v)
+			if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+				v = v[1 : len(v)-1]
+			}
+			def = v
+		}
+	}
+	return def
+}
+
+// parseGrubEnv reads a grubenv block: key=value lines, padded with '#'.
+func parseGrubEnv(s string) map[string]string {
+	env := map[string]string{}
+	for line := range strings.SplitSeq(s, "\n") {
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		if k, v, ok := strings.Cut(line, "="); ok {
+			env[k] = v
+		}
+	}
+	return env
 }
 
 // compareKernel orders kernel releases: digit runs numerically, everything else
@@ -399,6 +596,42 @@ func (localFacts) PinnedKernel() (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// GrubDefault reads the files directly rather than running grub-editenv: the
+// grubenv block is a fixed text format, and a host without GRUB (systemd-boot
+// under proxmox-boot-tool) simply has none of them, which reads as default 0.
+func (localFacts) GrubDefault() (GrubSelection, error) {
+	var files []string
+	read := func(p string) error {
+		b, err := os.ReadFile(p)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			return nil
+		case err != nil:
+			return err
+		}
+		files = append(files, string(b))
+		return nil
+	}
+	if err := read("/etc/default/grub"); err != nil {
+		return GrubSelection{}, err
+	}
+	extra, _ := filepath.Glob("/etc/default/grub.d/*.cfg") // sorted, as the shell globs them
+	for _, p := range extra {
+		if err := read(p); err != nil {
+			return GrubSelection{}, err
+		}
+	}
+	sel := GrubSelection{Default: parseGrubDefault(files)}
+	b, err := os.ReadFile("/boot/grub/grubenv")
+	switch {
+	case err == nil:
+		sel.Env = parseGrubEnv(string(b))
+	case !errors.Is(err, os.ErrNotExist):
+		return GrubSelection{}, err
+	}
+	return sel, nil
 }
 
 func (f localFacts) Packages(ctx context.Context) (map[string]string, error) {
