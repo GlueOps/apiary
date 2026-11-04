@@ -78,13 +78,37 @@ func (n *notifier) Stopping() { n.send("STOPPING=1") }
 // operation still running after max stops being held, and a wedged loop is
 // restarted exactly as before.
 func (n *notifier) holdReportAlive(ctx context.Context, max time.Duration) func() {
+	return n.hold(ctx, &n.reportAlive, max)
+}
+
+// holdExecuteAlive is the same for the execute loop, for the length of one task.
+//
+// The execute loop stamped itself only BETWEEN tasks, so any task longer than
+// the watchdog's stale bound (twice WatchdogSec: two minutes) read as a wedged
+// loop and systemd SIGABRTed the agent mid-task. For a dist-upgrade that is most
+// of them — and before package steps were detached, the kill took dpkg with it.
+// The report loop was fixed for exactly this with holdReportAlive; the execute
+// loop never was.
+//
+// Capped like the report hold. Past max, the watchdog may restart the agent as
+// it always could; a dist-upgrade's steps are detached and the task resumes and
+// re-attaches, so that restart costs a log line, not a host.
+func (n *notifier) holdExecuteAlive(ctx context.Context, max time.Duration) func() {
+	return n.hold(ctx, &n.executeAlive, max)
+}
+
+// holdInterval is how often a hold re-stamps. A var so a test need not wait.
+var holdInterval = 5 * time.Second
+
+func (n *notifier) hold(ctx context.Context, stamp *atomic.Int64, max time.Duration) func() {
 	done := make(chan struct{})
+	every := holdInterval // read once, here, not by the goroutine
 	go func() {
-		t := time.NewTicker(5 * time.Second)
+		t := time.NewTicker(every)
 		defer t.Stop()
 		limit := time.After(max)
 		for {
-			n.reportAlive.Store(time.Now().UnixNano())
+			stamp.Store(time.Now().UnixNano())
 			select {
 			case <-ctx.Done():
 				return

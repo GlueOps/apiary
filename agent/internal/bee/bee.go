@@ -244,6 +244,13 @@ func (b *Bee) reportLoop(ctx context.Context) {
 // pvecm add, a join that hung ended in the watchdog restarting the agent.
 const membershipHoldMax = 10 * time.Minute
 
+// executeHoldMax bounds how long one task keeps the execute loop marked alive.
+// An hour covers a slow dist-upgrade on a slow mirror. A task still running past
+// it lets the watchdog restart the agent, which is safe for the long one that
+// matters: its package steps run in their own systemd units and are re-attached
+// on restart.
+const executeHoldMax = time.Hour
+
 type heartbeatOpts struct {
 	wait              time.Duration
 	unavailableFor    time.Duration
@@ -574,7 +581,10 @@ func (b *Bee) execute(ctx context.Context, t store.Task) {
 	b.notify.Status("running %s", t.Kind)
 	defer b.notify.Status("waiting for work")
 
-	if err := runExecutor(ctx, exec, t, env); err != nil {
+	release := b.notify.holdExecuteAlive(ctx, executeHoldMax)
+	err := runExecutor(ctx, exec, t, env)
+	release()
+	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			// Shutting down, not failing. Leaving the task RUNNING locally means
 			// a restarted bee resumes it rather than reporting a failure that

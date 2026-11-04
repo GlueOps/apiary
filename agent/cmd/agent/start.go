@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"github.com/glueops/apiary-agent/internal/bee"
@@ -96,7 +97,9 @@ func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 		fleetops.KindDistUpgrade: func(ctx context.Context, t store.Task, e *bee.Env) error {
 			// t.Phase carries what this task had already reached before the host
 			// rebooted; DistUpgrade uses it to resume rather than start over.
-			return fleetops.DistUpgrade(ctx, d, adapt(e), t.Phase, t.Spec)
+			env := adapt(e)
+			env.TaskID = t.ID
+			return fleetops.DistUpgrade(ctx, d, env, t.Phase, t.Spec)
 		},
 		fleetops.KindJoin: func(ctx context.Context, t store.Task, e *bee.Env) error {
 			return fleetops.Join(ctx, d, adapt(e), t.Spec)
@@ -136,12 +139,24 @@ func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 // a hypervisor could not be deployed ahead of one.
 func fleetDeps(cfg Config) fleetops.Deps {
 	runner := fleetops.NewExecRunner()
-	return fleetops.Deps{
+	d := fleetops.Deps{
 		Runner:  runner,
 		Node:    cfg.NodeName,
 		Reboot:  fleetops.RebootHost,
 		Cluster: fleetops.NewLocalCluster(runner),
 	}
+	// Package steps run in their own systemd units, recorded next to the
+	// agent's state so the records survive a reboot. Without a usable directory
+	// they fall back to running as the agent's children — said loudly, because
+	// that is the mode in which an agent restart kills dpkg mid-install.
+	dir := filepath.Join(filepath.Dir(cfg.StatePath), "steps")
+	if det, err := fleetops.NewSystemdRunner(runner, dir); err != nil {
+		slog.Warn("package steps will run as the agent's own children and will NOT survive an "+
+			"agent restart", "error", err)
+	} else {
+		d.Detached = det
+	}
+	return d
 }
 
 func init() {

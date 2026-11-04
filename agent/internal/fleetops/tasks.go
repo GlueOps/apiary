@@ -31,6 +31,10 @@ const (
 // Env is what fleetops needs from the agent runtime. It mirrors bee.Env, and is
 // redeclared here so this package does not import the runtime that calls it.
 type Env struct {
+	// TaskID is the task being executed. Detached steps are keyed by it, so a
+	// restarted agent finds THIS task's steps and not another's.
+	TaskID string
+
 	Logf    func(stream, format string, args ...any)
 	Phase   func(phase string)
 	Declare func(ctx context.Context, d time.Duration, reason string) error
@@ -51,6 +55,11 @@ type Deps struct {
 	ClusterErr error
 
 	Runner Runner
+
+	// Detached runs the steps that must outlive the agent — apt and dpkg — in
+	// their own systemd units. Nil falls back to running them as the agent's
+	// children, which is what tests and hosts without systemd get.
+	Detached DetachedRunner
 
 	// Node is this host's Proxmox node name, used when pmxcfs cannot be read.
 	// Prefer Cluster.NodeName(), which is the value the cluster itself keys on.
@@ -187,15 +196,10 @@ func DistUpgrade(ctx context.Context, d Deps, e *Env, phase string, rawSpec stri
 		}
 	}
 	e.Phase(phaseUpgrading)
-	e.Logf("agent", "updating package lists")
-	if err := d.Runner.Run(ctx, e.Logf, "apt-get", "update"); err != nil {
-		return err
-	}
-	e.Logf("agent", "running dist-upgrade")
-	if err := d.Runner.Run(ctx, e.Logf, "apt-get",
-		"-o", "Dpkg::Options::=--force-confdef",
-		"-o", "Dpkg::Options::=--force-confold",
-		"-y", "dist-upgrade"); err != nil {
+	// Detached, audited and resumable: see aptUpgrade. apt used to run here as
+	// the agent's own child, and anything that stopped the agent killed dpkg
+	// mid-install with it.
+	if err := aptUpgrade(ctx, d, e); err != nil {
 		return err
 	}
 
