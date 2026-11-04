@@ -588,7 +588,7 @@ func TestVerifyAfterRebootWaitsForTheApiToComeBack(t *testing.T) {
 	var declared time.Duration
 
 	if err := verifyAfterReboot(context.Background(),
-		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil)); err != nil {
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil), DistUpgradeSpec{}); err != nil {
 		t.Fatalf("a host whose API came back a moment later was reported as failed: %v", err)
 	}
 	if cl.statusCalls < 3 {
@@ -607,7 +607,7 @@ func TestVerifyAfterRebootDoesNotFailOnAnUnreadableApi(t *testing.T) {
 	var declared time.Duration
 
 	if err := verifyAfterReboot(context.Background(),
-		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil)); err != nil {
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil), DistUpgradeSpec{}); err != nil {
 		t.Fatalf("an unreadable API failed a task whose work had already completed: %v", err)
 	}
 }
@@ -622,7 +622,7 @@ func TestVerifyAfterRebootStillFailsOnALostQuorum(t *testing.T) {
 	var declared time.Duration
 
 	err := verifyAfterReboot(context.Background(),
-		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil))
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil), DistUpgradeSpec{})
 	if err == nil || !strings.Contains(err.Error(), "NOT quorate") {
 		t.Fatalf("err = %v, want a failure naming the lost quorum", err)
 	}
