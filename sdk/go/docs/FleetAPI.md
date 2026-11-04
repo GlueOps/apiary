@@ -33,6 +33,12 @@ Method | HTTP request | Description
 [**FleetHypervisorsGet**](FleetAPI.md#FleetHypervisorsGet) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 [**FleetHypervisorsList**](FleetAPI.md#FleetHypervisorsList) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
 [**FleetHypervisorsReprovision**](FleetAPI.md#FleetHypervisorsReprovision) | **Post** /api/v1/fleet/hypervisors/{id}/reprovision | Redrive a machine&#39;s onboarding
+[**FleetMaintenanceRunsList**](FleetAPI.md#FleetMaintenanceRunsList) | **Get** /api/v1/fleet/maintenance/runs | List recent maintenance runs
+[**FleetMaintenanceRunsStop**](FleetAPI.md#FleetMaintenanceRunsStop) | **Post** /api/v1/fleet/maintenance/runs/{id}/stop | Stop a maintenance run
+[**FleetMaintenanceSchedulesCreate**](FleetAPI.md#FleetMaintenanceSchedulesCreate) | **Post** /api/v1/fleet/maintenance/schedules | Schedule a maintenance window
+[**FleetMaintenanceSchedulesDelete**](FleetAPI.md#FleetMaintenanceSchedulesDelete) | **Delete** /api/v1/fleet/maintenance/schedules/{id} | Delete a maintenance window
+[**FleetMaintenanceSchedulesList**](FleetAPI.md#FleetMaintenanceSchedulesList) | **Get** /api/v1/fleet/maintenance/schedules | List maintenance windows
+[**FleetMaintenanceSchedulesUpdate**](FleetAPI.md#FleetMaintenanceSchedulesUpdate) | **Put** /api/v1/fleet/maintenance/schedules/{id} | Change a maintenance window
 [**FleetTasksCreate**](FleetAPI.md#FleetTasksCreate) | **Post** /api/v1/fleet/tasks | Queue work for a bee
 [**FleetTasksLogs**](FleetAPI.md#FleetTasksLogs) | **Get** /api/v1/fleet/tasks/{id}/logs | Read a task&#39;s streamed output
 [**SshKeysList**](FleetAPI.md#SshKeysList) | **Get** /api/v1/ssh-keys | List fleet SSH keys
@@ -2006,6 +2012,407 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceRunsList
+
+> ListMaintenanceRunsResponseBody FleetMaintenanceRunsList(ctx).Limit(limit).Execute()
+
+List recent maintenance runs
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	limit := int64(789) // int64 |  (optional) (default to 20)
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetMaintenanceRunsList(context.Background()).Limit(limit).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceRunsList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetMaintenanceRunsList`: ListMaintenanceRunsResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetMaintenanceRunsList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceRunsListRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **limit** | **int64** |  | [default to 20]
+
+### Return type
+
+[**ListMaintenanceRunsResponseBody**](ListMaintenanceRunsResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceRunsStop
+
+> MaintenanceRunView FleetMaintenanceRunsStop(ctx, id).Execute()
+
+Stop a maintenance run
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetMaintenanceRunsStop(context.Background(), id).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceRunsStop``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetMaintenanceRunsStop`: MaintenanceRunView
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetMaintenanceRunsStop`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceRunsStopRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+### Return type
+
+[**MaintenanceRunView**](MaintenanceRunView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceSchedulesCreate
+
+> MaintenanceScheduleView FleetMaintenanceSchedulesCreate(ctx).CreateMaintenanceScheduleRequestBody(createMaintenanceScheduleRequestBody).Execute()
+
+Schedule a maintenance window
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	createMaintenanceScheduleRequestBody := *openapiclient.NewCreateMaintenanceScheduleRequestBody(int64(123), false, "Kind_example", "Name_example", "Reboot_example") // CreateMaintenanceScheduleRequestBody | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetMaintenanceSchedulesCreate(context.Background()).CreateMaintenanceScheduleRequestBody(createMaintenanceScheduleRequestBody).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceSchedulesCreate``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetMaintenanceSchedulesCreate`: MaintenanceScheduleView
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetMaintenanceSchedulesCreate`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceSchedulesCreateRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **createMaintenanceScheduleRequestBody** | [**CreateMaintenanceScheduleRequestBody**](CreateMaintenanceScheduleRequestBody.md) |  | 
+
+### Return type
+
+[**MaintenanceScheduleView**](MaintenanceScheduleView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceSchedulesDelete
+
+> FleetMaintenanceSchedulesDelete(ctx, id).Execute()
+
+Delete a maintenance window
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	r, err := apiClient.FleetAPI.FleetMaintenanceSchedulesDelete(context.Background(), id).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceSchedulesDelete``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceSchedulesDeleteRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceSchedulesList
+
+> ListMaintenanceSchedulesResponseBody FleetMaintenanceSchedulesList(ctx).Execute()
+
+List maintenance windows
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetMaintenanceSchedulesList(context.Background()).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceSchedulesList``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetMaintenanceSchedulesList`: ListMaintenanceSchedulesResponseBody
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetMaintenanceSchedulesList`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+This endpoint does not need any parameter.
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceSchedulesListRequest struct via the builder pattern
+
+
+### Return type
+
+[**ListMaintenanceSchedulesResponseBody**](ListMaintenanceSchedulesResponseBody.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json, application/problem+json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)
+[[Back to Model list]](../README.md#documentation-for-models)
+[[Back to README]](../README.md)
+
+
+## FleetMaintenanceSchedulesUpdate
+
+> MaintenanceScheduleView FleetMaintenanceSchedulesUpdate(ctx, id).MaintenanceScheduleInput(maintenanceScheduleInput).Execute()
+
+Change a maintenance window
+
+
+
+### Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	openapiclient "github.com/glueops/apiary/sdk/go/apiary"
+)
+
+func main() {
+	id := "38400000-8cf0-11bd-b23e-10b96e4ef00d" // string | 
+	maintenanceScheduleInput := *openapiclient.NewMaintenanceScheduleInput(int64(123), false, "Kind_example", "Name_example", "Reboot_example") // MaintenanceScheduleInput | 
+
+	configuration := openapiclient.NewConfiguration()
+	apiClient := openapiclient.NewAPIClient(configuration)
+	resp, r, err := apiClient.FleetAPI.FleetMaintenanceSchedulesUpdate(context.Background(), id).MaintenanceScheduleInput(maintenanceScheduleInput).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when calling `FleetAPI.FleetMaintenanceSchedulesUpdate``: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
+	}
+	// response from `FleetMaintenanceSchedulesUpdate`: MaintenanceScheduleView
+	fmt.Fprintf(os.Stdout, "Response from `FleetAPI.FleetMaintenanceSchedulesUpdate`: %v\n", resp)
+}
+```
+
+### Path Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+**ctx** | **context.Context** | context for authentication, logging, cancellation, deadlines, tracing, etc.
+**id** | **string** |  | 
+
+### Other Parameters
+
+Other parameters are passed through a pointer to a apiFleetMaintenanceSchedulesUpdateRequest struct via the builder pattern
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+
+ **maintenanceScheduleInput** | [**MaintenanceScheduleInput**](MaintenanceScheduleInput.md) |  | 
+
+### Return type
+
+[**MaintenanceScheduleView**](MaintenanceScheduleView.md)
+
+### Authorization
+
+[OrgKeySecret](../README.md#OrgKeySecret), [OrgKeyAuth](../README.md#OrgKeyAuth), [ApiKeyAuth](../README.md#ApiKeyAuth), [BearerAuth](../README.md#BearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json, application/problem+json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints)

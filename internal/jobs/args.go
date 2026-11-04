@@ -269,3 +269,27 @@ func (ClaimPendingOnboardsArgs) InsertOpts() river.InsertOpts {
 		},
 	}
 }
+
+// MaintenanceTickArgs is the periodic tick that starts scheduled maintenance
+// windows and moves running ones forward, one node at a time.
+type MaintenanceTickArgs struct{}
+
+func (MaintenanceTickArgs) Kind() string { return "fleet.maintenance_tick" }
+
+func (MaintenanceTickArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		// One tick at a time. Two overlapping ticks would each take the run's row
+		// lock in turn and the second would find nothing to do, but a stuck one
+		// should not have a queue of followers forming behind it. All four of
+		// River's required states — see ClaimPendingOnboardsArgs.
+		UniqueOpts: river.UniqueOpts{
+			ByArgs: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}

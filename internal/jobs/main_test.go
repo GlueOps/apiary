@@ -9,6 +9,7 @@ import (
 
 func TestMain(m *testing.M) {
 	code := m.Run()
-	testsupport.DropSchemas(admissionTestSchema, capacitySchema, driftSchema, claimSchema)
+	testsupport.DropSchemas(admissionTestSchema, capacitySchema, driftSchema, claimSchema,
+		maintenanceSchema)
 	os.Exit(code)
 }

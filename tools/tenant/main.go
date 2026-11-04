@@ -44,6 +44,11 @@ func main() {
 		&tenant.Hypervisor{},
 		&tenant.Pool{},
 		&tenant.Placement{},
+
+		// Scheduled maintenance. After Hive: schedules and runs are scoped to one.
+		&tenant.MaintenanceSchedule{},
+		&tenant.MaintenanceRun{},
+		&tenant.MaintenanceRunNode{},
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load gorm schema: %v\n", err)

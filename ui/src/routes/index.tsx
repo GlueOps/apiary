@@ -20,6 +20,7 @@ import { FleetActivity } from '@/pages/fleet/activity.tsx';
 import { Fleet } from '@/pages/fleet/fleet.tsx';
 import { Clusters } from '@/pages/fleet/hives.tsx';
 import { Hypervisors } from '@/pages/fleet/hypervisors.tsx';
+import { Maintenance } from '@/pages/fleet/maintenance.tsx';
 import { AccessRules } from '@/pages/settings/access-rules.tsx';
 import { ApiKeys } from '@/pages/settings/api-keys.tsx';
 import { DangerZone } from '@/pages/settings/danger-zone.tsx';
@@ -91,6 +92,11 @@ export const router = createBrowserRouter([
                 path: 'fleet/hives',
                 element: <Clusters />,
                 handle: { title: 'Clusters' },
+              },
+              {
+                path: 'fleet/maintenance',
+                element: <Maintenance />,
+                handle: { title: 'Maintenance' },
               },
               {
                 path: 'fleet/activity',
