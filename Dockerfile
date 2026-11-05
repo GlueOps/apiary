@@ -12,7 +12,7 @@
 #
 # Build it with `goreleaser release --snapshot --clean`, not `docker build .`;
 # there is no source here to compile.
-FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM alpine:3.24@sha256:ce9e1e6d23f04a0b7593445a062a9fc73ed52f8260b9396f77a958295ad18ee7
 
 # Set by buildx, and it is how the two platform builds tell themselves apart:
 # goreleaser stages each platform's binaries under linux/amd64/ and linux/arm64/
