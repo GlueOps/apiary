@@ -20,7 +20,7 @@ function json(body: unknown) {
   });
 }
 
-function stubApi(runs: unknown[] = []) {
+function stubApi(runs: unknown[] = [], schedules: unknown[] = []) {
   const sent: Sent[] = [];
   vi.stubGlobal(
     'fetch',
@@ -34,7 +34,7 @@ function stubApi(runs: unknown[] = []) {
           headers: { 'content-type': 'application/json' },
         });
       }
-      if (input.url.includes('/fleet/maintenance/schedules')) return json({ schedules: [] });
+      if (input.url.includes('/fleet/maintenance/schedules')) return json({ schedules });
       if (input.url.includes('/fleet/maintenance/runs')) return json({ runs });
       if (input.url.includes('/fleet/hives')) {
         return json({ hives: [{ id: 'h1', name: 'dc1', provider: 'proxmox' }] });
@@ -73,6 +73,59 @@ describe('Maintenance', () => {
     const post = sent.find((s) => s.method === 'POST')!;
     expect(post.body).toMatchObject({ hive_id: 'h1', kind: 'once' });
     expect(post.body).not.toHaveProperty('standalone');
+  });
+
+  it('will not start a second run while a run-now window is still waiting to start', async () => {
+    stubApi(
+      [],
+      [
+        {
+          id: 's1',
+          hive_id: 'h1',
+          standalone: false,
+          name: 'Run now',
+          kind: 'once',
+          once_at: new Date().toISOString(),
+          duration_minutes: 240,
+          reboot: 'if-needed',
+          enabled: true,
+          open_now: true,
+          next_openings: null,
+          weekdays: null,
+        },
+      ],
+    );
+    renderPage();
+    await screen.findByText('open now');
+    const button = screen.getByRole('button', { name: 'Run now' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it('offers no Resume on a one-off window that has already happened', async () => {
+    stubApi(
+      [],
+      [
+        {
+          id: 's1',
+          hive_id: 'h1',
+          standalone: false,
+          name: 'last week',
+          kind: 'once',
+          once_at: '2026-10-01T02:00:00Z',
+          last_window_at: '2026-10-01T02:00:00Z',
+          duration_minutes: 240,
+          reboot: 'if-needed',
+          enabled: false,
+          open_now: false,
+          next_openings: null,
+          weekdays: null,
+        },
+      ],
+    );
+    renderPage();
+    await screen.findByText('last week');
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delete last week' })).toBeTruthy();
   });
 
   it('shows why a hypervisor was skipped and that a failed one was left cordoned', async () => {

@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -98,6 +99,38 @@ func TestQuorumIsTheConstraint(t *testing.T) {
 		rs := CheckHostUpgrade(upgradeReq(func(r *UpgradeRequest) { r.HiveNodeCount = tc.nodes }))
 		if got := hasUpgradeCode(rs, RefuseUpgradeQuorum); got != tc.refused {
 			t.Errorf("%d nodes: refused=%v, want %v (%s)", tc.nodes, got, tc.refused, tc.why)
+		}
+	}
+}
+
+// A MEMBER ALREADY DOWN HAS ALREADY COST ITS VOTE. Three nodes survive losing
+// one, but not losing a second while the first is still away: counting every
+// member let a maintenance run skip an offline node and reboot the next.
+func TestQuorumCountsMembersAlreadyDown(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		nodes   int
+		down    []string
+		refused bool
+	}{
+		{3, nil, false},
+		{3, []string{"hv1"}, true},
+		{5, []string{"hv1"}, false},
+		{5, []string{"hv1", "hv2"}, true},
+	} {
+		rs := CheckHostUpgrade(upgradeReq(func(r *UpgradeRequest) {
+			r.HiveNodeCount, r.HiveMembersDown = tc.nodes, tc.down
+		}))
+		if got := hasUpgradeCode(rs, RefuseUpgradeQuorum); got != tc.refused {
+			t.Errorf("%d nodes, down %v: refused=%v, want %v", tc.nodes, tc.down, got, tc.refused)
+		}
+		if tc.refused {
+			for _, r := range rs {
+				if r.Code == RefuseUpgradeQuorum && !strings.Contains(r.Detail, tc.down[0]) {
+					t.Errorf("the refusal must name the member that is down: %q", r.Detail)
+				}
+			}
 		}
 	}
 }
