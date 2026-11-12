@@ -27,7 +27,7 @@ jobs:
       postgres:
         # Matches the version developers run locally. gen_random_uuid() is in
         # core from PG13 on, which the schemas rely on.
-        image: postgres:18@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        image: postgres:18@sha256:b9f6b8ff03b62f3cfd9d9ba3fe56226a9991c79d3fb46fd46536263bf02be553
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
