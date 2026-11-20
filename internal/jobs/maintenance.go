@@ -69,7 +69,8 @@ func AdvanceMaintenance(ctx context.Context, db *gorm.DB, cfg MaintenanceConfig,
 			continue
 		}
 		if _, err := StartMaintenanceRun(ctx, db, s, open, now); err != nil &&
-			!errors.Is(err, ErrMaintenanceScopeBusy) {
+			!errors.Is(err, ErrMaintenanceScopeBusy) &&
+			!errors.Is(err, ErrMaintenanceWindowSuperseded) {
 			errs = append(errs, fmt.Errorf("schedule %s: %w", s.ID, err))
 		}
 	}
@@ -93,6 +94,22 @@ func AdvanceMaintenance(ctx context.Context, db *gorm.DB, cfg MaintenanceConfig,
 // run that finishes inside the window lets this one start.
 var ErrMaintenanceScopeBusy = errors.New("this scope already has a maintenance run in progress")
 
+// ErrMaintenanceWindowSuperseded is a window consumed without a run, because a
+// run on its scope ended after it opened. See StartMaintenanceRun.
+var ErrMaintenanceWindowSuperseded = errors.New(
+	"a run on this scope ended after the window opened, so the window does not run")
+
+// consumeWindow marks a window's opening as had. A one-off window has happened
+// once it has opened: disabled rather than deleted, so the record of it stays
+// beside its runs.
+func consumeWindow(tx *gorm.DB, s tenant.MaintenanceSchedule, open time.Time) error {
+	updates := map[string]any{"last_window_at": open}
+	if s.Kind == tenant.MaintenanceOnce {
+		updates["enabled"] = false
+	}
+	return tx.Model(&tenant.MaintenanceSchedule{}).Where("id = ?", s.ID).Updates(updates).Error
+}
+
 // StartMaintenanceRun starts a run for a schedule's window.
 //
 // ONE RUN PER SCOPE, held by a transaction-scoped advisory lock on the scope
@@ -107,7 +124,7 @@ var ErrMaintenanceScopeBusy = errors.New("this scope already has a maintenance r
 func StartMaintenanceRun(
 	ctx context.Context, db *gorm.DB, s tenant.MaintenanceSchedule, open, now time.Time,
 ) (*tenant.MaintenanceRun, error) {
-	var run *tenant.MaintenanceRun
+	var run, superseded *tenant.MaintenanceRun
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))",
 			maintenanceScopeKey(s.HiveID)).Error; err != nil {
@@ -130,6 +147,26 @@ func StartMaintenanceRun(
 		}
 		if active > 0 {
 			return ErrMaintenanceScopeBusy
+		}
+
+		// A WAITING WINDOW DOES NOT OUTLIVE A RUN THAT ENDED AFTER IT OPENED.
+		// It is consumed, not started, when a run on this scope either started
+		// inside it (the scope was maintained during this window already) or was
+		// stopped or failed after it opened. Without this, stopping a run, or a
+		// run failing on a node, was followed within a minute by whichever other
+		// window was waiting on the scope — and clicking Run now twice was enough
+		// to make one. The next opening of a recurring window runs as normal.
+		var supersededBy tenant.MaintenanceRun
+		if err := scopeWhere(tx.Model(&tenant.MaintenanceRun{}), cur.HiveID).
+			Where("status <> ?", tenant.MaintenanceRunRunning).
+			Where("started_at >= ? OR (status IN ? AND finished_at >= ?)", open,
+				[]string{tenant.MaintenanceRunStopped, tenant.MaintenanceRunFailed}, open).
+			Order("finished_at DESC").Limit(1).Find(&supersededBy).Error; err != nil {
+			return err
+		}
+		if supersededBy.ID != uuid.Nil {
+			superseded = &supersededBy
+			return consumeWindow(tx, cur, open)
 		}
 
 		var hvs []tenant.Hypervisor
@@ -163,17 +200,17 @@ func StartMaintenanceRun(
 			}
 			run.Nodes = append(run.Nodes, n)
 		}
-		updates := map[string]any{"last_window_at": open}
-		// A one-off window has happened once it has started. Disabled rather
-		// than deleted so the record of it stays beside its runs.
-		if cur.Kind == tenant.MaintenanceOnce {
-			updates["enabled"] = false
-		}
-		return tx.Model(&tenant.MaintenanceSchedule{}).Where("id = ?", cur.ID).
-			Updates(updates).Error
+		return consumeWindow(tx, cur, open)
 	})
 	if err != nil {
 		return nil, err
+	}
+	if superseded != nil {
+		slog.WarnContext(ctx, "a maintenance window was consumed without running: a run on its "+
+			"scope ended after the window opened",
+			"schedule_id", s.ID, "window", open, "superseded_by", superseded.ID,
+			"superseding_status", superseded.Status)
+		return nil, ErrMaintenanceWindowSuperseded
 	}
 	recordSystemAudit(ctx, db, run.ID, tenant.AuditMaintenanceStart, run.HiveID, map[string]any{
 		"run_id": run.ID.String(), "schedule_id": s.ID.String(), "nodes": len(run.Nodes),
@@ -302,8 +339,18 @@ func (d *runDriver) finish(nodes []tenant.MaintenanceRunNode, status, why, pendi
 	}
 	now := d.now
 	runID, hiveID := d.run.ID, d.run.HiveID
+	// A run that did not do what it was for is not an OK on the trail, and is
+	// said in the log too: nobody is watching the page at 03:00.
+	outcome := tenant.AuditOutcomeOK
+	if status == tenant.MaintenanceRunFailed || status == tenant.MaintenanceRunExpired {
+		outcome = tenant.AuditOutcomeFailed
+	}
 	d.audits = append(d.audits, func(ctx context.Context) {
-		recordSystemAudit(ctx, d.db, runID, tenant.AuditMaintenanceFinish, hiveID,
+		if outcome != tenant.AuditOutcomeOK {
+			slog.WarnContext(ctx, "a maintenance run ended without finishing",
+				"run_id", runID, "status", status, "error", why)
+		}
+		recordSystemAuditOutcome(ctx, d.db, runID, tenant.AuditMaintenanceFinish, hiveID, outcome,
 			map[string]any{"run_id": runID.String(), "status": status, "error": why})
 	})
 	return d.tx.Model(&tenant.MaintenanceRun{}).Where("id = ?", d.run.ID).Updates(map[string]any{
@@ -393,7 +440,13 @@ func (d *runDriver) startNode(ctx context.Context, n *tenant.MaintenanceRunNode)
 	case errors.Is(err, errRolledBack):
 		parts := make([]string, 0, len(refusals))
 		for _, r := range refusals {
-			parts = append(parts, r.Summary)
+			// With the detail: "would cost quorum" is not actionable until it
+			// says which members are already down.
+			if r.Detail != "" {
+				parts = append(parts, r.Summary+" ("+r.Detail+")")
+			} else {
+				parts = append(parts, r.Summary)
+			}
 		}
 		n.Status, n.FinishedAt = tenant.MaintenanceNodeFailed, &d.now
 		n.Reason = "the upgrade gate refused: " + strings.Join(parts, "; ")
@@ -535,10 +588,22 @@ func (d *runDriver) checkInFlight(_ context.Context, n *tenant.MaintenanceRunNod
 	if hv.BeeID == nil || d.tx.First(&bee, "id = ?", *hv.BeeID).Error != nil {
 		return fail("its agent was detached during its upgrade")
 	}
+	// The quorum report must be from AFTER the upgrade finished. The flag a node
+	// sent before it went down for its reboot is still on the row, still true,
+	// and says nothing about whether it is voting now. The task finishing is the
+	// agent's post-reboot verification, so a report at or after it is from the
+	// host that came back.
+	since := task.FinishedAt
+	if since == nil {
+		since = n.StartedAt
+	}
 	notBack := ""
 	switch {
 	case bee.LivenessAt(d.now, d.cfg.OnlineGrace) != tenant.BeeStatusOnline:
 		notBack = "its agent is not heartbeating"
+	case d.hive != nil && (bee.ObservedMembershipAt == nil || since == nil ||
+		bee.ObservedMembershipAt.Before(*since)):
+		notBack = "it has not reported its cluster membership since the upgrade"
 	case d.hive != nil && !bee.ObservedQuorate:
 		notBack = "it does not report the cluster quorate"
 	}
@@ -572,6 +637,14 @@ func (d *runDriver) restoreCordon(n *tenant.MaintenanceRunNode, hv tenant.Hyperv
 		n.Restored = true
 		return nil
 	}
+	// A machine that left this run's scope during its turn — departing, or
+	// moved to another cluster or into one — is no longer this run's to hand
+	// back. Uncordoning it would offer placements on a host that is leaving, or
+	// that another cluster's maintenance now owns.
+	if reason := d.leftScope(hv); reason != "" {
+		n.Reason = "left cordoned: " + reason + " during maintenance"
+		return nil
+	}
 	var touched int64
 	if err := d.tx.Model(&tenant.AuditEvent{}).
 		Where("target_kind = ? AND target_id = ? AND action IN ? AND principal_kind <> ? "+
@@ -599,10 +672,28 @@ func (d *runDriver) restoreCordon(n *tenant.MaintenanceRunNode, hv tenant.Hyperv
 	return nil
 }
 
+// leftScope says how a machine has left the run's scope, or "" if it has not.
+func (d *runDriver) leftScope(hv tenant.Hypervisor) string {
+	switch {
+	case hv.DepartingAt != nil:
+		return "a departure from its cluster was requested"
+	case d.hive != nil && (hv.HiveID == nil || *hv.HiveID != d.hive.ID):
+		return "it left this cluster"
+	case d.hive == nil && hv.HiveID != nil:
+		return "it joined a cluster"
+	}
+	return ""
+}
+
 // recordSystemAudit writes an action no person took. The principal is the run
 // itself, so "which run cordoned this" is one lookup.
 func recordSystemAudit(ctx context.Context, db *gorm.DB, runID uuid.UUID, action string,
 	hiveID *uuid.UUID, meta map[string]any) {
+	recordSystemAuditOutcome(ctx, db, runID, action, hiveID, tenant.AuditOutcomeOK, meta)
+}
+
+func recordSystemAuditOutcome(ctx context.Context, db *gorm.DB, runID uuid.UUID, action string,
+	hiveID *uuid.UUID, outcome string, meta map[string]any) {
 	target, targetID := tenant.AuditTargetFleet, (*uuid.UUID)(nil)
 	if hiveID != nil {
 		target, targetID = tenant.AuditTargetHive, hiveID
@@ -616,7 +707,7 @@ func recordSystemAudit(ctx context.Context, db *gorm.DB, runID uuid.UUID, action
 	ev := &tenant.AuditEvent{
 		PrincipalID: runID, PrincipalKind: tenant.PrincipalKindSystem,
 		Action: action, TargetKind: target, TargetID: targetID,
-		Outcome: tenant.AuditOutcomeOK, Metadata: repo.AuditMetadata(meta),
+		Outcome: outcome, Metadata: repo.AuditMetadata(meta),
 	}
 	if err := repo.RecordAudit(ctx, db.Session(&gorm.Session{NewDB: true}), ev); err != nil {
 		slog.ErrorContext(ctx, "a maintenance action was NOT written to the audit trail",

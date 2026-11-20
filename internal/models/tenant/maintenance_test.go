@@ -71,6 +71,38 @@ func TestNextOpenings(t *testing.T) {
 	}
 }
 
+// SPRING FORWARD. 02:00 does not exist in New York on 2027-03-14: the clocks go
+// from 01:59 EST to 03:00 EDT. time.Date resolves the missing wall time BACK to
+// 01:00 EST, which opened the window an hour before anyone asked. A missing
+// time moves forward, by the length of the gap, so 02:00 opens at 03:00 EDT
+// and 02:30 at 03:30 EDT.
+func TestWindowOnSpringForwardOpensAfterTheGap(t *testing.T) {
+	s := recurring(sunday, "02:00", "America/New_York", 120)
+	if _, ok := s.WindowAt(mustTime(t, "2027-03-14T06:30:00Z")); ok { // 01:30 EST
+		t.Error("the window opened before the wall clock reached its start")
+	}
+	open, ok := s.WindowAt(mustTime(t, "2027-03-14T07:30:00Z")) // 03:30 EDT
+	if !ok || !open.Equal(mustTime(t, "2027-03-14T07:00:00Z")) {
+		t.Errorf("want the window opened at 03:00 EDT (07:00Z), got %v %v", open, ok)
+	}
+	next := s.NextOpenings(mustTime(t, "2027-03-13T12:00:00Z"), 1)
+	if len(next) != 1 || !next[0].Equal(mustTime(t, "2027-03-14T07:00:00Z")) {
+		t.Errorf("next opening: want 2027-03-14T07:00:00Z, got %v", next)
+	}
+
+	half := recurring(sunday, "02:30", "America/New_York", 60)
+	open, ok = half.WindowAt(mustTime(t, "2027-03-14T07:45:00Z"))
+	if !ok || !open.Equal(mustTime(t, "2027-03-14T07:30:00Z")) {
+		t.Errorf("02:30 should open at 03:30 EDT (07:30Z), got %v %v", open, ok)
+	}
+
+	// An ordinary Sunday either side is unchanged.
+	open, ok = s.WindowAt(mustTime(t, "2027-03-21T06:30:00Z")) // 02:30 EDT
+	if !ok || !open.Equal(mustTime(t, "2027-03-21T06:00:00Z")) {
+		t.Errorf("the next Sunday: got %v %v", open, ok)
+	}
+}
+
 func TestOnceWindow(t *testing.T) {
 	at := mustTime(t, "2026-11-01T10:00:00Z")
 	s := MaintenanceSchedule{Kind: MaintenanceOnce, OnceAt: &at, DurationMinutes: 30}

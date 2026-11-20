@@ -83,7 +83,8 @@ func (f *mfleet) node(name string, opts ...nodeOpt) tenant.Hypervisor {
 	if err := f.db.Create(&bee).Error; err != nil {
 		f.t.Fatalf("seed bee: %v", err)
 	}
-	beeUp := map[string]any{"last_seen_at": f.now, "observed_quorate": true, "status": "online"}
+	beeUp := map[string]any{"last_seen_at": f.now, "observed_quorate": true, "status": "online",
+		"observed_membership_at": f.now}
 	if f.hive != nil {
 		beeUp["observed_cluster"] = f.hive.Name
 	}
@@ -189,7 +190,8 @@ func (f *mfleet) finishTask(n tenant.MaintenanceRunNode, status, errText string)
 // a live host's would be after the clock is moved on.
 func (f *mfleet) heartbeat(hv tenant.Hypervisor) {
 	f.db.Model(&tenant.Bee{}).Where("id = ?", *hv.BeeID).
-		Updates(map[string]any{"last_seen_at": f.now, "unavailable_until": nil})
+		Updates(map[string]any{"last_seen_at": f.now, "unavailable_until": nil,
+			"observed_membership_at": f.now})
 	f.db.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).Update("last_synced_at", f.now)
 }
 
@@ -358,6 +360,10 @@ func TestMaintenanceWithdrawsAnUncollectedUpgrade(t *testing.T) {
 // Detached machines — no agent, offline agent, a departure under way, an agent
 // that does not report the cluster — are skipped with a reason, and the run
 // carries on with the rest.
+//
+// Nine machines, so that the three that are not observed up (no agent, offline,
+// another cluster) still leave quorum for a reboot: the gate counts them as
+// down, and with only five it would rightly refuse.
 func TestMaintenanceSkipsDetachedMachines(t *testing.T) {
 	f := newFleet(t, "dc1")
 	f.node("hv1", noAgent())
@@ -365,11 +371,15 @@ func TestMaintenanceSkipsDetachedMachines(t *testing.T) {
 	f.node("hv3", departing())
 	f.node("hv4", func(_, bee map[string]any) { bee["observed_cluster"] = "other" })
 	healthy := f.node("hv5")
+	for _, n := range []string{"hv6", "hv7", "hv8", "hv9"} {
+		f.node(n)
+	}
 	f.window(f.hive)
 	f.tick()
 
 	r := f.run()
-	if got := statuses(r); got != "hv1=skipped hv2=skipped hv3=skipped hv4=skipped hv5=upgrading" {
+	if got := statuses(r); !strings.HasPrefix(got,
+		"hv1=skipped hv2=skipped hv3=skipped hv4=skipped hv5=upgrading hv6=pending") {
 		t.Fatalf("got %s", got)
 	}
 	for name, want := range map[string]string{
@@ -380,8 +390,14 @@ func TestMaintenanceSkipsDetachedMachines(t *testing.T) {
 			t.Errorf("%s: reason %q should mention %q", name, n.Reason, want)
 		}
 	}
-	f.finishTask(nodeByName(r, "hv5"), tenant.FleetTaskSucceeded, "")
-	f.tick()
+	for range 5 {
+		for _, n := range f.run().Nodes {
+			if n.Status == tenant.MaintenanceNodeUpgrading {
+				f.finishTask(n, tenant.FleetTaskSucceeded, "")
+			}
+		}
+		f.tick()
+	}
 	if r = f.run(); r.Status != tenant.MaintenanceRunSucceeded {
 		t.Fatalf("skips do not fail the run: %s", r.Status)
 	}
@@ -491,14 +507,39 @@ func TestMaintenanceRunsOneAtATimePerCluster(t *testing.T) {
 	f.window(f.hive)
 	f.window(f.hive)
 
+	// THE RACE ONLY HAPPENS ON WARM CONNECTIONS. Dialling a fresh connection
+	// takes long enough that each goroutine's transaction finished before the
+	// next began, so this passed with the advisory lock removed, 40 runs out of
+	// 40. Opening the pool's connections first, and releasing every goroutine
+	// at once, puts the transactions on top of each other.
+	const racers = 8
+	sqlDB, err := f.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(racers * 2)
+	sqlDB.SetMaxIdleConns(racers * 2)
+	var warm sync.WaitGroup
+	for range racers * 2 {
+		warm.Add(1)
+		go func() {
+			defer warm.Done()
+			f.db.Exec("SELECT pg_sleep(0.05)")
+		}()
+	}
+	warm.Wait()
+
 	var wg sync.WaitGroup
-	for range 4 {
+	start := make(chan struct{})
+	for range racers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			_ = AdvanceMaintenance(context.Background(), f.db, maintCfg, f.now)
 		}()
 	}
+	close(start)
 	wg.Wait()
 	if n := f.runs(); n != 1 {
 		t.Fatalf("one run per cluster, got %d", n)

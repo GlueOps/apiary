@@ -49,6 +49,7 @@ import {
   fleetMaintenanceSchedulesUpdateMutation,
 } from '@/sdk/@tanstack/react-query.gen';
 
+import { apiErrorMessage } from './api-error';
 import { LoadError } from './drain';
 
 /** The standalone pool: every hypervisor in no cluster. */
@@ -62,8 +63,22 @@ const REBOOTS: { value: 'if-needed' | 'always' | 'never'; label: string }[] = [
   { value: 'never', label: 'Never reboot (packages only)' },
 ];
 
-function errorDetail(e: unknown, fallback: string): string {
-  return (e as { detail?: string })?.detail ?? fallback;
+const errorDetail = apiErrorMessage;
+
+/**
+ * A one-off window that has opened, or been switched off, is finished: it will
+ * never open again, so "Resume" on it would do nothing or be refused.
+ */
+function finishedOnce(s: MaintenanceScheduleView): boolean {
+  return s.kind === 'once' && (!!s.last_window_at || (!s.enabled && !s.next_openings?.length));
+}
+
+/**
+ * A one-off window that is open and has not been picked up yet: a run is about
+ * to start. "Run now" again would queue a second one behind it.
+ */
+function waitingToStart(s: MaintenanceScheduleView): boolean {
+  return s.kind === 'once' && s.enabled && !s.last_window_at && s.open_now;
 }
 
 function when(iso?: string): string {
@@ -461,9 +476,13 @@ function ScheduleRow({ s }: { s: MaintenanceScheduleView }) {
             : 'paused'}
       </TableCell>
       <TableCell className="text-right whitespace-nowrap">
-        <Button size="sm" variant="outline" disabled={update.isPending} onClick={toggle}>
-          {s.enabled ? 'Pause' : 'Resume'}
-        </Button>{' '}
+        {finishedOnce(s) ? null : (
+          <>
+            <Button size="sm" variant="outline" disabled={update.isPending} onClick={toggle}>
+              {s.enabled ? 'Pause' : 'Resume'}
+            </Button>{' '}
+          </>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -575,13 +594,21 @@ export const Maintenance = () => {
       ? 'Standalone hypervisors'
       : (clusters.find((c) => c.id === scope)?.name ?? 'Cluster');
 
-  const schedules = useQuery(fleetMaintenanceSchedulesListOptions());
+  const schedules = useQuery({
+    ...fleetMaintenanceSchedulesListOptions(),
+    // Poll while a window is waiting to be picked up, so the page sees its run
+    // start without a refresh.
+    refetchInterval: (q) => (q.state.data?.schedules?.some(waitingToStart) ? 15_000 : false),
+  });
+  const starting = (schedules.data?.schedules ?? []).some(
+    (s) => inScope(scope, s) && waitingToStart(s),
+  );
   const runs = useQuery({
     ...fleetMaintenanceRunsListOptions({ query: { limit: 50 } }),
     // Poll while anything is in flight: a run moves a node a minute, and an
     // operator watching one should not have to keep pressing refresh.
     refetchInterval: (q) =>
-      q.state.data?.runs?.some((r) => r.status === 'running') ? 15_000 : false,
+      starting || q.state.data?.runs?.some((r) => r.status === 'running') ? 15_000 : false,
   });
 
   const [creating, setCreating] = useState(false);
@@ -641,8 +668,14 @@ export const Maintenance = () => {
         <Button
           size="sm"
           variant="outline"
-          disabled={active}
-          title={active ? 'A run is already in progress for this scope' : undefined}
+          disabled={active || starting}
+          title={
+            active
+              ? 'A run is already in progress for this scope'
+              : starting
+                ? 'A run for this scope is about to start'
+                : undefined
+          }
           onClick={() => setRunningNow(true)}
         >
           <IconPlayerPlay className="size-4" />
