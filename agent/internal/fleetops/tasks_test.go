@@ -596,19 +596,61 @@ func TestVerifyAfterRebootWaitsForTheApiToComeBack(t *testing.T) {
 	}
 }
 
-// And when it never comes back, the task still succeeds. The upgrade has already
-// happened and the host has already returned; failing now undoes neither, and a
-// node that has left a cluster has no local API credential to answer with at all.
-func TestVerifyAfterRebootDoesNotFailOnAnUnreadableApi(t *testing.T) {
+// And when it never comes back, the task FAILS. Reporting success sent the
+// rotation on to the next node with this one's vote unconfirmed, and a node
+// whose pmxcfs never mounts is exactly the one that is not voting. A standalone
+// host reads as not-clustered, not as unreadable, so it is not caught here.
+func TestVerifyAfterRebootFailsOnAnUnreadableCluster(t *testing.T) {
 	settleFastAPI(t)
 	cl := healthyCluster()
-	cl.statusErr = errors.New("not authorized to access endpoint")
+	cl.statusErr = errors.New("pmxcfs is not mounted")
 	var phases []string
 	var declared time.Duration
 
-	if err := verifyAfterReboot(context.Background(),
-		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil)); err != nil {
-		t.Fatalf("an unreadable API failed a task whose work had already completed: %v", err)
+	err := verifyAfterReboot(context.Background(),
+		Deps{Cluster: cl, Node: "hv-01"}, testEnv(&phases, &declared, nil))
+	if err == nil || !strings.Contains(err.Error(), "could not be read") {
+		t.Fatalf("err = %v; an unreadable cluster after a reboot must fail the task", err)
+	}
+}
+
+// A MEMBER ALREADY DOWN COUNTS. Three configured members with one of them off
+// leaves two voting; rebooting either leaves one of three, which is not a
+// majority. Counting the configured members said 2 of 3 and let it go.
+func TestPreflightRebootCountsMembersThatAreAlreadyDown(t *testing.T) {
+	cl := &fakeCluster{quorate: true, members: 3, self: "hv-01",
+		names: []string{"hv-01", "hv-02", "hv-03"}, online: []string{"hv-01", "hv-02"},
+		guests: map[string][]Guest{}}
+	r, err := preflightReboot(context.Background(), cl, "hv-01", false)
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	if len(r.Blockers) == 0 || !strings.Contains(strings.Join(r.Blockers, " "), "majority") {
+		t.Fatalf("a reboot with another member already down must be refused: %+v", r)
+	}
+
+	// Five configured, one down: losing this one leaves 3 of 5, still a majority.
+	cl = &fakeCluster{quorate: true, members: 5, self: "hv-01",
+		names:  []string{"hv-01", "hv-02", "hv-03", "hv-04", "hv-05"},
+		online: []string{"hv-01", "hv-02", "hv-03", "hv-04"}, guests: map[string][]Guest{}}
+	if r, err = preflightReboot(context.Background(), cl, "hv-01", false); err != nil ||
+		len(r.Blockers) != 0 {
+		t.Fatalf("3 of 5 survive; want no blockers, got %+v %v", r, err)
+	}
+}
+
+// No member reported present is not "all present": it is a read that says
+// nothing, and it refuses.
+func TestPreflightRebootRefusesWhenNoMemberIsReportedPresent(t *testing.T) {
+	cl := &fakeCluster{quorate: true, members: 5, self: "hv-01",
+		names:  []string{"hv-01", "hv-02", "hv-03", "hv-04", "hv-05"},
+		online: []string{}, guests: map[string][]Guest{}}
+	r, err := preflightReboot(context.Background(), cl, "hv-01", false)
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	if len(r.Blockers) == 0 {
+		t.Fatal("an empty presence list was read as a healthy cluster")
 	}
 }
 

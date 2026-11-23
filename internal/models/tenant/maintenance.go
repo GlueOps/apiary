@@ -196,7 +196,7 @@ func (s MaintenanceSchedule) WindowAt(now time.Time) (time.Time, bool) {
 		local := now.In(loc)
 		for back := 0; back <= 1; back++ {
 			day := local.AddDate(0, 0, -back)
-			open := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, loc)
+			open := wallClock(day, hh, mm, loc)
 			if s.Weekdays&(1<<int(open.Weekday())) == 0 {
 				continue
 			}
@@ -230,7 +230,7 @@ func (s MaintenanceSchedule) NextOpenings(now time.Time, n int) []time.Time {
 		local := now.In(loc)
 		for d := 0; d <= 7*n && len(out) < n; d++ {
 			day := local.AddDate(0, 0, d)
-			open := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, loc)
+			open := wallClock(day, hh, mm, loc)
 			if s.Weekdays&(1<<int(open.Weekday())) == 0 || !open.After(now) {
 				continue
 			}
@@ -304,6 +304,28 @@ func parseClock(s string) (int, int, error) {
 		return 0, 0, ErrMaintenanceClock
 	}
 	return t.Hour(), t.Minute(), nil
+}
+
+// wallClock is hh:mm on day's date in loc, with a wall time that does not exist
+// moved FORWARD.
+//
+// On a spring-forward date the hour the clocks skip has no instant, and
+// time.Date resolves it with the offset from AFTER the gap, landing an hour
+// BEFORE it: 02:00 in New York on its change date came back as 01:00 EST, so the
+// window opened before anybody's clock reached its start. Moving the missing time
+// on by the length of the gap gives 03:00 EDT, which is what every clock in that
+// zone reads once the window could have started. An ambiguous fall-back time
+// keeps time.Date's answer, the first of the two.
+func wallClock(day time.Time, hh, mm int, loc *time.Location) time.Time {
+	t := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, loc)
+	// Compared as naive wall clocks, so a gap at midnight that lands on the
+	// previous date is caught too.
+	want := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, time.UTC)
+	got := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC)
+	if got.Before(want) {
+		t = t.Add(want.Sub(got))
+	}
+	return t
 }
 
 // MaintenanceRunIsTerminal is the single definition of a finished run.
