@@ -350,6 +350,12 @@ type Hypervisor struct {
 	// hosts nobody has expressed intent about, and those are schedulable.
 	Schedulable bool `gorm:"not null;default:true" json:"schedulable"`
 
+	// MaintenanceAcknowledgedAt is an admin having looked at a node maintenance
+	// flagged for repeated failures. Strikes are counted only from after it (see
+	// repo.MaintenanceStrikes). It is not an uncordon: a failed node stays
+	// cordoned until a window succeeds on it or somebody uncordons it.
+	MaintenanceAcknowledgedAt *time.Time `gorm:"type:timestamptz" json:"maintenance_acknowledged_at,omitempty"`
+
 	// --- ONBOARDING: the one status that is a workflow. ------------------------
 	//
 	// THREE STATUSES, NOT ONE. "Status" on a machine means at least three

@@ -22,6 +22,7 @@ docs/APIKeysAPI.md
 docs/AcceptRequestBody.md
 docs/AcceptResponseBody.md
 docs/AccessRuleView.md
+docs/AcknowledgeMaintenanceResponseBody.md
 docs/AddSetElementRequestBody.md
 docs/AdminAPI.md
 docs/AgentBuildView.md
@@ -118,6 +119,7 @@ docs/ListHivesResponseBody.md
 docs/ListHypervisorsResponseBody.md
 docs/ListMaintenanceRunsResponseBody.md
 docs/ListMaintenanceSchedulesResponseBody.md
+docs/ListMaintenanceStrikesResponseBody.md
 docs/ListMembersResponseBody.md
 docs/ListOrganizationsResponseBody.md
 docs/ListResponseBody.md
@@ -141,6 +143,7 @@ docs/MaintenanceRunNodeView.md
 docs/MaintenanceRunView.md
 docs/MaintenanceScheduleInput.md
 docs/MaintenanceScheduleView.md
+docs/MaintenanceStrikesView.md
 docs/MeAPI.md
 docs/MemberView.md
 docs/MembershipDesiredView.md
@@ -237,6 +240,7 @@ go.sum
 model_accept_request_body.go
 model_accept_response_body.go
 model_access_rule_view.go
+model_acknowledge_maintenance_response_body.go
 model_add_set_element_request_body.go
 model_agent_build_view.go
 model_agent_dist_response_body.go
@@ -328,6 +332,7 @@ model_list_hives_response_body.go
 model_list_hypervisors_response_body.go
 model_list_maintenance_runs_response_body.go
 model_list_maintenance_schedules_response_body.go
+model_list_maintenance_strikes_response_body.go
 model_list_members_response_body.go
 model_list_organizations_response_body.go
 model_list_response_body.go
@@ -348,6 +353,7 @@ model_maintenance_run_node_view.go
 model_maintenance_run_view.go
 model_maintenance_schedule_input.go
 model_maintenance_schedule_view.go
+model_maintenance_strikes_view.go
 model_member_view.go
 model_membership_desired_view.go
 model_membership_member_view.go

@@ -36,9 +36,11 @@ import type {
   CreateMaintenanceScheduleRequestBody,
   MaintenanceRunView,
   MaintenanceScheduleView,
+  MaintenanceStrikesView,
 } from '@/sdk';
 import {
   fleetHivesListOptions,
+  fleetMaintenanceAcknowledgeMutation,
   fleetMaintenanceRunsListOptions,
   fleetMaintenanceRunsListQueryKey,
   fleetMaintenanceRunsStopMutation,
@@ -47,6 +49,8 @@ import {
   fleetMaintenanceSchedulesListOptions,
   fleetMaintenanceSchedulesListQueryKey,
   fleetMaintenanceSchedulesUpdateMutation,
+  fleetMaintenanceStrikesListOptions,
+  fleetMaintenanceStrikesListQueryKey,
 } from '@/sdk/@tanstack/react-query.gen';
 
 import { apiErrorMessage } from './api-error';
@@ -111,6 +115,15 @@ function inScope(scope: string, row: { hive_id?: string; standalone: boolean }):
   return scope === STANDALONE ? row.standalone : row.hive_id === scope;
 }
 
+/** The budget in words: how much one run works, and how many may fail. */
+function describeBudget(b: { max_nodes_per_run?: number; maintenance_pct?: number }): string {
+  const size = b.max_nodes_per_run ? `up to ${b.max_nodes_per_run} per run` : 'every hypervisor';
+  const pct = b.maintenance_pct ?? 0;
+  return pct
+    ? `${size}; carries on until more than ${pct}% have failed`
+    : `${size}; stops at the first failure`;
+}
+
 function RunBadge({ status }: { status: string }) {
   if (status === 'failed') return <Badge variant="destructive">failed</Badge>;
   if (status === 'running') return <Badge>running</Badge>;
@@ -135,6 +148,8 @@ type Draft = {
   onceAt: string;
   duration: number;
   reboot: 'if-needed' | 'always' | 'never';
+  maxNodes: number;
+  pct: number;
 };
 
 function blankDraft(): Draft {
@@ -147,6 +162,8 @@ function blankDraft(): Draft {
     onceAt: '',
     duration: 120,
     reboot: 'if-needed',
+    maxNodes: 0,
+    pct: 0,
   };
 }
 
@@ -194,6 +211,8 @@ function WindowDialog({
       duration_minutes: d.duration,
       reboot: d.reboot,
       enabled: true,
+      max_nodes_per_run: d.maxNodes,
+      maintenance_pct: d.pct,
       ...(scope === STANDALONE ? { standalone: true } : { hive_id: scope }),
       ...(d.kind === 'recurring'
         ? { weekdays: d.weekdays, start_time: d.startTime, timezone: d.timezone }
@@ -209,8 +228,8 @@ function WindowDialog({
           <DialogTitle>New maintenance window — {scopeName}</DialogTitle>
           <DialogDescription>
             In the window each hypervisor is cordoned, upgraded and rebooted in turn, one at a time.
-            Guests on a hypervisor go down with it. The first one that fails or does not come back
-            stops the run and stays cordoned.
+            Guests on a hypervisor go down with it. One that fails or does not come back stays
+            cordoned, and by default stops the run.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -322,6 +341,37 @@ function WindowDialog({
               </Select>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="mw-max-nodes">Hypervisors per run</Label>
+              <Input
+                id="mw-max-nodes"
+                type="number"
+                min={0}
+                max={1000}
+                value={d.maxNodes}
+                onChange={(e) => setD({ ...d, maxNodes: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mw-pct">Failure budget (%)</Label>
+              <Input
+                id="mw-pct"
+                type="number"
+                min={0}
+                max={50}
+                value={d.pct}
+                onChange={(e) => setD({ ...d, pct: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {describeBudget({ max_nodes_per_run: d.maxNodes, maintenance_pct: d.pct })}. 0
+            hypervisors per run means all of them; the rest are left for the next window, which
+            starts with the least recently maintained. In a cluster a run carries on past a failure
+            only while the cluster keeps a vote to spare. A hypervisor that fails in two runs in a
+            row is skipped until someone acknowledges it.
+          </p>
           <p className="text-xs text-muted-foreground">
             A hypervisor already rebooting when the window closes is allowed to finish; no new one
             starts.
@@ -451,6 +501,10 @@ function ScheduleRow({ s }: { s: MaintenanceScheduleView }) {
         duration_minutes: s.duration_minutes,
         reboot: s.reboot as Draft['reboot'],
         enabled: !s.enabled,
+        // Carried over: the update replaces the window, so leaving these out
+        // would quietly reset the budget to zero on Pause.
+        max_nodes_per_run: s.max_nodes_per_run,
+        maintenance_pct: s.maintenance_pct,
       },
     });
 
@@ -466,6 +520,7 @@ function ScheduleRow({ s }: { s: MaintenanceScheduleView }) {
       <TableCell className="text-sm text-muted-foreground">
         {REBOOTS.find((r) => r.value === s.reboot)?.label ?? s.reboot}
       </TableCell>
+      <TableCell className="text-sm text-muted-foreground">{describeBudget(s)}</TableCell>
       <TableCell className="text-sm text-muted-foreground tabular-nums">
         {s.kind === 'once' && s.last_window_at
           ? 'done'
@@ -494,6 +549,61 @@ function ScheduleRow({ s }: { s: MaintenanceScheduleView }) {
           }}
         >
           <IconTrash className="size-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * Hypervisors with maintenance failures that still count. A flagged one is
+ * skipped by every window until somebody acknowledges it — which lets
+ * maintenance try it again, and does NOT uncordon it.
+ */
+function StrikeRow({ h }: { h: MaintenanceStrikesView }) {
+  const qc = useQueryClient();
+  const ack = useMutation({
+    ...fleetMaintenanceAcknowledgeMutation(),
+    onSuccess: () => {
+      toast.success(`${h.name} will be tried again in its next window.`);
+      void qc.invalidateQueries({ queryKey: fleetMaintenanceStrikesListQueryKey() });
+    },
+    onError: (e) => toast.error(errorDetail(e, 'Could not acknowledge')),
+  });
+  return (
+    <TableRow>
+      <TableCell className="font-mono text-sm">{h.name}</TableCell>
+      <TableCell>
+        <div className="flex flex-wrap items-center gap-1">
+          {h.flagged ? (
+            <Badge variant="destructive">skipped until acknowledged</Badge>
+          ) : (
+            <Badge variant="secondary">
+              {h.strikes} failed run{h.strikes === 1 ? '' : 's'}
+            </Badge>
+          )}
+          {!h.schedulable ? <Badge variant="outline">cordoned</Badge> : null}
+        </div>
+      </TableCell>
+      <TableCell className="max-w-md text-xs break-words text-muted-foreground">
+        {when(h.latest_at)}: {h.latest_reason}
+      </TableCell>
+      <TableCell className="text-right whitespace-nowrap">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={ack.isPending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Acknowledge ${h.name}? Its next maintenance window will upgrade and reboot it ` +
+                  'again. It stays cordoned until that succeeds or someone uncordons it.',
+              )
+            )
+              ack.mutate({ path: { id: h.hypervisor_id } });
+          }}
+        >
+          Acknowledge
         </Button>
       </TableCell>
     </TableRow>
@@ -529,7 +639,7 @@ function RunCard({ run }: { run: MaintenanceRunView }) {
             <CardDescription>
               Window {when(run.window_start)} – {when(run.window_end)} · {done} of {nodes.length}{' '}
               upgraded
-              {skipped ? ` · ${skipped} skipped` : ''}
+              {skipped ? ` · ${skipped} skipped` : ''} · {describeBudget(run)}
             </CardDescription>
           </div>
           {run.status === 'running' && !run.stop_requested ? (
@@ -611,6 +721,11 @@ export const Maintenance = () => {
       starting || q.state.data?.runs?.some((r) => r.status === 'running') ? 15_000 : false,
   });
 
+  const strikes = useQuery(fleetMaintenanceStrikesListOptions());
+  const myStrikes = (strikes.data?.hypervisors ?? []).filter((h) =>
+    scope === STANDALONE ? !h.hive_id : h.hive_id === scope,
+  );
+
   const [creating, setCreating] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
 
@@ -626,8 +741,9 @@ export const Maintenance = () => {
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Scheduled upgrades and reboots, one hypervisor at a time. A hypervisor with no agent, an
             offline agent, or a departure under way is skipped with the reason and does not stop the
-            run; one that fails or does not come back does, and stays cordoned until someone looks.
-            The next window retries it if its agent is back online.
+            run. One that fails or does not come back stays cordoned, and stops the run unless the
+            window has a failure budget. The next window retries it, but after two failed runs in a
+            row it is skipped until someone acknowledges it below.
           </p>
         </div>
         <Button
@@ -637,6 +753,7 @@ export const Maintenance = () => {
           onClick={() => {
             void runs.refetch();
             void schedules.refetch();
+            void strikes.refetch();
           }}
         >
           <IconRefresh className="size-4" />
@@ -710,6 +827,7 @@ export const Maintenance = () => {
                     <TableHead>Name</TableHead>
                     <TableHead>When</TableHead>
                     <TableHead>Reboot</TableHead>
+                    <TableHead>Budget</TableHead>
                     <TableHead>Next</TableHead>
                     <TableHead />
                   </TableRow>
@@ -724,6 +842,37 @@ export const Maintenance = () => {
           )}
         </CardContent>
       </Card>
+
+      {myStrikes.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Needs attention</CardTitle>
+            <CardDescription>
+              Hypervisors whose upgrade failed in a maintenance run with no success since.
+              Acknowledging lets maintenance try one again; it does not uncordon it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Hypervisor</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Latest failure</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {myStrikes.map((h) => (
+                    <StrikeRow key={h.hypervisor_id} h={h} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="space-y-3">
         <h2 className="font-heading text-lg">Runs</h2>

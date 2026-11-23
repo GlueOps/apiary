@@ -31,6 +31,9 @@ type MaintenanceScheduleView struct {
 	Id string `json:"id"`
 	Kind string `json:"kind"`
 	LastWindowAt *time.Time `json:"last_window_at,omitempty"`
+	MaintenancePct int64 `json:"maintenance_pct"`
+	// 0 is every node in scope.
+	MaxNodesPerRun int64 `json:"max_nodes_per_run"`
 	Name string `json:"name"`
 	// The next three times the window opens, UTC.
 	NextOpenings []string `json:"next_openings"`
@@ -50,12 +53,14 @@ type _MaintenanceScheduleView MaintenanceScheduleView
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewMaintenanceScheduleView(durationMinutes int64, enabled bool, id string, kind string, name string, nextOpenings []string, openNow bool, reboot string, standalone bool, weekdays []int64) *MaintenanceScheduleView {
+func NewMaintenanceScheduleView(durationMinutes int64, enabled bool, id string, kind string, maintenancePct int64, maxNodesPerRun int64, name string, nextOpenings []string, openNow bool, reboot string, standalone bool, weekdays []int64) *MaintenanceScheduleView {
 	this := MaintenanceScheduleView{}
 	this.DurationMinutes = durationMinutes
 	this.Enabled = enabled
 	this.Id = id
 	this.Kind = kind
+	this.MaintenancePct = maintenancePct
+	this.MaxNodesPerRun = maxNodesPerRun
 	this.Name = name
 	this.NextOpenings = nextOpenings
 	this.OpenNow = openNow
@@ -295,6 +300,54 @@ func (o *MaintenanceScheduleView) HasLastWindowAt() bool {
 // SetLastWindowAt gets a reference to the given time.Time and assigns it to the LastWindowAt field.
 func (o *MaintenanceScheduleView) SetLastWindowAt(v time.Time) {
 	o.LastWindowAt = &v
+}
+
+// GetMaintenancePct returns the MaintenancePct field value
+func (o *MaintenanceScheduleView) GetMaintenancePct() int64 {
+	if o == nil {
+		var ret int64
+		return ret
+	}
+
+	return o.MaintenancePct
+}
+
+// GetMaintenancePctOk returns a tuple with the MaintenancePct field value
+// and a boolean to check if the value has been set.
+func (o *MaintenanceScheduleView) GetMaintenancePctOk() (*int64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.MaintenancePct, true
+}
+
+// SetMaintenancePct sets field value
+func (o *MaintenanceScheduleView) SetMaintenancePct(v int64) {
+	o.MaintenancePct = v
+}
+
+// GetMaxNodesPerRun returns the MaxNodesPerRun field value
+func (o *MaintenanceScheduleView) GetMaxNodesPerRun() int64 {
+	if o == nil {
+		var ret int64
+		return ret
+	}
+
+	return o.MaxNodesPerRun
+}
+
+// GetMaxNodesPerRunOk returns a tuple with the MaxNodesPerRun field value
+// and a boolean to check if the value has been set.
+func (o *MaintenanceScheduleView) GetMaxNodesPerRunOk() (*int64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.MaxNodesPerRun, true
+}
+
+// SetMaxNodesPerRun sets field value
+func (o *MaintenanceScheduleView) SetMaxNodesPerRun(v int64) {
+	o.MaxNodesPerRun = v
 }
 
 // GetName returns the Name field value
@@ -567,6 +620,8 @@ func (o MaintenanceScheduleView) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.LastWindowAt) {
 		toSerialize["last_window_at"] = o.LastWindowAt
 	}
+	toSerialize["maintenance_pct"] = o.MaintenancePct
+	toSerialize["max_nodes_per_run"] = o.MaxNodesPerRun
 	toSerialize["name"] = o.Name
 	if o.NextOpenings != nil {
 		toSerialize["next_openings"] = o.NextOpenings
@@ -598,6 +653,8 @@ func (o *MaintenanceScheduleView) UnmarshalJSON(data []byte) (err error) {
 		"enabled",
 		"id",
 		"kind",
+		"maintenance_pct",
+		"max_nodes_per_run",
 		"name",
 		"next_openings",
 		"open_now",

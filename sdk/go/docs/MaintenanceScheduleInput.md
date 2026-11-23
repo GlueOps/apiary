@@ -8,6 +8,8 @@ Name | Type | Description | Notes
 **DurationMinutes** | **int64** | How long the window stays open. A node already rebooting when it closes is allowed to finish; no new node starts. | 
 **Enabled** | **bool** |  | 
 **Kind** | **string** |  | 
+**MaintenancePct** | Pointer to **int64** | Failure budget, as a percentage of the run&#39;s size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare. | [optional] 
+**MaxNodesPerRun** | Pointer to **int64** | The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained. | [optional] 
 **Name** | **string** |  | 
 **OnceAt** | Pointer to **time.Time** | When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed. | [optional] 
 **Reboot** | **string** | Reboot policy each node&#39;s dist-upgrade runs with. | 
@@ -118,6 +120,56 @@ and a boolean to check if the value has been set.
 
 SetKind sets Kind field to given value.
 
+
+### GetMaintenancePct
+
+`func (o *MaintenanceScheduleInput) GetMaintenancePct() int64`
+
+GetMaintenancePct returns the MaintenancePct field if non-nil, zero value otherwise.
+
+### GetMaintenancePctOk
+
+`func (o *MaintenanceScheduleInput) GetMaintenancePctOk() (*int64, bool)`
+
+GetMaintenancePctOk returns a tuple with the MaintenancePct field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMaintenancePct
+
+`func (o *MaintenanceScheduleInput) SetMaintenancePct(v int64)`
+
+SetMaintenancePct sets MaintenancePct field to given value.
+
+### HasMaintenancePct
+
+`func (o *MaintenanceScheduleInput) HasMaintenancePct() bool`
+
+HasMaintenancePct returns a boolean if a field has been set.
+
+### GetMaxNodesPerRun
+
+`func (o *MaintenanceScheduleInput) GetMaxNodesPerRun() int64`
+
+GetMaxNodesPerRun returns the MaxNodesPerRun field if non-nil, zero value otherwise.
+
+### GetMaxNodesPerRunOk
+
+`func (o *MaintenanceScheduleInput) GetMaxNodesPerRunOk() (*int64, bool)`
+
+GetMaxNodesPerRunOk returns a tuple with the MaxNodesPerRun field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMaxNodesPerRun
+
+`func (o *MaintenanceScheduleInput) SetMaxNodesPerRun(v int64)`
+
+SetMaxNodesPerRun sets MaxNodesPerRun field to given value.
+
+### HasMaxNodesPerRun
+
+`func (o *MaintenanceScheduleInput) HasMaxNodesPerRun() bool`
+
+HasMaxNodesPerRun returns a boolean if a field has been set.
 
 ### GetName
 

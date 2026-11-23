@@ -144,6 +144,11 @@ func TestValidateMaintenanceSchedule(t *testing.T) {
 		"once no time": {func(s *MaintenanceSchedule) {
 			s.Kind = MaintenanceOnce
 		}, ErrMaintenanceOnceAt},
+		"negative node limit": {func(s *MaintenanceSchedule) { s.MaxNodesPerRun = -1 }, ErrMaintenanceMaxNodes},
+		"huge node limit":     {func(s *MaintenanceSchedule) { s.MaxNodesPerRun = 1001 }, ErrMaintenanceMaxNodes},
+		"negative budget":     {func(s *MaintenanceSchedule) { s.MaintenancePct = -1 }, ErrMaintenancePct},
+		// A budget that tolerates most of the run failing is no budget (C2).
+		"budget over half": {func(s *MaintenanceSchedule) { s.MaintenancePct = 51 }, ErrMaintenancePct},
 	}
 	for name, c := range cases {
 		s := ok
@@ -151,5 +156,28 @@ func TestValidateMaintenanceSchedule(t *testing.T) {
 		if err := ValidateMaintenanceSchedule(s); !errors.Is(err, c.want) {
 			t.Errorf("%s: want %v, got %v", name, c.want, err)
 		}
+	}
+}
+
+// The budget arithmetic, worked for the owner's glueops-core-mm intent: 12 nodes
+// per run at 30%, so three failures carry on and the fourth stops the run.
+func TestMaintenanceBudgetArithmetic(t *testing.T) {
+	mm := MaintenanceBudget{MaxNodesPerRun: 12, MaintenancePct: 30}
+	if n := mm.PlannedSize(37); n != 12 {
+		t.Fatalf("N is the node limit: %d", n)
+	}
+	if n := mm.PlannedSize(5); n != 5 {
+		t.Fatalf("N is capped at the scope: %d", n)
+	}
+	if n := (MaintenanceBudget{}).PlannedSize(37); n != 37 {
+		t.Fatalf("no limit is every node: %d", n)
+	}
+	for failures, want := range map[int]bool{1: false, 3: false, 4: true} {
+		if got := mm.Exceeded(failures, 12); got != want {
+			t.Errorf("%d of 12 at 30%%: exceeded=%v, want %v", failures, got, want)
+		}
+	}
+	if !(MaintenanceBudget{}).Exceeded(1, 12) || (MaintenanceBudget{}).Exceeded(0, 12) {
+		t.Fatal("0% is exceeded by the first failure and only by it")
 	}
 }

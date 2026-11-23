@@ -181,6 +181,7 @@ func reads() []call {
 		{"unused hive id", http.MethodGet, "/fleet/hives?x=" + hiveID, nil},
 		{"list maintenance windows", http.MethodGet, "/fleet/maintenance/schedules", nil},
 		{"list maintenance runs", http.MethodGet, "/fleet/maintenance/runs", nil},
+		{"list maintenance strikes", http.MethodGet, "/fleet/maintenance/strikes", nil},
 	}
 }
 
@@ -219,6 +220,9 @@ func mutations() []call {
 			}},
 		{"delete maintenance", http.MethodDelete, "/fleet/maintenance/schedules/" + hiveID, nil},
 		{"stop maintenance run", http.MethodPost, "/fleet/maintenance/runs/" + hiveID + "/stop", nil},
+		// Clearing strikes lets maintenance reboot a node again.
+		{"acknowledge maintenance failures", http.MethodPost,
+			"/fleet/hypervisors/" + hypID + "/maintenance/acknowledge", nil},
 	}
 }
 

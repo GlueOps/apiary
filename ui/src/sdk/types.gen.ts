@@ -86,6 +86,19 @@ export type AccessRuleView = {
     value: string;
 };
 
+export type AcknowledgeMaintenanceResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    acknowledged_at: string;
+    /**
+     * How many strikes the acknowledgement cleared.
+     */
+    cleared: number;
+    hypervisor_id: string;
+};
+
 export type AddSetElementRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -412,6 +425,14 @@ export type CreateMaintenanceScheduleRequestBody = {
      */
     hive_id?: string;
     kind: 'recurring' | 'once';
+    /**
+     * Failure budget, as a percentage of the run's size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare.
+     */
+    maintenance_pct?: number;
+    /**
+     * The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained.
+     */
+    max_nodes_per_run?: number;
     name: string;
     /**
      * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
@@ -1333,6 +1354,14 @@ export type ListMaintenanceSchedulesResponseBody = {
     schedules: Array<MaintenanceScheduleView> | null;
 };
 
+export type ListMaintenanceStrikesResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    hypervisors: Array<MaintenanceStrikesView> | null;
+};
+
 export type ListMembersResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1531,6 +1560,14 @@ export type MaintenanceRunView = {
     finished_at?: string;
     hive_id?: string;
     id: string;
+    /**
+     * The failure budget the run started with.
+     */
+    maintenance_pct: number;
+    /**
+     * The node limit the run started with; 0 is every node.
+     */
+    max_nodes_per_run: number;
     nodes: Array<MaintenanceRunNodeView> | null;
     reboot: string;
     schedule_id?: string;
@@ -1554,6 +1591,14 @@ export type MaintenanceScheduleInput = {
     duration_minutes: number;
     enabled: boolean;
     kind: 'recurring' | 'once';
+    /**
+     * Failure budget, as a percentage of the run's size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare.
+     */
+    maintenance_pct?: number;
+    /**
+     * The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained.
+     */
+    max_nodes_per_run?: number;
     name: string;
     /**
      * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
@@ -1589,6 +1634,11 @@ export type MaintenanceScheduleView = {
     id: string;
     kind: 'recurring' | 'once';
     last_window_at?: string;
+    maintenance_pct: number;
+    /**
+     * 0 is every node in scope.
+     */
+    max_nodes_per_run: number;
     name: string;
     /**
      * The next three times the window opens, UTC.
@@ -1604,6 +1654,27 @@ export type MaintenanceScheduleView = {
     start_time?: string;
     timezone?: string;
     weekdays: Array<number> | null;
+};
+
+export type MaintenanceStrikesView = {
+    /**
+     * Maintenance skips it until an admin acknowledges it.
+     */
+    flagged: boolean;
+    hive_id?: string;
+    hypervisor_id: string;
+    latest_at: string;
+    latest_reason: string;
+    latest_run_id: string;
+    name: string;
+    /**
+     * False while it is still cordoned. Acknowledging does not uncordon it.
+     */
+    schedulable: boolean;
+    /**
+     * Maintenance runs in a row in which its upgrade started and then failed.
+     */
+    strikes: number;
 };
 
 export type MemberView = {
@@ -2609,6 +2680,15 @@ export type AccessRuleViewWritable = {
     value: string;
 };
 
+export type AcknowledgeMaintenanceResponseBodyWritable = {
+    acknowledged_at: string;
+    /**
+     * How many strikes the acknowledgement cleared.
+     */
+    cleared: number;
+    hypervisor_id: string;
+};
+
 export type AddSetElementRequestBodyWritable = {
     comment?: string;
     label?: string;
@@ -2772,6 +2852,14 @@ export type CreateMaintenanceScheduleRequestBodyWritable = {
      */
     hive_id?: string;
     kind: 'recurring' | 'once';
+    /**
+     * Failure budget, as a percentage of the run's size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare.
+     */
+    maintenance_pct?: number;
+    /**
+     * The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained.
+     */
+    max_nodes_per_run?: number;
     name: string;
     /**
      * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
@@ -3354,6 +3442,10 @@ export type ListMaintenanceSchedulesResponseBodyWritable = {
     schedules: Array<MaintenanceScheduleViewWritable> | null;
 };
 
+export type ListMaintenanceStrikesResponseBodyWritable = {
+    hypervisors: Array<MaintenanceStrikesView> | null;
+};
+
 export type ListMembersResponseBodyWritable = {
     members: Array<MemberView> | null;
 };
@@ -3453,6 +3545,14 @@ export type MaintenanceRunViewWritable = {
     finished_at?: string;
     hive_id?: string;
     id: string;
+    /**
+     * The failure budget the run started with.
+     */
+    maintenance_pct: number;
+    /**
+     * The node limit the run started with; 0 is every node.
+     */
+    max_nodes_per_run: number;
     nodes: Array<MaintenanceRunNodeView> | null;
     reboot: string;
     schedule_id?: string;
@@ -3472,6 +3572,14 @@ export type MaintenanceScheduleInputWritable = {
     duration_minutes: number;
     enabled: boolean;
     kind: 'recurring' | 'once';
+    /**
+     * Failure budget, as a percentage of the run's size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare.
+     */
+    maintenance_pct?: number;
+    /**
+     * The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained.
+     */
+    max_nodes_per_run?: number;
     name: string;
     /**
      * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
@@ -3503,6 +3611,11 @@ export type MaintenanceScheduleViewWritable = {
     id: string;
     kind: 'recurring' | 'once';
     last_window_at?: string;
+    maintenance_pct: number;
+    /**
+     * 0 is every node in scope.
+     */
+    max_nodes_per_run: number;
     name: string;
     /**
      * The next three times the window opens, UTC.
@@ -6284,6 +6397,33 @@ export type FleetHypervisorsDisarmResponses = {
 
 export type FleetHypervisorsDisarmResponse = FleetHypervisorsDisarmResponses[keyof FleetHypervisorsDisarmResponses];
 
+export type FleetMaintenanceAcknowledgeData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/hypervisors/{id}/maintenance/acknowledge';
+};
+
+export type FleetMaintenanceAcknowledgeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceAcknowledgeError = FleetMaintenanceAcknowledgeErrors[keyof FleetMaintenanceAcknowledgeErrors];
+
+export type FleetMaintenanceAcknowledgeResponses = {
+    /**
+     * OK
+     */
+    200: AcknowledgeMaintenanceResponseBody;
+};
+
+export type FleetMaintenanceAcknowledgeResponse = FleetMaintenanceAcknowledgeResponses[keyof FleetMaintenanceAcknowledgeResponses];
+
 export type FleetHypervisorsReprovisionData = {
     body?: never;
     path: {
@@ -6468,6 +6608,31 @@ export type FleetMaintenanceSchedulesUpdateResponses = {
 };
 
 export type FleetMaintenanceSchedulesUpdateResponse = FleetMaintenanceSchedulesUpdateResponses[keyof FleetMaintenanceSchedulesUpdateResponses];
+
+export type FleetMaintenanceStrikesListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/fleet/maintenance/strikes';
+};
+
+export type FleetMaintenanceStrikesListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceStrikesListError = FleetMaintenanceStrikesListErrors[keyof FleetMaintenanceStrikesListErrors];
+
+export type FleetMaintenanceStrikesListResponses = {
+    /**
+     * OK
+     */
+    200: ListMaintenanceStrikesResponseBody;
+};
+
+export type FleetMaintenanceStrikesListResponse = FleetMaintenanceStrikesListResponses[keyof FleetMaintenanceStrikesListResponses];
 
 export type FleetTasksCreateData = {
     body: CreateTaskRequestBodyWritable;
