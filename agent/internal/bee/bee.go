@@ -27,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/glueops/apiary-agent/internal/firewall"
 	"github.com/glueops/apiary-agent/internal/fleetops"
@@ -455,6 +456,25 @@ func (b *Bee) heartbeatLocked(ctx context.Context, o heartbeatOpts) (bool, error
 	return true, nil
 }
 
+// maxShippedLineBytes is the longest message shipped. The control plane keeps
+// 8 KiB of a line and REFUSES a batch holding one over 16 KiB, and a refused
+// batch is never marked shipped — so one long line used to be resent forever,
+// with every later line of that task stuck behind it. Cut here instead, where
+// it can be said.
+const maxShippedLineBytes = 8 << 10
+
+func shippableMessage(m string) string {
+	if len(m) <= maxShippedLineBytes {
+		return m
+	}
+	const marker = "\n… truncated by the agent at 8 KiB"
+	cut := maxShippedLineBytes - len(marker)
+	for cut > 0 && !utf8.RuneStart(m[cut]) {
+		cut--
+	}
+	return m[:cut] + marker
+}
+
 func (b *Bee) shipLogs(ctx context.Context) error {
 	lines, err := b.opts.Store.UnshippedLogs(ctx, b.opts.LogBatch)
 	if err != nil || len(lines) == 0 {
@@ -475,7 +495,7 @@ func (b *Bee) shipLogs(ctx context.Context) error {
 		payload := make([]apiary.TaskLogLine, 0, len(batch))
 		var highest int64
 		for _, l := range batch {
-			line := *apiary.NewTaskLogLine(l.Message, l.Seq)
+			line := *apiary.NewTaskLogLine(shippableMessage(l.Message), l.Seq)
 			line.SetStream(l.Stream)
 			line.SetLoggedAt(l.LoggedAt)
 			payload = append(payload, line)
