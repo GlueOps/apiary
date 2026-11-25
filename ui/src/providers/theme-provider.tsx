@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
 
@@ -22,7 +30,9 @@ function readStored(storageKey: string, fallback: Theme): Theme {
 }
 
 function systemTheme(): 'light' | 'dark' {
-  return typeof window !== 'undefined' && window.matchMedia?.(DARK_QUERY).matches ? 'dark' : 'light';
+  return typeof window !== 'undefined' && window.matchMedia?.(DARK_QUERY).matches
+    ? 'dark'
+    : 'light';
 }
 
 // Applies the class with transitions suppressed for one frame, so switching
@@ -82,7 +92,10 @@ export function ThemeProvider({
     [storageKey],
   );
 
-  const value = useMemo(() => ({ theme, resolvedTheme, setTheme }), [theme, resolvedTheme, setTheme]);
+  const value = useMemo(
+    () => ({ theme, resolvedTheme, setTheme }),
+    [theme, resolvedTheme, setTheme],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
