@@ -35,6 +35,7 @@ docs/ArriveRequestBody.md
 docs/ArriveResponseBody.md
 docs/AuditEventView.md
 docs/AuthAPI.md
+docs/AuthenticationExtensions.md
 docs/AuthenticatorSelection.md
 docs/BeeView.md
 docs/BindingScopeBody.md
@@ -96,6 +97,7 @@ docs/ForgotPasswordRequestBody.md
 docs/ForgotPasswordResponseBody.md
 docs/GetMeResponseBody.md
 docs/GetMyOrganizationsResponseBody.md
+docs/HMACGetSecretInputs.md
 docs/HeartbeatRequestBody.md
 docs/HeartbeatResponseBody.md
 docs/HiveDetailView.md
@@ -110,6 +112,7 @@ docs/InvitationView.md
 docs/InvitationsAPI.md
 docs/Item.md
 docs/KeyView.md
+docs/LargeBlobInputs.md
 docs/ListAPIKeysResponseBody.md
 docs/ListAuditResponseBody.md
 docs/ListBeesResponseBody.md
@@ -159,6 +162,8 @@ docs/OrganizationStruct.md
 docs/OrganizationSummaryView.md
 docs/OrganizationsAPI.md
 docs/OverrideView.md
+docs/PRFInputs.md
+docs/PRFValues.md
 docs/PasskeyBeginLoginResponseBody.md
 docs/PasskeyBeginRegisterResponseBody.md
 docs/PasskeyDeleteResponseBody.md
@@ -252,6 +257,7 @@ model_api_key_view.go
 model_arrive_request_body.go
 model_arrive_response_body.go
 model_audit_event_view.go
+model_authentication_extensions.go
 model_authenticator_selection.go
 model_bee_view.go
 model_binding_scope_body.go
@@ -314,6 +320,7 @@ model_heartbeat_request_body.go
 model_heartbeat_response_body.go
 model_hive_detail_view.go
 model_hive_view.go
+model_hmac_get_secret_inputs.go
 model_hypervisor_view.go
 model_impact_response_body.go
 model_impersonate_end_request_body.go
@@ -323,6 +330,7 @@ model_impersonate_start_response_body.go
 model_invitation_view.go
 model_item.go
 model_key_view.go
+model_large_blob_inputs.go
 model_list_api_keys_response_body.go
 model_list_audit_response_body.go
 model_list_bees_response_body.go
@@ -382,6 +390,8 @@ model_policy_config_view.go
 model_policy_view.go
 model_preview_response_body.go
 model_preview_response_body1.go
+model_prf_inputs.go
+model_prf_values.go
 model_public_flag_view.go
 model_public_flags_response_body.go
 model_public_key_credential_creation_options.go

@@ -256,6 +256,23 @@ export type AuditEventView = {
     target_kind: string;
 };
 
+export type AuthenticationExtensions = {
+    appid?: string;
+    appidExclude?: string;
+    credBlob?: string;
+    credProps?: boolean;
+    credentialProtectionPolicy?: string;
+    enforceCredentialProtectionPolicy?: boolean;
+    getCredBlob?: boolean;
+    hmacCreateSecret?: boolean;
+    hmacGetSecret?: HmacGetSecretInputs;
+    largeBlob?: LargeBlobInputs;
+    minPinLength?: boolean;
+    prf?: PrfInputs;
+    remoteClientDataJSON?: string;
+    uvm?: boolean;
+};
+
 export type AuthenticatorSelection = {
     authenticatorAttachment?: string;
     requireResidentKey?: boolean;
@@ -1013,6 +1030,11 @@ export type GetMyOrganizationsResponseBody = {
     organizations: Array<MyOrganizationView> | null;
 };
 
+export type HmacGetSecretInputs = {
+    salt1: string;
+    salt2?: string;
+};
+
 export type HeartbeatRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1280,6 +1302,12 @@ export type KeyView = {
      * Whether this key may still be used: not revoked, not expired, and correctly scoped if it is a join key.
      */
     usable: boolean;
+};
+
+export type LargeBlobInputs = {
+    read?: boolean;
+    support?: string;
+    write?: string;
 };
 
 export type ListApiKeysResponseBody = {
@@ -1834,6 +1862,18 @@ export type OverrideView = {
     value: boolean;
 };
 
+export type PrfInputs = {
+    eval?: PrfValues;
+    evalByCredential?: {
+        [key: string]: PrfValues;
+    };
+};
+
+export type PrfValues = {
+    first: string;
+    second?: string;
+};
+
 export type PasskeyBeginLoginResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1983,9 +2023,7 @@ export type PublicKeyCredentialCreationOptions = {
     authenticatorSelection?: AuthenticatorSelection;
     challenge: string;
     excludeCredentials?: Array<CredentialDescriptor> | null;
-    extensions?: {
-        [key: string]: unknown;
-    };
+    extensions?: AuthenticationExtensions;
     hints?: Array<string> | null;
     pubKeyCredParams?: Array<CredentialParameter> | null;
     rp: RelyingPartyEntity;
@@ -1996,9 +2034,7 @@ export type PublicKeyCredentialCreationOptions = {
 export type PublicKeyCredentialRequestOptions = {
     allowCredentials?: Array<CredentialDescriptor> | null;
     challenge: string;
-    extensions?: {
-        [key: string]: unknown;
-    };
+    extensions?: AuthenticationExtensions;
     hints?: Array<string> | null;
     rpId?: string;
     timeout?: number;

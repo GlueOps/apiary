@@ -23,7 +23,7 @@ var _ MappedNullable = &PublicKeyCredentialRequestOptions{}
 type PublicKeyCredentialRequestOptions struct {
 	AllowCredentials []CredentialDescriptor `json:"allowCredentials,omitempty"`
 	Challenge string `json:"challenge"`
-	Extensions map[string]*interface{} `json:"extensions,omitempty"`
+	Extensions *AuthenticationExtensions `json:"extensions,omitempty"`
 	Hints []string `json:"hints,omitempty"`
 	RpId *string `json:"rpId,omitempty"`
 	Timeout *int64 `json:"timeout,omitempty"`
@@ -108,19 +108,19 @@ func (o *PublicKeyCredentialRequestOptions) SetChallenge(v string) {
 }
 
 // GetExtensions returns the Extensions field value if set, zero value otherwise.
-func (o *PublicKeyCredentialRequestOptions) GetExtensions() map[string]*interface{} {
+func (o *PublicKeyCredentialRequestOptions) GetExtensions() AuthenticationExtensions {
 	if o == nil || IsNil(o.Extensions) {
-		var ret map[string]*interface{}
+		var ret AuthenticationExtensions
 		return ret
 	}
-	return o.Extensions
+	return *o.Extensions
 }
 
 // GetExtensionsOk returns a tuple with the Extensions field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *PublicKeyCredentialRequestOptions) GetExtensionsOk() (map[string]*interface{}, bool) {
+func (o *PublicKeyCredentialRequestOptions) GetExtensionsOk() (*AuthenticationExtensions, bool) {
 	if o == nil || IsNil(o.Extensions) {
-		return map[string]*interface{}{}, false
+		return nil, false
 	}
 	return o.Extensions, true
 }
@@ -134,9 +134,9 @@ func (o *PublicKeyCredentialRequestOptions) HasExtensions() bool {
 	return false
 }
 
-// SetExtensions gets a reference to the given map[string]*interface{} and assigns it to the Extensions field.
-func (o *PublicKeyCredentialRequestOptions) SetExtensions(v map[string]*interface{}) {
-	o.Extensions = v
+// SetExtensions gets a reference to the given AuthenticationExtensions and assigns it to the Extensions field.
+func (o *PublicKeyCredentialRequestOptions) SetExtensions(v AuthenticationExtensions) {
+	o.Extensions = &v
 }
 
 // GetHints returns the Hints field value if set, zero value otherwise (both if not set or set to explicit null).

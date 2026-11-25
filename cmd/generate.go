@@ -221,6 +221,12 @@ func generateGo(inputSpec, outDir, version string) error {
 		"-o", outDir,
 
 		"--additional-properties=packageName=" + goSDKPackageName + ",packageVersion=" + version + ",withGoMod=true,isGoSubmodule=true",
+		// go-webauthn's AuthenticationExtensions has both `credBlob` and
+		// `getCredBlob`. The Go generator turns the first into a GetCredBlob()
+		// getter and the second into a GetCredBlob field, and Go refuses a field
+		// and method with one name, so the SDK (and the agent, which imports it)
+		// stops compiling. Renaming the Go field leaves the JSON name unchanged.
+		"--name-mappings=getCredBlob=RequestCredBlob",
 		"--git-user-id", gitUserID,
 		"--git-repo-id", gitRepoID,
 	}

@@ -5323,6 +5323,64 @@ components:
       - principal_id
       - principal_kind
       - target_kind
+    AuthenticationExtensions:
+      additionalProperties: false
+      example:
+        appid: appid
+        appidExclude: appidExclude
+        credBlob: credBlob
+        credProps: true
+        credentialProtectionPolicy: credentialProtectionPolicy
+        enforceCredentialProtectionPolicy: true
+        getCredBlob: true
+        hmacCreateSecret: true
+        hmacGetSecret:
+          salt1: salt1
+          salt2: salt2
+        largeBlob:
+          read: true
+          support: support
+          write: write
+        minPinLength: true
+        prf:
+          eval:
+            first: first
+            second: second
+          evalByCredential:
+            key:
+              first: first
+              second: second
+        remoteClientDataJSON: remoteClientDataJSON
+        uvm: true
+      properties:
+        appid:
+          type: string
+        appidExclude:
+          type: string
+        credBlob:
+          type: string
+        credProps:
+          type: boolean
+        credentialProtectionPolicy:
+          type: string
+        enforceCredentialProtectionPolicy:
+          type: boolean
+        getCredBlob:
+          type: boolean
+        hmacCreateSecret:
+          type: boolean
+        hmacGetSecret:
+          $ref: "#/components/schemas/HMACGetSecretInputs"
+        largeBlob:
+          $ref: "#/components/schemas/LargeBlobInputs"
+        minPinLength:
+          type: boolean
+        prf:
+          $ref: "#/components/schemas/PRFInputs"
+        remoteClientDataJSON:
+          type: string
+        uvm:
+          type: boolean
     AuthenticatorSelection:
       additionalProperties: false
       example:
@@ -6036,7 +6094,32 @@ components:
             type: type
           challenge: challenge
           extensions:
-            key: ""
+            appid: appid
+            appidExclude: appidExclude
+            credBlob: credBlob
+            credProps: true
+            credentialProtectionPolicy: credentialProtectionPolicy
+            enforceCredentialProtectionPolicy: true
+            getCredBlob: true
+            hmacCreateSecret: true
+            hmacGetSecret:
+              salt1: salt1
+              salt2: salt2
+            largeBlob:
+              read: true
+              support: support
+              write: write
+            minPinLength: true
+            prf:
+              eval:
+                first: first
+                second: second
+              evalByCredential:
+                key:
+                  first: first
+                  second: second
+            remoteClientDataJSON: remoteClientDataJSON
+            uvm: true
           hints:
           - hints
           - hints
@@ -6077,7 +6160,32 @@ components:
             - transports
             type: type
           extensions:
-            key: ""
+            appid: appid
+            appidExclude: appidExclude
+            credBlob: credBlob
+            credProps: true
+            credentialProtectionPolicy: credentialProtectionPolicy
+            enforceCredentialProtectionPolicy: true
+            getCredBlob: true
+            hmacCreateSecret: true
+            hmacGetSecret:
+              salt1: salt1
+              salt2: salt2
+            largeBlob:
+              read: true
+              support: support
+              write: write
+            minPinLength: true
+            prf:
+              eval:
+                first: first
+                second: second
+              evalByCredential:
+                key:
+                  first: first
+                  second: second
+            remoteClientDataJSON: remoteClientDataJSON
+            uvm: true
           hints:
           - hints
           - hints
@@ -7096,6 +7204,18 @@ components:
           default: null
       required:
       - organizations
+    HMACGetSecretInputs:
+      additionalProperties: false
+      example:
+        salt1: salt1
+        salt2: salt2
+      properties:
+        salt1:
+          type: string
+        salt2:
+          type: string
+      required:
+      - salt1
     HeartbeatRequestBody:
       additionalProperties: false
       example:
@@ -7725,6 +7845,19 @@ components:
       - purpose
       - revoked
       - usable
+    LargeBlobInputs:
+      additionalProperties: false
+      example:
+        read: true
+        support: support
+        write: write
+      properties:
+        read:
+          type: boolean
+        support:
+          type: string
+        write:
+          type: string
     ListAPIKeysResponseBody:
       additionalProperties: false
       example:
@@ -9657,6 +9790,34 @@ components:
       required:
       - organization_id
       - value
+    PRFInputs:
+      additionalProperties: false
+      example:
+        eval:
+          first: first
+          second: second
+        evalByCredential:
+          key:
+            first: first
+            second: second
+      properties:
+        eval:
+          $ref: "#/components/schemas/PRFValues"
+        evalByCredential:
+          additionalProperties:
+            $ref: "#/components/schemas/PRFValues"
+    PRFValues:
+      additionalProperties: false
+      example:
+        first: first
+        second: second
+      properties:
+        first:
+          type: string
+        second:
+          type: string
+      required:
+      - first
     PasskeyBeginLoginResponseBody:
       additionalProperties: false
       example:
@@ -9678,7 +9839,32 @@ components:
               type: type
             challenge: challenge
             extensions:
-              key: ""
+              appid: appid
+              appidExclude: appidExclude
+              credBlob: credBlob
+              credProps: true
+              credentialProtectionPolicy: credentialProtectionPolicy
+              enforceCredentialProtectionPolicy: true
+              getCredBlob: true
+              hmacCreateSecret: true
+              hmacGetSecret:
+                salt1: salt1
+                salt2: salt2
+              largeBlob:
+                read: true
+                support: support
+                write: write
+              minPinLength: true
+              prf:
+                eval:
+                  first: first
+                  second: second
+                evalByCredential:
+                  key:
+                    first: first
+                    second: second
+              remoteClientDataJSON: remoteClientDataJSON
+              uvm: true
             hints:
             - hints
             - hints
@@ -9728,7 +9914,32 @@ components:
               - transports
               type: type
             extensions:
-              key: ""
+              appid: appid
+              appidExclude: appidExclude
+              credBlob: credBlob
+              credProps: true
+              credentialProtectionPolicy: credentialProtectionPolicy
+              enforceCredentialProtectionPolicy: true
+              getCredBlob: true
+              hmacCreateSecret: true
+              hmacGetSecret:
+                salt1: salt1
+                salt2: salt2
+              largeBlob:
+                read: true
+                support: support
+                write: write
+              minPinLength: true
+              prf:
+                eval:
+                  first: first
+                  second: second
+                evalByCredential:
+                  key:
+                    first: first
+                    second: second
+              remoteClientDataJSON: remoteClientDataJSON
+              uvm: true
             hints:
             - hints
             - hints
@@ -10165,7 +10376,32 @@ components:
           - transports
           type: type
         extensions:
-          key: ""
+          appid: appid
+          appidExclude: appidExclude
+          credBlob: credBlob
+          credProps: true
+          credentialProtectionPolicy: credentialProtectionPolicy
+          enforceCredentialProtectionPolicy: true
+          getCredBlob: true
+          hmacCreateSecret: true
+          hmacGetSecret:
+            salt1: salt1
+            salt2: salt2
+          largeBlob:
+            read: true
+            support: support
+            write: write
+          minPinLength: true
+          prf:
+            eval:
+              first: first
+              second: second
+            evalByCredential:
+              key:
+                first: first
+                second: second
+          remoteClientDataJSON: remoteClientDataJSON
+          uvm: true
         hints:
         - hints
         - hints
@@ -10202,8 +10438,7 @@ components:
           type: array
           default: null
         extensions:
-          additionalProperties:
-            nullable: true
+          $ref: "#/components/schemas/AuthenticationExtensions"
         hints:
           items:
             type: string
@@ -10243,7 +10478,32 @@ components:
           type: type
         challenge: challenge
         extensions:
-          key: ""
+          appid: appid
+          appidExclude: appidExclude
+          credBlob: credBlob
+          credProps: true
+          credentialProtectionPolicy: credentialProtectionPolicy
+          enforceCredentialProtectionPolicy: true
+          getCredBlob: true
+          hmacCreateSecret: true
+          hmacGetSecret:
+            salt1: salt1
+            salt2: salt2
+          largeBlob:
+            read: true
+            support: support
+            write: write
+          minPinLength: true
+          prf:
+            eval:
+              first: first
+              second: second
+            evalByCredential:
+              key:
+                first: first
+                second: second
+          remoteClientDataJSON: remoteClientDataJSON
+          uvm: true
         hints:
         - hints
         - hints
@@ -10260,8 +10520,7 @@ components:
         challenge:
           type: string
         extensions:
-          additionalProperties:
-            nullable: true
+          $ref: "#/components/schemas/AuthenticationExtensions"
         hints:
           items:
             type: string

@@ -6,7 +6,7 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **AllowCredentials** | Pointer to [**[]CredentialDescriptor**](CredentialDescriptor.md) |  | [optional] 
 **Challenge** | **string** |  | 
-**Extensions** | Pointer to **map[string]interface{}** |  | [optional] 
+**Extensions** | Pointer to [**AuthenticationExtensions**](AuthenticationExtensions.md) |  | [optional] 
 **Hints** | Pointer to **[]string** |  | [optional] 
 **RpId** | Pointer to **string** |  | [optional] 
 **Timeout** | Pointer to **int64** |  | [optional] 
@@ -88,20 +88,20 @@ SetChallenge sets Challenge field to given value.
 
 ### GetExtensions
 
-`func (o *PublicKeyCredentialRequestOptions) GetExtensions() map[string]*interface{}`
+`func (o *PublicKeyCredentialRequestOptions) GetExtensions() AuthenticationExtensions`
 
 GetExtensions returns the Extensions field if non-nil, zero value otherwise.
 
 ### GetExtensionsOk
 
-`func (o *PublicKeyCredentialRequestOptions) GetExtensionsOk() (*map[string]*interface{}, bool)`
+`func (o *PublicKeyCredentialRequestOptions) GetExtensionsOk() (*AuthenticationExtensions, bool)`
 
 GetExtensionsOk returns a tuple with the Extensions field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetExtensions
 
-`func (o *PublicKeyCredentialRequestOptions) SetExtensions(v map[string]*interface{})`
+`func (o *PublicKeyCredentialRequestOptions) SetExtensions(v AuthenticationExtensions)`
 
 SetExtensions sets Extensions field to given value.
 

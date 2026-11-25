@@ -26,7 +26,7 @@ type PublicKeyCredentialCreationOptions struct {
 	AuthenticatorSelection *AuthenticatorSelection `json:"authenticatorSelection,omitempty"`
 	Challenge string `json:"challenge"`
 	ExcludeCredentials []CredentialDescriptor `json:"excludeCredentials,omitempty"`
-	Extensions map[string]*interface{} `json:"extensions,omitempty"`
+	Extensions *AuthenticationExtensions `json:"extensions,omitempty"`
 	Hints []string `json:"hints,omitempty"`
 	PubKeyCredParams []CredentialParameter `json:"pubKeyCredParams,omitempty"`
 	Rp RelyingPartyEntity `json:"rp"`
@@ -211,19 +211,19 @@ func (o *PublicKeyCredentialCreationOptions) SetExcludeCredentials(v []Credentia
 }
 
 // GetExtensions returns the Extensions field value if set, zero value otherwise.
-func (o *PublicKeyCredentialCreationOptions) GetExtensions() map[string]*interface{} {
+func (o *PublicKeyCredentialCreationOptions) GetExtensions() AuthenticationExtensions {
 	if o == nil || IsNil(o.Extensions) {
-		var ret map[string]*interface{}
+		var ret AuthenticationExtensions
 		return ret
 	}
-	return o.Extensions
+	return *o.Extensions
 }
 
 // GetExtensionsOk returns a tuple with the Extensions field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *PublicKeyCredentialCreationOptions) GetExtensionsOk() (map[string]*interface{}, bool) {
+func (o *PublicKeyCredentialCreationOptions) GetExtensionsOk() (*AuthenticationExtensions, bool) {
 	if o == nil || IsNil(o.Extensions) {
-		return map[string]*interface{}{}, false
+		return nil, false
 	}
 	return o.Extensions, true
 }
@@ -237,9 +237,9 @@ func (o *PublicKeyCredentialCreationOptions) HasExtensions() bool {
 	return false
 }
 
-// SetExtensions gets a reference to the given map[string]*interface{} and assigns it to the Extensions field.
-func (o *PublicKeyCredentialCreationOptions) SetExtensions(v map[string]*interface{}) {
-	o.Extensions = v
+// SetExtensions gets a reference to the given AuthenticationExtensions and assigns it to the Extensions field.
+func (o *PublicKeyCredentialCreationOptions) SetExtensions(v AuthenticationExtensions) {
+	o.Extensions = &v
 }
 
 // GetHints returns the Hints field value if set, zero value otherwise (both if not set or set to explicit null).
