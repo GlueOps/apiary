@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ErrDpkgInconsistent reports a host whose package database is half-configured
@@ -22,13 +23,18 @@ var ErrDpkgInconsistent = errors.New(
 // ErrInsufficientSpace reports a filesystem too full to upgrade into.
 var ErrInsufficientSpace = errors.New("not enough free space to upgrade safely")
 
-// Free space floors. A new Proxmox kernel plus its initramfs is around 120 MiB
-// in /boot, and a dist-upgrade unpacks into / before it removes anything. Running
-// out part-way is a reliable way to produce exactly the half-configured state the
-// rest of this file exists to prevent, so it is checked before the first package
-// is touched. Vars so a test can move them.
+// Free space floors. Running out part-way is a reliable way to produce exactly
+// the half-configured state the rest of this file exists to prevent, so it is
+// checked before the first package is touched. Vars so a test can move them.
+//
+// Root: ONE new Proxmox kernel is about 945 MiB installed (its modules, mostly)
+// plus a ~119 MiB .deb in /var/cache/apt/archives while it unpacks — already
+// over the 1 GiB this used to be — and a dist-upgrade unpacks everything before
+// it removes anything, the old kernel included. 3 GiB covers a kernel, its
+// download, and a release's worth of other packages alongside it, with margin.
+// Boot: a kernel plus its initramfs is around 120 MiB.
 var (
-	minFreeRoot uint64 = 1 << 30   // 1 GiB
+	minFreeRoot uint64 = 3 << 30   // 3 GiB
 	minFreeBoot uint64 = 200 << 20 // 200 MiB
 )
 
@@ -42,9 +48,22 @@ var freeBytes = func(path string) (uint64, error) {
 	return st.Bavail * uint64(st.Bsize), nil
 }
 
-// aptLockWait is how long apt waits for another dpkg user — Proxmox's daily
-// pveupdate, unattended-upgrades — instead of failing on the lock at once.
+// aptLockWait is how long apt waits for another dpkg user — unattended-upgrades,
+// a person's apt — instead of failing on the dpkg lock at once.
+//
+// It covers the DPKG lock only. `apt-get update` takes /var/lib/apt/lists/lock,
+// which no apt option waits on: with this set, apt 3.0.3 (trixie, which PVE 9
+// is built on) still fails at once with exit 100 and "Could not get lock
+// /var/lib/apt/lists/lock". Proxmox's daily pveupdate runs `apt-get update`, so
+// that collision is real; aptUpdate retries it instead.
 const aptLockWait = "DPkg::Lock::Timeout=300"
+
+// The retry for a busy lists lock. Ten tries 30s apart is the same five minutes
+// aptLockWait gives the dpkg lock. Vars so a test can shorten them.
+var (
+	aptListsLockRetries   = 10
+	aptListsLockRetryWait = 30 * time.Second
+)
 
 // The options every dpkg-invoking step shares: keep a locally modified conffile
 // and never stop to ask about one.
@@ -82,8 +101,7 @@ func aptUpgrade(ctx context.Context, d Deps, e *Env) error {
 			return err
 		}
 		e.Logf("agent", "updating package lists")
-		if err := runStep(ctx, det, e, key("apt-update"), true,
-			"apt-get", "-o", aptLockWait, "update"); err != nil {
+		if err := aptUpdate(ctx, det, e, key("apt-update")); err != nil {
 			return err
 		}
 	case StepInterrupted:
@@ -110,6 +128,13 @@ func aptUpgrade(ctx context.Context, d Deps, e *Env) error {
 	if upErr != nil && ctx.Err() != nil {
 		// The agent is stopping; the upgrade is not. Resume will re-attach.
 		return ctx.Err()
+	}
+	if errors.Is(upErr, ErrStepStateUnknown) {
+		// Not a result: apt may well still be running. Auditing now would read a
+		// live dpkg as broken, and repairing would be a second writer on it.
+		return fmt.Errorf("could not tell whether the dist-upgrade is still running, so the "+
+			"package database was neither audited nor repaired and the host has not been "+
+			"rebooted: %w", upErr)
 	}
 
 	// Audit whether or not apt said it succeeded. apt exiting non-zero is the
@@ -179,6 +204,13 @@ func aptPreflight(ctx context.Context, d Deps, e *Env, det DetachedRunner, key s
 // unpacked and not configured, and `apt-get -f install` resolves what that
 // leaves. Anything cleverer is a decision about somebody's host that belongs to
 // a person.
+//
+// --no-remove, because resolving can mean REMOVING. Without it, a package an
+// operator installed by hand with `dpkg -i` and whose dependencies no repository
+// satisfies was removed in testing, and the upgrade and reboot went ahead. With
+// it apt aborts instead, the audit below still finds the problem, and the task
+// stops at ErrDpkgInconsistent for a person — which is the right owner of the
+// decision to remove somebody's package.
 func repairDpkg(ctx context.Context, d Deps, e *Env, det DetachedRunner, key string) error {
 	e.Logf("agent", "repairing: dpkg --configure -a")
 	if err := runStep(ctx, det, e, key+"-dpkg-configure", true,
@@ -186,15 +218,21 @@ func repairDpkg(ctx context.Context, d Deps, e *Env, det DetachedRunner, key str
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if errors.Is(err, ErrStepStateUnknown) {
+			return err
+		}
 		e.Logf("agent", "dpkg --configure -a failed: %v", err)
 	}
-	e.Logf("agent", "repairing: apt-get -f install")
-	fix := append(append([]string{}, dpkgConfOpts...), "-y", "-f", "install")
+	e.Logf("agent", "repairing: apt-get -f install --no-remove")
+	fix := append(append([]string{}, dpkgConfOpts...), "-y", "--no-remove", "-f", "install")
 	if err := runStep(ctx, det, e, key+"-apt-fix", true, "apt-get", fix...); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		e.Logf("agent", "apt-get -f install failed: %v", err)
+		if errors.Is(err, ErrStepStateUnknown) {
+			return err
+		}
+		e.Logf("agent", "apt-get -f install --no-remove failed: %v", err)
 	}
 
 	clean, detail, err := dpkgAudit(ctx, d.Runner)
@@ -221,6 +259,35 @@ func runStep(ctx context.Context, det DetachedRunner, e *Env, key string, rerunI
 		err = det.RunDetached(ctx, e.Logf, key, name, args...)
 	}
 	return err
+}
+
+// aptUpdate runs `apt-get update`, retrying while somebody else holds the
+// lists lock. See aptLockWait for why apt cannot be told to wait itself.
+//
+// Each attempt is its own step key: a finished step's result is a recorded
+// fact that is never forgotten, so a retry cannot reuse the key that failed.
+// On resume the earlier attempts replay their recorded results and the loop
+// carries on from the first one that has none.
+func aptUpdate(ctx context.Context, det DetachedRunner, e *Env, key string) error {
+	for attempt := 0; ; attempt++ {
+		k := key
+		if attempt > 0 {
+			k = fmt.Sprintf("%s-retry%d", key, attempt)
+		}
+		err := runStep(ctx, det, e, k, true, "apt-get", "update")
+		if err == nil || !listsLockBusy(err) || attempt >= aptListsLockRetries {
+			return err
+		}
+		e.Logf("agent", "the package lists are locked by another apt-get update (Proxmox's "+
+			"pveupdate, usually); trying again in %s", aptListsLockRetryWait)
+		if !sleepCtx(ctx, aptListsLockRetryWait) {
+			return ctx.Err()
+		}
+	}
+}
+
+func listsLockBusy(err error) bool {
+	return strings.Contains(err.Error(), "/var/lib/apt/lists/lock")
 }
 
 // dpkgAudit reports whether dpkg considers its database consistent.
@@ -267,8 +334,11 @@ func detachedFor(d Deps, e *Env) (DetachedRunner, error) {
 
 // inlineRunner runs steps as the agent's own children, with no record.
 //
-// The behaviour before detached steps existed, kept for hosts where systemd is
-// not available and for tests. It cannot survive an agent restart, which is
+// The behaviour before detached steps existed, used when Deps.Detached is nil:
+// in tests, and in production ONLY when the agent could not create its steps
+// directory (see fleetDeps). It is NOT a fallback for a host without systemd —
+// nothing probes for one; there, systemd-run fails to start the step and the
+// task fails before apt has run. It cannot survive an agent restart, which is
 // exactly why production wires the systemd runner instead.
 type inlineRunner struct{ r Runner }
 

@@ -88,6 +88,9 @@ func executors(d fleetops.Deps, cfg Config) map[string]bee.Executor {
 	adapt := func(e *bee.Env) *fleetops.Env {
 		return &fleetops.Env{Logf: e.Logf, Phase: e.Phase, Declare: e.Declare}
 	}
+	// The task id is what keys a detached step to THIS task: without it the
+	// dist-upgrade refuses rather than risk replaying another task's apt.
+	// executors_test.go pins it.
 	return map[string]bee.Executor{
 		"fleet.host.ping": func(_ context.Context, _ store.Task, e *bee.Env) error {
 			e.Phase("pinging")
@@ -146,9 +149,12 @@ func fleetDeps(cfg Config) fleetops.Deps {
 		Cluster: fleetops.NewLocalCluster(runner),
 	}
 	// Package steps run in their own systemd units, recorded next to the
-	// agent's state so the records survive a reboot. Without a usable directory
-	// they fall back to running as the agent's children — said loudly, because
-	// that is the mode in which an agent restart kills dpkg mid-install.
+	// agent's state so the records survive a reboot. Only when that directory
+	// cannot be created do they fall back to running as the agent's children —
+	// said loudly, because that is the mode in which an agent restart kills dpkg
+	// mid-install. There is no fallback for a host without systemd: nothing
+	// probes for it, and there systemd-run fails and the task fails before apt
+	// runs.
 	dir := filepath.Join(filepath.Dir(cfg.StatePath), "steps")
 	if det, err := fleetops.NewSystemdRunner(runner, dir); err != nil {
 		slog.Warn("package steps will run as the agent's own children and will NOT survive an "+
