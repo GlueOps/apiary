@@ -1,6 +1,6 @@
 module github.com/glueops/apiary-agent
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/glueops/apiary/sdk/go v0.0.0
