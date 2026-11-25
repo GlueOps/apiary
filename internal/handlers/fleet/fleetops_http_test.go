@@ -163,6 +163,8 @@ func (c call) do(api humatest.TestAPI) *httptest.ResponseRecorder {
 		return api.Post(c.path, c.body)
 	case http.MethodPatch:
 		return api.Patch(c.path, c.body)
+	case http.MethodPut:
+		return api.Put(c.path, c.body)
 	case http.MethodDelete:
 		return api.Delete(c.path)
 	}
@@ -177,6 +179,8 @@ func reads() []call {
 		{"get hypervisor", http.MethodGet, "/fleet/hypervisors/" + hypID, nil},
 		{"list fleetless", http.MethodGet, "/fleet/fleetless", nil},
 		{"unused hive id", http.MethodGet, "/fleet/hives?x=" + hiveID, nil},
+		{"list maintenance windows", http.MethodGet, "/fleet/maintenance/schedules", nil},
+		{"list maintenance runs", http.MethodGet, "/fleet/maintenance/runs", nil},
 	}
 }
 
@@ -200,6 +204,21 @@ func mutations() []call {
 				"target_hive_id": hiveID,
 				"links":          []map[string]any{{"number": 0, "address": "10.1.0.9"}},
 			}},
+		// Maintenance reboots hypervisors, so every write is admin-only and refused
+		// while impersonating. Valid bodies for the same reason as depart's.
+		{"schedule maintenance", http.MethodPost, "/fleet/maintenance/schedules",
+			map[string]any{
+				"hive_id": hiveID, "name": "weekly", "kind": "recurring", "weekdays": []int{0},
+				"start_time": "02:00", "timezone": "Europe/Helsinki", "duration_minutes": 120,
+				"reboot": "if-needed", "enabled": true,
+			}},
+		{"change maintenance", http.MethodPut, "/fleet/maintenance/schedules/" + hiveID,
+			map[string]any{
+				"name": "weekly", "kind": "once", "once_at": "2030-01-01T02:00:00Z",
+				"duration_minutes": 60, "reboot": "always", "enabled": true,
+			}},
+		{"delete maintenance", http.MethodDelete, "/fleet/maintenance/schedules/" + hiveID, nil},
+		{"stop maintenance run", http.MethodPost, "/fleet/maintenance/runs/" + hiveID + "/stop", nil},
 	}
 }
 

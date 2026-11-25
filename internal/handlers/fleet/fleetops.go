@@ -556,6 +556,8 @@ func RegisterFleetOps(hapi huma.API, deps *app.Deps) error {
 		thresholds.ObservationMaxAge = deps.Config.FleetObservationMaxAge
 	}
 
+	registerMaintenance(hapi, tenantDB, member, admin)
+
 	huma.Register(hapi, huma.Operation{
 		OperationID: "fleet-hives-list",
 		Method:      http.MethodGet,

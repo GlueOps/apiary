@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,13 +67,80 @@ func CheckUpgradeForBee(
 	}
 
 	if hv.HiveID != nil {
-		var nodes int64
-		if err := db.WithContext(ctx).Model(&tenant.Hypervisor{}).
-			Where("hive_id = ?", *hv.HiveID).Count(&nodes).Error; err != nil {
+		down, nodes, err := hiveMembersDown(ctx, db, *hv.HiveID, hv.ID, now)
+		if err != nil {
 			return nil, err
 		}
-		req.HiveNodeCount = int(nodes)
+		req.HiveNodeCount, req.HiveMembersDown = nodes, down
 	}
 
 	return tenant.CheckHostUpgrade(req), nil
+}
+
+// UpgradeGateOnlineGrace is how long after its last heartbeat another member's
+// agent still counts as up for the quorum rule. The same bound the rest of the
+// fleet uses for "online".
+const UpgradeGateOnlineGrace = 90 * time.Second
+
+// hiveMembersDown names every OTHER machine assigned to the hive that is not
+// observed up, and counts the machines assigned.
+//
+// ASSIGNED rows are the vote total, on purpose: it can only overstate corosync's
+// expected votes, and overstating makes the rule refuse more readily. A member
+// counts as up only when its agent is heartbeating, says it is in this cluster,
+// and has said so within ObservedMembershipWindow. Anything short of that — no
+// agent, an offline one, a membership report that is missing or old — is DOWN,
+// because unknown is not up, and the cost of the mistake is one cluster read-only.
+func hiveMembersDown(
+	ctx context.Context, db *gorm.DB, hiveID, self uuid.UUID, now time.Time,
+) ([]string, int, error) {
+	var hive tenant.Hive
+	if err := db.WithContext(ctx).First(&hive, "id = ?", hiveID).Error; err != nil {
+		return nil, 0, err
+	}
+	var hvs []tenant.Hypervisor
+	if err := db.WithContext(ctx).Where("hive_id = ?", hiveID).
+		Order("coalesce(name, address), id").Find(&hvs).Error; err != nil {
+		return nil, 0, err
+	}
+	beeIDs := make([]uuid.UUID, 0, len(hvs))
+	for _, h := range hvs {
+		if h.BeeID != nil {
+			beeIDs = append(beeIDs, *h.BeeID)
+		}
+	}
+	bees := map[uuid.UUID]tenant.Bee{}
+	if len(beeIDs) > 0 {
+		var rows []tenant.Bee
+		if err := db.WithContext(ctx).Where("id IN ?", beeIDs).Find(&rows).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, b := range rows {
+			bees[b.ID] = b
+		}
+	}
+
+	var down []string
+	for _, h := range hvs {
+		if h.ID == self {
+			continue
+		}
+		up := false
+		if h.BeeID != nil {
+			if b, ok := bees[*h.BeeID]; ok {
+				up = b.LivenessAt(now, UpgradeGateOnlineGrace) == tenant.BeeStatusOnline &&
+					strings.EqualFold(b.ObservedCluster, hive.Name) &&
+					b.ObservedMembershipAt != nil &&
+					now.Sub(*b.ObservedMembershipAt) <= ObservedMembershipWindow
+			}
+		}
+		if !up {
+			name := h.Address
+			if h.Name != nil && *h.Name != "" {
+				name = *h.Name
+			}
+			down = append(down, name)
+		}
+	}
+	return down, len(hvs), nil
 }

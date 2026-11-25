@@ -124,4 +124,13 @@ const (
 	AuditFirewallRevert  = "firewall.revert"
 
 	AuditEstateRotate = "estate.rotate_credential"
+
+	AuditMaintenanceScheduleCreate = "maintenance.schedule_create"
+	AuditMaintenanceScheduleUpdate = "maintenance.schedule_update"
+	AuditMaintenanceScheduleDelete = "maintenance.schedule_delete"
+	AuditMaintenanceRunStop        = "maintenance.run_stop"
+	// Written by the run itself, as the system.
+	AuditMaintenanceStart  = "maintenance.run_start"
+	AuditMaintenanceNode   = "maintenance.node_upgrade"
+	AuditMaintenanceFinish = "maintenance.run_finish"
 )

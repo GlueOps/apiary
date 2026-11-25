@@ -155,6 +155,12 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHypervisorsGet**](docs/FleetAPI.md#fleethypervisorsget) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetAPI* | [**FleetHypervisorsList**](docs/FleetAPI.md#fleethypervisorslist) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
 *FleetAPI* | [**FleetHypervisorsReprovision**](docs/FleetAPI.md#fleethypervisorsreprovision) | **Post** /api/v1/fleet/hypervisors/{id}/reprovision | Redrive a machine&#39;s onboarding
+*FleetAPI* | [**FleetMaintenanceRunsList**](docs/FleetAPI.md#fleetmaintenancerunslist) | **Get** /api/v1/fleet/maintenance/runs | List recent maintenance runs
+*FleetAPI* | [**FleetMaintenanceRunsStop**](docs/FleetAPI.md#fleetmaintenancerunsstop) | **Post** /api/v1/fleet/maintenance/runs/{id}/stop | Stop a maintenance run
+*FleetAPI* | [**FleetMaintenanceSchedulesCreate**](docs/FleetAPI.md#fleetmaintenanceschedulescreate) | **Post** /api/v1/fleet/maintenance/schedules | Schedule a maintenance window
+*FleetAPI* | [**FleetMaintenanceSchedulesDelete**](docs/FleetAPI.md#fleetmaintenanceschedulesdelete) | **Delete** /api/v1/fleet/maintenance/schedules/{id} | Delete a maintenance window
+*FleetAPI* | [**FleetMaintenanceSchedulesList**](docs/FleetAPI.md#fleetmaintenancescheduleslist) | **Get** /api/v1/fleet/maintenance/schedules | List maintenance windows
+*FleetAPI* | [**FleetMaintenanceSchedulesUpdate**](docs/FleetAPI.md#fleetmaintenanceschedulesupdate) | **Put** /api/v1/fleet/maintenance/schedules/{id} | Change a maintenance window
 *FleetAPI* | [**FleetTasksCreate**](docs/FleetAPI.md#fleettaskscreate) | **Post** /api/v1/fleet/tasks | Queue work for a bee
 *FleetAPI* | [**FleetTasksLogs**](docs/FleetAPI.md#fleettaskslogs) | **Get** /api/v1/fleet/tasks/{id}/logs | Read a task&#39;s streamed output
 *FleetAPI* | [**SshKeysList**](docs/FleetAPI.md#sshkeyslist) | **Get** /api/v1/ssh-keys | List fleet SSH keys
@@ -226,6 +232,7 @@ Class | Method | HTTP request | Description
  - [CorosyncLinkInput](docs/CorosyncLinkInput.md)
  - [CreateBindingRequestBody](docs/CreateBindingRequestBody.md)
  - [CreateHiveRequestBody](docs/CreateHiveRequestBody.md)
+ - [CreateMaintenanceScheduleRequestBody](docs/CreateMaintenanceScheduleRequestBody.md)
  - [CreateRequestBody](docs/CreateRequestBody.md)
  - [CreateRequestBody1](docs/CreateRequestBody1.md)
  - [CreateRequestBody2](docs/CreateRequestBody2.md)
@@ -290,6 +297,8 @@ Class | Method | HTTP request | Description
  - [ListFleetlessResponseBody](docs/ListFleetlessResponseBody.md)
  - [ListHivesResponseBody](docs/ListHivesResponseBody.md)
  - [ListHypervisorsResponseBody](docs/ListHypervisorsResponseBody.md)
+ - [ListMaintenanceRunsResponseBody](docs/ListMaintenanceRunsResponseBody.md)
+ - [ListMaintenanceSchedulesResponseBody](docs/ListMaintenanceSchedulesResponseBody.md)
  - [ListMembersResponseBody](docs/ListMembersResponseBody.md)
  - [ListOrganizationsResponseBody](docs/ListOrganizationsResponseBody.md)
  - [ListResponseBody](docs/ListResponseBody.md)
@@ -309,6 +318,10 @@ Class | Method | HTTP request | Description
  - [MFAStruct](docs/MFAStruct.md)
  - [MFAVerifyRequestBody](docs/MFAVerifyRequestBody.md)
  - [MFAVerifyResponseBody](docs/MFAVerifyResponseBody.md)
+ - [MaintenanceRunNodeView](docs/MaintenanceRunNodeView.md)
+ - [MaintenanceRunView](docs/MaintenanceRunView.md)
+ - [MaintenanceScheduleInput](docs/MaintenanceScheduleInput.md)
+ - [MaintenanceScheduleView](docs/MaintenanceScheduleView.md)
  - [MemberView](docs/MemberView.md)
  - [MembershipDesiredView](docs/MembershipDesiredView.md)
  - [MembershipMemberView](docs/MembershipMemberView.md)

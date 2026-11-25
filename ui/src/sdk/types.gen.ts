@@ -397,6 +397,48 @@ export type CreateHiveRequestBody = {
     provider?: 'proxmox';
 };
 
+export type CreateMaintenanceScheduleRequestBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How long the window stays open. A node already rebooting when it closes is allowed to finish; no new node starts.
+     */
+    duration_minutes: number;
+    enabled: boolean;
+    /**
+     * The cluster this window maintains.
+     */
+    hive_id?: string;
+    kind: 'recurring' | 'once';
+    name: string;
+    /**
+     * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
+     */
+    once_at?: string;
+    /**
+     * Reboot policy each node's dist-upgrade runs with.
+     */
+    reboot: 'if-needed' | 'always' | 'never';
+    /**
+     * True maintains the standalone pool instead: every hypervisor in no cluster, resolved when each run starts.
+     */
+    standalone?: boolean;
+    /**
+     * Local time the window opens, HH:MM 24-hour, in timezone.
+     */
+    start_time?: string;
+    /**
+     * IANA zone name. Required for a recurring window: 02:00 means 02:00 local in summer and in winter.
+     */
+    timezone?: string;
+    /**
+     * Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone.
+     */
+    weekdays?: Array<number> | null;
+};
+
 export type CreateRequestBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1275,6 +1317,22 @@ export type ListHypervisorsResponseBody = {
     hypervisors: Array<HypervisorView> | null;
 };
 
+export type ListMaintenanceRunsResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    runs: Array<MaintenanceRunView> | null;
+};
+
+export type ListMaintenanceSchedulesResponseBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    schedules: Array<MaintenanceScheduleView> | null;
+};
+
 export type ListMembersResponseBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1444,6 +1502,108 @@ export type MfaVerifyResponseBody = {
     refresh_expires_in: number;
     refresh_token: string;
     token_type: string;
+};
+
+export type MaintenanceRunNodeView = {
+    deadline?: string;
+    finished_at?: string;
+    hypervisor_id: string;
+    /**
+     * The run cordoned this node and has not handed the cordon back: it failed, or somebody cordoned it by hand meanwhile.
+     */
+    left_cordoned: boolean;
+    name: string;
+    /**
+     * Why it was skipped or failed, or why it was left cordoned.
+     */
+    reason?: string;
+    started_at?: string;
+    status: 'pending' | 'upgrading' | 'succeeded' | 'failed' | 'skipped';
+    task_id?: string;
+};
+
+export type MaintenanceRunView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    error?: string;
+    finished_at?: string;
+    hive_id?: string;
+    id: string;
+    nodes: Array<MaintenanceRunNodeView> | null;
+    reboot: string;
+    schedule_id?: string;
+    schedule_name?: string;
+    standalone: boolean;
+    started_at: string;
+    status: 'running' | 'succeeded' | 'failed' | 'stopped' | 'expired';
+    stop_requested: boolean;
+    window_end: string;
+    window_start: string;
+};
+
+export type MaintenanceScheduleInput = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How long the window stays open. A node already rebooting when it closes is allowed to finish; no new node starts.
+     */
+    duration_minutes: number;
+    enabled: boolean;
+    kind: 'recurring' | 'once';
+    name: string;
+    /**
+     * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
+     */
+    once_at?: string;
+    /**
+     * Reboot policy each node's dist-upgrade runs with.
+     */
+    reboot: 'if-needed' | 'always' | 'never';
+    /**
+     * Local time the window opens, HH:MM 24-hour, in timezone.
+     */
+    start_time?: string;
+    /**
+     * IANA zone name. Required for a recurring window: 02:00 means 02:00 local in summer and in winter.
+     */
+    timezone?: string;
+    /**
+     * Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone.
+     */
+    weekdays?: Array<number> | null;
+};
+
+export type MaintenanceScheduleView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    duration_minutes: number;
+    enabled: boolean;
+    hive_id?: string;
+    hive_name?: string;
+    id: string;
+    kind: 'recurring' | 'once';
+    last_window_at?: string;
+    name: string;
+    /**
+     * The next three times the window opens, UTC.
+     */
+    next_openings: Array<string> | null;
+    once_at?: string;
+    /**
+     * The window is open at this moment.
+     */
+    open_now: boolean;
+    reboot: string;
+    standalone: boolean;
+    start_time?: string;
+    timezone?: string;
+    weekdays: Array<number> | null;
 };
 
 export type MemberView = {
@@ -2601,6 +2761,44 @@ export type CreateHiveRequestBodyWritable = {
     provider?: 'proxmox';
 };
 
+export type CreateMaintenanceScheduleRequestBodyWritable = {
+    /**
+     * How long the window stays open. A node already rebooting when it closes is allowed to finish; no new node starts.
+     */
+    duration_minutes: number;
+    enabled: boolean;
+    /**
+     * The cluster this window maintains.
+     */
+    hive_id?: string;
+    kind: 'recurring' | 'once';
+    name: string;
+    /**
+     * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
+     */
+    once_at?: string;
+    /**
+     * Reboot policy each node's dist-upgrade runs with.
+     */
+    reboot: 'if-needed' | 'always' | 'never';
+    /**
+     * True maintains the standalone pool instead: every hypervisor in no cluster, resolved when each run starts.
+     */
+    standalone?: boolean;
+    /**
+     * Local time the window opens, HH:MM 24-hour, in timezone.
+     */
+    start_time?: string;
+    /**
+     * IANA zone name. Required for a recurring window: 02:00 means 02:00 local in summer and in winter.
+     */
+    timezone?: string;
+    /**
+     * Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone.
+     */
+    weekdays?: Array<number> | null;
+};
+
 export type CreateRequestBodyWritable = {
     credential_kind?: 'static_secret' | 'assumed_role';
     credential_name: string;
@@ -3148,6 +3346,14 @@ export type ListHypervisorsResponseBodyWritable = {
     hypervisors: Array<HypervisorViewWritable> | null;
 };
 
+export type ListMaintenanceRunsResponseBodyWritable = {
+    runs: Array<MaintenanceRunViewWritable> | null;
+};
+
+export type ListMaintenanceSchedulesResponseBodyWritable = {
+    schedules: Array<MaintenanceScheduleViewWritable> | null;
+};
+
 export type ListMembersResponseBodyWritable = {
     members: Array<MemberView> | null;
 };
@@ -3240,6 +3446,78 @@ export type MfaVerifyResponseBodyWritable = {
     refresh_expires_in: number;
     refresh_token: string;
     token_type: string;
+};
+
+export type MaintenanceRunViewWritable = {
+    error?: string;
+    finished_at?: string;
+    hive_id?: string;
+    id: string;
+    nodes: Array<MaintenanceRunNodeView> | null;
+    reboot: string;
+    schedule_id?: string;
+    schedule_name?: string;
+    standalone: boolean;
+    started_at: string;
+    status: 'running' | 'succeeded' | 'failed' | 'stopped' | 'expired';
+    stop_requested: boolean;
+    window_end: string;
+    window_start: string;
+};
+
+export type MaintenanceScheduleInputWritable = {
+    /**
+     * How long the window stays open. A node already rebooting when it closes is allowed to finish; no new node starts.
+     */
+    duration_minutes: number;
+    enabled: boolean;
+    kind: 'recurring' | 'once';
+    name: string;
+    /**
+     * When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
+     */
+    once_at?: string;
+    /**
+     * Reboot policy each node's dist-upgrade runs with.
+     */
+    reboot: 'if-needed' | 'always' | 'never';
+    /**
+     * Local time the window opens, HH:MM 24-hour, in timezone.
+     */
+    start_time?: string;
+    /**
+     * IANA zone name. Required for a recurring window: 02:00 means 02:00 local in summer and in winter.
+     */
+    timezone?: string;
+    /**
+     * Days the window opens on, 0 = Sunday … 6 = Saturday, in timezone.
+     */
+    weekdays?: Array<number> | null;
+};
+
+export type MaintenanceScheduleViewWritable = {
+    duration_minutes: number;
+    enabled: boolean;
+    hive_id?: string;
+    hive_name?: string;
+    id: string;
+    kind: 'recurring' | 'once';
+    last_window_at?: string;
+    name: string;
+    /**
+     * The next three times the window opens, UTC.
+     */
+    next_openings: Array<string> | null;
+    once_at?: string;
+    /**
+     * The window is open at this moment.
+     */
+    open_now: boolean;
+    reboot: string;
+    standalone: boolean;
+    start_time?: string;
+    timezone?: string;
+    weekdays: Array<number> | null;
 };
 
 export type MintApiKeyRequestBodyWritable = {
@@ -6032,6 +6310,164 @@ export type FleetHypervisorsReprovisionResponses = {
 };
 
 export type FleetHypervisorsReprovisionResponse = FleetHypervisorsReprovisionResponses[keyof FleetHypervisorsReprovisionResponses];
+
+export type FleetMaintenanceRunsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/api/v1/fleet/maintenance/runs';
+};
+
+export type FleetMaintenanceRunsListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceRunsListError = FleetMaintenanceRunsListErrors[keyof FleetMaintenanceRunsListErrors];
+
+export type FleetMaintenanceRunsListResponses = {
+    /**
+     * OK
+     */
+    200: ListMaintenanceRunsResponseBody;
+};
+
+export type FleetMaintenanceRunsListResponse = FleetMaintenanceRunsListResponses[keyof FleetMaintenanceRunsListResponses];
+
+export type FleetMaintenanceRunsStopData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/maintenance/runs/{id}/stop';
+};
+
+export type FleetMaintenanceRunsStopErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceRunsStopError = FleetMaintenanceRunsStopErrors[keyof FleetMaintenanceRunsStopErrors];
+
+export type FleetMaintenanceRunsStopResponses = {
+    /**
+     * OK
+     */
+    200: MaintenanceRunView;
+};
+
+export type FleetMaintenanceRunsStopResponse = FleetMaintenanceRunsStopResponses[keyof FleetMaintenanceRunsStopResponses];
+
+export type FleetMaintenanceSchedulesListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/fleet/maintenance/schedules';
+};
+
+export type FleetMaintenanceSchedulesListErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceSchedulesListError = FleetMaintenanceSchedulesListErrors[keyof FleetMaintenanceSchedulesListErrors];
+
+export type FleetMaintenanceSchedulesListResponses = {
+    /**
+     * OK
+     */
+    200: ListMaintenanceSchedulesResponseBody;
+};
+
+export type FleetMaintenanceSchedulesListResponse = FleetMaintenanceSchedulesListResponses[keyof FleetMaintenanceSchedulesListResponses];
+
+export type FleetMaintenanceSchedulesCreateData = {
+    body: CreateMaintenanceScheduleRequestBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/fleet/maintenance/schedules';
+};
+
+export type FleetMaintenanceSchedulesCreateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceSchedulesCreateError = FleetMaintenanceSchedulesCreateErrors[keyof FleetMaintenanceSchedulesCreateErrors];
+
+export type FleetMaintenanceSchedulesCreateResponses = {
+    /**
+     * Created
+     */
+    201: MaintenanceScheduleView;
+};
+
+export type FleetMaintenanceSchedulesCreateResponse = FleetMaintenanceSchedulesCreateResponses[keyof FleetMaintenanceSchedulesCreateResponses];
+
+export type FleetMaintenanceSchedulesDeleteData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/maintenance/schedules/{id}';
+};
+
+export type FleetMaintenanceSchedulesDeleteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceSchedulesDeleteError = FleetMaintenanceSchedulesDeleteErrors[keyof FleetMaintenanceSchedulesDeleteErrors];
+
+export type FleetMaintenanceSchedulesDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type FleetMaintenanceSchedulesDeleteResponse = FleetMaintenanceSchedulesDeleteResponses[keyof FleetMaintenanceSchedulesDeleteResponses];
+
+export type FleetMaintenanceSchedulesUpdateData = {
+    body: MaintenanceScheduleInputWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/fleet/maintenance/schedules/{id}';
+};
+
+export type FleetMaintenanceSchedulesUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FleetMaintenanceSchedulesUpdateError = FleetMaintenanceSchedulesUpdateErrors[keyof FleetMaintenanceSchedulesUpdateErrors];
+
+export type FleetMaintenanceSchedulesUpdateResponses = {
+    /**
+     * OK
+     */
+    200: MaintenanceScheduleView;
+};
+
+export type FleetMaintenanceSchedulesUpdateResponse = FleetMaintenanceSchedulesUpdateResponses[keyof FleetMaintenanceSchedulesUpdateResponses];
 
 export type FleetTasksCreateData = {
     body: CreateTaskRequestBodyWritable;

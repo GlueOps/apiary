@@ -1,4 +1,4 @@
-h1:uaYGjSs5clrw3se4gzq8kA35V0lHljWYdTqwVP9bSKg=
+h1:T+NGVTJqKdLq0IjrzU3YDcbtvf4lve/GIyJ/4lBbSVI=
 20260822172006_estates.sql h1:rTEElJsZJUdH3HKZ/+FQNTqE2iaNNyPsqo80T9sYe5A=
 20260823142715_ssh_keys.sql h1:c8wCjoqQekqeAjs9tp2snKXwVCFrx5PBRwnRW0p3AkA=
 20260823162038_fleet_and_firewall.sql h1:HlVO2kq7UciseX2dyBbRg01zIK6HCsg942S0zY3m0Qw=
@@ -25,3 +25,4 @@ h1:uaYGjSs5clrw3se4gzq8kA35V0lHljWYdTqwVP9bSKg=
 20260830193533_add_hypervisor_credential_disposition.sql h1:o8Lf9JbYCFWGWsGDja9WoSdnln9i7LS6dUkUIhH20/4=
 20260830220825_add_disarm_verification.sql h1:qWFee7qWF33lPuLBleuy+pc3lvnmOQiEbSSlhuo9GV4=
 20260831050410_add_bee_observed_cluster_config.sql h1:6AMVkBLOl4Hb8nWPeKkhAHhN2Pq8VXGmgEW+v4QZAVo=
+20261030162930_add_maintenance_schedules.sql h1:mMiKCQPlbTB8aKIObi3n3Ve1p56UgHLw9i0a//74ifc=

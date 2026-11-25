@@ -47,6 +47,7 @@ docs/CordonRequestBody.md
 docs/CorosyncLinkInput.md
 docs/CreateBindingRequestBody.md
 docs/CreateHiveRequestBody.md
+docs/CreateMaintenanceScheduleRequestBody.md
 docs/CreateRequestBody.md
 docs/CreateRequestBody1.md
 docs/CreateRequestBody2.md
@@ -115,6 +116,8 @@ docs/ListBindingsResponseBody.md
 docs/ListFleetlessResponseBody.md
 docs/ListHivesResponseBody.md
 docs/ListHypervisorsResponseBody.md
+docs/ListMaintenanceRunsResponseBody.md
+docs/ListMaintenanceSchedulesResponseBody.md
 docs/ListMembersResponseBody.md
 docs/ListOrganizationsResponseBody.md
 docs/ListResponseBody.md
@@ -134,6 +137,10 @@ docs/LogsResponseBody.md
 docs/MFAStruct.md
 docs/MFAVerifyRequestBody.md
 docs/MFAVerifyResponseBody.md
+docs/MaintenanceRunNodeView.md
+docs/MaintenanceRunView.md
+docs/MaintenanceScheduleInput.md
+docs/MaintenanceScheduleView.md
 docs/MeAPI.md
 docs/MemberView.md
 docs/MembershipDesiredView.md
@@ -254,6 +261,7 @@ model_cordon_request_body.go
 model_corosync_link_input.go
 model_create_binding_request_body.go
 model_create_hive_request_body.go
+model_create_maintenance_schedule_request_body.go
 model_create_request_body.go
 model_create_request_body1.go
 model_create_request_body2.go
@@ -318,6 +326,8 @@ model_list_bindings_response_body.go
 model_list_fleetless_response_body.go
 model_list_hives_response_body.go
 model_list_hypervisors_response_body.go
+model_list_maintenance_runs_response_body.go
+model_list_maintenance_schedules_response_body.go
 model_list_members_response_body.go
 model_list_organizations_response_body.go
 model_list_response_body.go
@@ -334,6 +344,10 @@ model_login_response_body.go
 model_logout_response_body.go
 model_logs_request_body.go
 model_logs_response_body.go
+model_maintenance_run_node_view.go
+model_maintenance_run_view.go
+model_maintenance_schedule_input.go
+model_maintenance_schedule_view.go
 model_member_view.go
 model_membership_desired_view.go
 model_membership_member_view.go
