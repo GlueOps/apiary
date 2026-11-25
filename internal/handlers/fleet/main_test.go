@@ -15,6 +15,6 @@ import (
 func TestMain(m *testing.M) {
 	code := m.Run()
 	testsupport.DropSchemas(fleetopsSchema, platformSchema,
-		lifecycleTenantSchema, lifecycleControlSchema, departureSchema)
+		lifecycleTenantSchema, lifecycleControlSchema, departureSchema, maintenanceAckSchema)
 	os.Exit(code)
 }

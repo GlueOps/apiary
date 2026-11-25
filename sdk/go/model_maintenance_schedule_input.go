@@ -28,6 +28,10 @@ type MaintenanceScheduleInput struct {
 	DurationMinutes int64 `json:"duration_minutes"`
 	Enabled bool `json:"enabled"`
 	Kind string `json:"kind"`
+	// Failure budget, as a percentage of the run's size: the run carries on past failed nodes, one at a time, until failures exceed it. 0 (the default) stops at the first failure. In a cluster, a run carries on past a failure only while the cluster keeps a vote to spare.
+	MaintenancePct *int64 `json:"maintenance_pct,omitempty"`
+	// The most nodes one run works; 0 (the default) is all of them. The rest are left for the next window, which starts with the least recently maintained.
+	MaxNodesPerRun *int64 `json:"max_nodes_per_run,omitempty"`
 	Name string `json:"name"`
 	// When a one-off window opens. A time in the past still opens the window now, provided the window has not already closed.
 	OnceAt *time.Time `json:"once_at,omitempty"`
@@ -167,6 +171,70 @@ func (o *MaintenanceScheduleInput) GetKindOk() (*string, bool) {
 // SetKind sets field value
 func (o *MaintenanceScheduleInput) SetKind(v string) {
 	o.Kind = v
+}
+
+// GetMaintenancePct returns the MaintenancePct field value if set, zero value otherwise.
+func (o *MaintenanceScheduleInput) GetMaintenancePct() int64 {
+	if o == nil || IsNil(o.MaintenancePct) {
+		var ret int64
+		return ret
+	}
+	return *o.MaintenancePct
+}
+
+// GetMaintenancePctOk returns a tuple with the MaintenancePct field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MaintenanceScheduleInput) GetMaintenancePctOk() (*int64, bool) {
+	if o == nil || IsNil(o.MaintenancePct) {
+		return nil, false
+	}
+	return o.MaintenancePct, true
+}
+
+// HasMaintenancePct returns a boolean if a field has been set.
+func (o *MaintenanceScheduleInput) HasMaintenancePct() bool {
+	if o != nil && !IsNil(o.MaintenancePct) {
+		return true
+	}
+
+	return false
+}
+
+// SetMaintenancePct gets a reference to the given int64 and assigns it to the MaintenancePct field.
+func (o *MaintenanceScheduleInput) SetMaintenancePct(v int64) {
+	o.MaintenancePct = &v
+}
+
+// GetMaxNodesPerRun returns the MaxNodesPerRun field value if set, zero value otherwise.
+func (o *MaintenanceScheduleInput) GetMaxNodesPerRun() int64 {
+	if o == nil || IsNil(o.MaxNodesPerRun) {
+		var ret int64
+		return ret
+	}
+	return *o.MaxNodesPerRun
+}
+
+// GetMaxNodesPerRunOk returns a tuple with the MaxNodesPerRun field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MaintenanceScheduleInput) GetMaxNodesPerRunOk() (*int64, bool) {
+	if o == nil || IsNil(o.MaxNodesPerRun) {
+		return nil, false
+	}
+	return o.MaxNodesPerRun, true
+}
+
+// HasMaxNodesPerRun returns a boolean if a field has been set.
+func (o *MaintenanceScheduleInput) HasMaxNodesPerRun() bool {
+	if o != nil && !IsNil(o.MaxNodesPerRun) {
+		return true
+	}
+
+	return false
+}
+
+// SetMaxNodesPerRun gets a reference to the given int64 and assigns it to the MaxNodesPerRun field.
+func (o *MaintenanceScheduleInput) SetMaxNodesPerRun(v int64) {
+	o.MaxNodesPerRun = &v
 }
 
 // GetName returns the Name field value
@@ -362,6 +430,12 @@ func (o MaintenanceScheduleInput) ToMap() (map[string]interface{}, error) {
 	toSerialize["duration_minutes"] = o.DurationMinutes
 	toSerialize["enabled"] = o.Enabled
 	toSerialize["kind"] = o.Kind
+	if !IsNil(o.MaintenancePct) {
+		toSerialize["maintenance_pct"] = o.MaintenancePct
+	}
+	if !IsNil(o.MaxNodesPerRun) {
+		toSerialize["max_nodes_per_run"] = o.MaxNodesPerRun
+	}
 	toSerialize["name"] = o.Name
 	if !IsNil(o.OnceAt) {
 		toSerialize["once_at"] = o.OnceAt

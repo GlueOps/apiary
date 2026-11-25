@@ -20,7 +20,7 @@ function json(body: unknown) {
   });
 }
 
-function stubApi(runs: unknown[] = [], schedules: unknown[] = []) {
+function stubApi(runs: unknown[] = [], schedules: unknown[] = [], strikes: unknown[] = []) {
   const sent: Sent[] = [];
   vi.stubGlobal(
     'fetch',
@@ -34,6 +34,7 @@ function stubApi(runs: unknown[] = [], schedules: unknown[] = []) {
           headers: { 'content-type': 'application/json' },
         });
       }
+      if (input.url.includes('/fleet/maintenance/strikes')) return json({ hypervisors: strikes });
       if (input.url.includes('/fleet/maintenance/schedules')) return json({ schedules });
       if (input.url.includes('/fleet/maintenance/runs')) return json({ runs });
       if (input.url.includes('/fleet/hives')) {
@@ -58,6 +59,7 @@ function renderPage() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('Maintenance', () => {
@@ -162,5 +164,90 @@ describe('Maintenance', () => {
     renderPage();
     expect(await screen.findByText('no agent is attached to this machine')).toBeTruthy();
     expect(screen.getByText('left cordoned')).toBeTruthy();
+  });
+
+  it('keeps the failure budget when a window is paused', async () => {
+    const sent = stubApi(
+      [],
+      [
+        {
+          id: 's1',
+          hive_id: 'h1',
+          standalone: false,
+          name: 'weekly',
+          kind: 'recurring',
+          weekdays: [0],
+          start_time: '02:00',
+          timezone: 'Europe/Helsinki',
+          duration_minutes: 120,
+          reboot: 'if-needed',
+          enabled: true,
+          open_now: false,
+          next_openings: [],
+          max_nodes_per_run: 12,
+          maintenance_pct: 30,
+        },
+      ],
+    );
+    renderPage();
+    expect(
+      await screen.findByText(/up to 12 per run; carries on until more than 30%/),
+    ).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(sent.some((s) => s.method === 'PUT')).toBe(true));
+    // The update replaces the window: a pause that left these out would reset
+    // the budget to "every node, stop at the first failure".
+    expect(sent.find((s) => s.method === 'PUT')!.body).toMatchObject({
+      enabled: false,
+      max_nodes_per_run: 12,
+      maintenance_pct: 30,
+    });
+  });
+
+  it('lists a flagged hypervisor in scope and acknowledges it by id', async () => {
+    const sent = stubApi(
+      [],
+      [],
+      [
+        {
+          hypervisor_id: 'hv-bad',
+          name: 'hv7',
+          hive_id: 'h1',
+          strikes: 2,
+          flagged: true,
+          latest_at: '2026-11-20T02:30:00Z',
+          latest_reason: 'the upgrade failed: dpkg exploded',
+          latest_run_id: 'r9',
+          schedulable: false,
+        },
+        {
+          hypervisor_id: 'hv-other',
+          name: 'loose1',
+          strikes: 1,
+          flagged: false,
+          latest_at: '2026-11-20T02:30:00Z',
+          latest_reason: 'elsewhere',
+          latest_run_id: 'r8',
+          schedulable: true,
+        },
+      ],
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    expect(await screen.findByText('skipped until acknowledged')).toBeTruthy();
+    expect(screen.getByText('cordoned')).toBeTruthy();
+    // The standalone machine is not in this cluster's scope.
+    expect(screen.queryByText('loose1')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    await waitFor(() =>
+      expect(
+        sent.some(
+          (s) =>
+            s.method === 'POST' &&
+            s.url.endsWith('/fleet/hypervisors/hv-bad/maintenance/acknowledge'),
+        ),
+      ).toBe(true),
+    );
   });
 });

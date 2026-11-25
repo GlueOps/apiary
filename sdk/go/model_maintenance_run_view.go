@@ -28,6 +28,10 @@ type MaintenanceRunView struct {
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	HiveId *string `json:"hive_id,omitempty"`
 	Id string `json:"id"`
+	// The failure budget the run started with.
+	MaintenancePct int64 `json:"maintenance_pct"`
+	// The node limit the run started with; 0 is every node.
+	MaxNodesPerRun int64 `json:"max_nodes_per_run"`
 	Nodes []MaintenanceRunNodeView `json:"nodes"`
 	Reboot string `json:"reboot"`
 	ScheduleId *string `json:"schedule_id,omitempty"`
@@ -46,9 +50,11 @@ type _MaintenanceRunView MaintenanceRunView
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewMaintenanceRunView(id string, nodes []MaintenanceRunNodeView, reboot string, standalone bool, startedAt time.Time, status string, stopRequested bool, windowEnd time.Time, windowStart time.Time) *MaintenanceRunView {
+func NewMaintenanceRunView(id string, maintenancePct int64, maxNodesPerRun int64, nodes []MaintenanceRunNodeView, reboot string, standalone bool, startedAt time.Time, status string, stopRequested bool, windowEnd time.Time, windowStart time.Time) *MaintenanceRunView {
 	this := MaintenanceRunView{}
 	this.Id = id
+	this.MaintenancePct = maintenancePct
+	this.MaxNodesPerRun = maxNodesPerRun
 	this.Nodes = nodes
 	this.Reboot = reboot
 	this.Standalone = standalone
@@ -218,6 +224,54 @@ func (o *MaintenanceRunView) GetIdOk() (*string, bool) {
 // SetId sets field value
 func (o *MaintenanceRunView) SetId(v string) {
 	o.Id = v
+}
+
+// GetMaintenancePct returns the MaintenancePct field value
+func (o *MaintenanceRunView) GetMaintenancePct() int64 {
+	if o == nil {
+		var ret int64
+		return ret
+	}
+
+	return o.MaintenancePct
+}
+
+// GetMaintenancePctOk returns a tuple with the MaintenancePct field value
+// and a boolean to check if the value has been set.
+func (o *MaintenanceRunView) GetMaintenancePctOk() (*int64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.MaintenancePct, true
+}
+
+// SetMaintenancePct sets field value
+func (o *MaintenanceRunView) SetMaintenancePct(v int64) {
+	o.MaintenancePct = v
+}
+
+// GetMaxNodesPerRun returns the MaxNodesPerRun field value
+func (o *MaintenanceRunView) GetMaxNodesPerRun() int64 {
+	if o == nil {
+		var ret int64
+		return ret
+	}
+
+	return o.MaxNodesPerRun
+}
+
+// GetMaxNodesPerRunOk returns a tuple with the MaxNodesPerRun field value
+// and a boolean to check if the value has been set.
+func (o *MaintenanceRunView) GetMaxNodesPerRunOk() (*int64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.MaxNodesPerRun, true
+}
+
+// SetMaxNodesPerRun sets field value
+func (o *MaintenanceRunView) SetMaxNodesPerRun(v int64) {
+	o.MaxNodesPerRun = v
 }
 
 // GetNodes returns the Nodes field value
@@ -501,6 +555,8 @@ func (o MaintenanceRunView) ToMap() (map[string]interface{}, error) {
 		toSerialize["hive_id"] = o.HiveId
 	}
 	toSerialize["id"] = o.Id
+	toSerialize["maintenance_pct"] = o.MaintenancePct
+	toSerialize["max_nodes_per_run"] = o.MaxNodesPerRun
 	if o.Nodes != nil {
 		toSerialize["nodes"] = o.Nodes
 	}
@@ -526,6 +582,8 @@ func (o *MaintenanceRunView) UnmarshalJSON(data []byte) (err error) {
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
 		"id",
+		"maintenance_pct",
+		"max_nodes_per_run",
 		"nodes",
 		"reboot",
 		"standalone",

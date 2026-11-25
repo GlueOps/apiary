@@ -3082,6 +3082,43 @@ paths:
       summary: Destroy the cluster secrets a departed machine still holds
       tags:
       - Fleet
+  /api/v1/fleet/hypervisors/{id}/maintenance/acknowledge:
+    post:
+      description: "Clears the strikes maintenance counts against this hypervisor,\
+        \ so the next window tries it again. It does NOT uncordon it: a node a failed\
+        \ run left cordoned stays cordoned until a window upgrades it successfully\
+        \ or somebody uncordons it. Refused with 409 when there is nothing to acknowledge."
+      operationId: fleet-maintenance-acknowledge
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcknowledgeMaintenanceResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: Acknowledge a hypervisor's maintenance failures
+      tags:
+      - Fleet
   /api/v1/fleet/hypervisors/{id}/reprovision:
     post:
       description: |-
@@ -3224,7 +3261,7 @@ paths:
       - Fleet
     post:
       description: |-
-        In each window the control plane dist-upgrades the scope's hypervisors ONE AT A TIME: it cordons the node, queues the upgrade, waits for the node to come back (agent heartbeating, and in a cluster, quorate), hands the cordon back, then moves on. The first node that fails or does not come back in time stops the run and stays cordoned.
+        In each window the control plane dist-upgrades the scope's hypervisors ONE AT A TIME: it cordons the node, queues the upgrade, waits for the node to come back (agent heartbeating, and in a cluster, quorate), hands the cordon back, then moves on. A node that fails or does not come back in time stays cordoned. By default it also stops the run; with maintenance_pct set, the run carries on, one node at a time, until failures exceed that share of max_nodes_per_run (or of the scope). A node whose upgrade failed in two runs in a row is skipped until an admin acknowledges it.
 
         A window GRANTS GUEST DOWNTIME: guests on a node reboot with it. It lifts no other condition of the upgrade gate — a stale observation or a reboot that would cost the cluster quorum still refuses, at that node's turn.
 
@@ -3326,6 +3363,33 @@ paths:
       - OrgKeyAuth: []
         OrgKeySecret: []
       summary: Change a maintenance window
+      tags:
+      - Fleet
+  /api/v1/fleet/maintenance/strikes:
+    get:
+      description: Every hypervisor whose upgrade started and then failed in a maintenance
+        run with no successful maintenance or acknowledgement since. Flagged ones
+        (two in a row) are skipped by every run until an admin acknowledges them.
+      operationId: fleet-maintenance-strikes-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMaintenanceStrikesResponseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      - OrgKeyAuth: []
+        OrgKeySecret: []
+      summary: List hypervisors with maintenance failures
       tags:
       - Fleet
   /api/v1/fleet/tasks:
@@ -4878,6 +4942,33 @@ components:
       - seeded
       - updated_at
       - value
+    AcknowledgeMaintenanceResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        acknowledged_at: 2000-01-23T04:56:07.000+00:00
+        cleared: 0
+        hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        acknowledged_at:
+          format: date-time
+          type: string
+        cleared:
+          description: How many strikes the acknowledgement cleared.
+          format: int64
+          type: integer
+        hypervisor_id:
+          format: uuid
+          type: string
+      required:
+      - acknowledged_at
+      - cleared
+      - hypervisor_id
     AddSetElementRequestBody:
       additionalProperties: false
       example:
@@ -5588,6 +5679,8 @@ components:
         enabled: true
         hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         kind: recurring
+        maintenance_pct: 30
+        max_nodes_per_run: 146
         name: name
         once_at: 2000-01-23T04:56:07.000+00:00
         reboot: if-needed
@@ -5595,8 +5688,8 @@ components:
         start_time: start_time
         timezone: timezone
         weekdays:
-        - 6
-        - 6
+        - 5
+        - 5
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -5621,6 +5714,23 @@ components:
           - recurring
           - once
           type: string
+        maintenance_pct:
+          description: "Failure budget, as a percentage of the run's size: the run\
+            \ carries on past failed nodes, one at a time, until failures exceed it.\
+            \ 0 (the default) stops at the first failure. In a cluster, a run carries\
+            \ on past a failure only while the cluster keeps a vote to spare."
+          format: int64
+          maximum: 50
+          minimum: 0
+          type: integer
+        max_nodes_per_run:
+          description: "The most nodes one run works; 0 (the default) is all of them.\
+            \ The rest are left for the next window, which starts with the least recently\
+            \ maintained."
+          format: int64
+          maximum: 1000
+          minimum: 0
+          type: integer
         name:
           maxLength: 100
           type: string
@@ -7966,6 +8076,8 @@ components:
           finished_at: 2000-01-23T04:56:07.000+00:00
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          maintenance_pct: 0
+          max_nodes_per_run: 6
           nodes:
           - deadline: 2000-01-23T04:56:07.000+00:00
             finished_at: 2000-01-23T04:56:07.000+00:00
@@ -7999,6 +8111,8 @@ components:
           finished_at: 2000-01-23T04:56:07.000+00:00
           hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          maintenance_pct: 0
+          max_nodes_per_run: 6
           nodes:
           - deadline: 2000-01-23T04:56:07.000+00:00
             finished_at: 2000-01-23T04:56:07.000+00:00
@@ -8054,6 +8168,8 @@ components:
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           kind: recurring
           last_window_at: 2000-01-23T04:56:07.000+00:00
+          maintenance_pct: 6
+          max_nodes_per_run: 1
           name: name
           next_openings:
           - next_openings
@@ -8065,8 +8181,8 @@ components:
           start_time: start_time
           timezone: timezone
           weekdays:
-          - 6
-          - 6
+          - 5
+          - 5
         - $schema: https://openapi-generator.tech
           duration_minutes: 0
           enabled: true
@@ -8075,6 +8191,8 @@ components:
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           kind: recurring
           last_window_at: 2000-01-23T04:56:07.000+00:00
+          maintenance_pct: 6
+          max_nodes_per_run: 1
           name: name
           next_openings:
           - next_openings
@@ -8086,8 +8204,8 @@ components:
           start_time: start_time
           timezone: timezone
           weekdays:
-          - 6
-          - 6
+          - 5
+          - 5
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -8102,6 +8220,43 @@ components:
           default: null
       required:
       - schedules
+    ListMaintenanceStrikesResponseBody:
+      additionalProperties: false
+      example:
+        $schema: https://openapi-generator.tech
+        hypervisors:
+        - flagged: true
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          latest_at: 2000-01-23T04:56:07.000+00:00
+          latest_reason: latest_reason
+          latest_run_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          name: name
+          schedulable: true
+          strikes: 0
+        - flagged: true
+          hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          latest_at: 2000-01-23T04:56:07.000+00:00
+          latest_reason: latest_reason
+          latest_run_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          name: name
+          schedulable: true
+          strikes: 0
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          format: uri
+          readOnly: true
+          type: string
+        hypervisors:
+          items:
+            $ref: "#/components/schemas/MaintenanceStrikesView"
+          nullable: true
+          type: array
+          default: null
+      required:
+      - hypervisors
     ListMembersResponseBody:
       additionalProperties: false
       example:
@@ -8821,6 +8976,8 @@ components:
         finished_at: 2000-01-23T04:56:07.000+00:00
         hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        maintenance_pct: 0
+        max_nodes_per_run: 6
         nodes:
         - deadline: 2000-01-23T04:56:07.000+00:00
           finished_at: 2000-01-23T04:56:07.000+00:00
@@ -8866,6 +9023,14 @@ components:
         id:
           format: uuid
           type: string
+        maintenance_pct:
+          description: The failure budget the run started with.
+          format: int64
+          type: integer
+        max_nodes_per_run:
+          description: The node limit the run started with; 0 is every node.
+          format: int64
+          type: integer
         nodes:
           items:
             $ref: "#/components/schemas/MaintenanceRunNodeView"
@@ -8902,6 +9067,8 @@ components:
           type: string
       required:
       - id
+      - maintenance_pct
+      - max_nodes_per_run
       - nodes
       - reboot
       - standalone
@@ -8917,14 +9084,16 @@ components:
         duration_minutes: 71
         enabled: true
         kind: recurring
+        maintenance_pct: 30
+        max_nodes_per_run: 146
         name: name
         once_at: 2000-01-23T04:56:07.000+00:00
         reboot: if-needed
         start_time: start_time
         timezone: timezone
         weekdays:
-        - 6
-        - 6
+        - 5
+        - 5
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -8945,6 +9114,23 @@ components:
           - recurring
           - once
           type: string
+        maintenance_pct:
+          description: "Failure budget, as a percentage of the run's size: the run\
+            \ carries on past failed nodes, one at a time, until failures exceed it.\
+            \ 0 (the default) stops at the first failure. In a cluster, a run carries\
+            \ on past a failure only while the cluster keeps a vote to spare."
+          format: int64
+          maximum: 50
+          minimum: 0
+          type: integer
+        max_nodes_per_run:
+          description: "The most nodes one run works; 0 (the default) is all of them.\
+            \ The rest are left for the next window, which starts with the least recently\
+            \ maintained."
+          format: int64
+          maximum: 1000
+          minimum: 0
+          type: integer
         name:
           maxLength: 100
           type: string
@@ -8992,6 +9178,8 @@ components:
         id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         kind: recurring
         last_window_at: 2000-01-23T04:56:07.000+00:00
+        maintenance_pct: 6
+        max_nodes_per_run: 1
         name: name
         next_openings:
         - next_openings
@@ -9003,8 +9191,8 @@ components:
         start_time: start_time
         timezone: timezone
         weekdays:
-        - 6
-        - 6
+        - 5
+        - 5
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
@@ -9032,6 +9220,13 @@ components:
         last_window_at:
           format: date-time
           type: string
+        maintenance_pct:
+          format: int64
+          type: integer
+        max_nodes_per_run:
+          description: 0 is every node in scope.
+          format: int64
+          type: integer
         name:
           type: string
         next_openings:
@@ -9067,12 +9262,64 @@ components:
       - enabled
       - id
       - kind
+      - maintenance_pct
+      - max_nodes_per_run
       - name
       - next_openings
       - open_now
       - reboot
       - standalone
       - weekdays
+    MaintenanceStrikesView:
+      additionalProperties: false
+      example:
+        flagged: true
+        hive_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        hypervisor_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        latest_at: 2000-01-23T04:56:07.000+00:00
+        latest_reason: latest_reason
+        latest_run_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        name: name
+        schedulable: true
+        strikes: 0
+      properties:
+        flagged:
+          description: Maintenance skips it until an admin acknowledges it.
+          type: boolean
+        hive_id:
+          format: uuid
+          type: string
+        hypervisor_id:
+          format: uuid
+          type: string
+        latest_at:
+          format: date-time
+          type: string
+        latest_reason:
+          type: string
+        latest_run_id:
+          format: uuid
+          type: string
+        name:
+          type: string
+        schedulable:
+          description: False while it is still cordoned. Acknowledging does not uncordon
+            it.
+          type: boolean
+        strikes:
+          description: Maintenance runs in a row in which its upgrade started and
+            then failed.
+          format: int64
+          type: integer
+      required:
+      - flagged
+      - hypervisor_id
+      - latest_at
+      - latest_reason
+      - latest_run_id
+      - name
+      - schedulable
+      - strikes
     MemberView:
       additionalProperties: false
       example:

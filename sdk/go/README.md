@@ -155,12 +155,14 @@ Class | Method | HTTP request | Description
 *FleetAPI* | [**FleetHypervisorsGet**](docs/FleetAPI.md#fleethypervisorsget) | **Get** /api/v1/fleet/hypervisors/{id} | Get one hypervisor
 *FleetAPI* | [**FleetHypervisorsList**](docs/FleetAPI.md#fleethypervisorslist) | **Get** /api/v1/fleet/hypervisors | List machines with their three status axes
 *FleetAPI* | [**FleetHypervisorsReprovision**](docs/FleetAPI.md#fleethypervisorsreprovision) | **Post** /api/v1/fleet/hypervisors/{id}/reprovision | Redrive a machine&#39;s onboarding
+*FleetAPI* | [**FleetMaintenanceAcknowledge**](docs/FleetAPI.md#fleetmaintenanceacknowledge) | **Post** /api/v1/fleet/hypervisors/{id}/maintenance/acknowledge | Acknowledge a hypervisor&#39;s maintenance failures
 *FleetAPI* | [**FleetMaintenanceRunsList**](docs/FleetAPI.md#fleetmaintenancerunslist) | **Get** /api/v1/fleet/maintenance/runs | List recent maintenance runs
 *FleetAPI* | [**FleetMaintenanceRunsStop**](docs/FleetAPI.md#fleetmaintenancerunsstop) | **Post** /api/v1/fleet/maintenance/runs/{id}/stop | Stop a maintenance run
 *FleetAPI* | [**FleetMaintenanceSchedulesCreate**](docs/FleetAPI.md#fleetmaintenanceschedulescreate) | **Post** /api/v1/fleet/maintenance/schedules | Schedule a maintenance window
 *FleetAPI* | [**FleetMaintenanceSchedulesDelete**](docs/FleetAPI.md#fleetmaintenanceschedulesdelete) | **Delete** /api/v1/fleet/maintenance/schedules/{id} | Delete a maintenance window
 *FleetAPI* | [**FleetMaintenanceSchedulesList**](docs/FleetAPI.md#fleetmaintenancescheduleslist) | **Get** /api/v1/fleet/maintenance/schedules | List maintenance windows
 *FleetAPI* | [**FleetMaintenanceSchedulesUpdate**](docs/FleetAPI.md#fleetmaintenanceschedulesupdate) | **Put** /api/v1/fleet/maintenance/schedules/{id} | Change a maintenance window
+*FleetAPI* | [**FleetMaintenanceStrikesList**](docs/FleetAPI.md#fleetmaintenancestrikeslist) | **Get** /api/v1/fleet/maintenance/strikes | List hypervisors with maintenance failures
 *FleetAPI* | [**FleetTasksCreate**](docs/FleetAPI.md#fleettaskscreate) | **Post** /api/v1/fleet/tasks | Queue work for a bee
 *FleetAPI* | [**FleetTasksLogs**](docs/FleetAPI.md#fleettaskslogs) | **Get** /api/v1/fleet/tasks/{id}/logs | Read a task&#39;s streamed output
 *FleetAPI* | [**SshKeysList**](docs/FleetAPI.md#sshkeyslist) | **Get** /api/v1/ssh-keys | List fleet SSH keys
@@ -209,6 +211,7 @@ Class | Method | HTTP request | Description
  - [AcceptRequestBody](docs/AcceptRequestBody.md)
  - [AcceptResponseBody](docs/AcceptResponseBody.md)
  - [AccessRuleView](docs/AccessRuleView.md)
+ - [AcknowledgeMaintenanceResponseBody](docs/AcknowledgeMaintenanceResponseBody.md)
  - [AddSetElementRequestBody](docs/AddSetElementRequestBody.md)
  - [AgentBuildView](docs/AgentBuildView.md)
  - [AgentDistResponseBody](docs/AgentDistResponseBody.md)
@@ -299,6 +302,7 @@ Class | Method | HTTP request | Description
  - [ListHypervisorsResponseBody](docs/ListHypervisorsResponseBody.md)
  - [ListMaintenanceRunsResponseBody](docs/ListMaintenanceRunsResponseBody.md)
  - [ListMaintenanceSchedulesResponseBody](docs/ListMaintenanceSchedulesResponseBody.md)
+ - [ListMaintenanceStrikesResponseBody](docs/ListMaintenanceStrikesResponseBody.md)
  - [ListMembersResponseBody](docs/ListMembersResponseBody.md)
  - [ListOrganizationsResponseBody](docs/ListOrganizationsResponseBody.md)
  - [ListResponseBody](docs/ListResponseBody.md)
@@ -322,6 +326,7 @@ Class | Method | HTTP request | Description
  - [MaintenanceRunView](docs/MaintenanceRunView.md)
  - [MaintenanceScheduleInput](docs/MaintenanceScheduleInput.md)
  - [MaintenanceScheduleView](docs/MaintenanceScheduleView.md)
+ - [MaintenanceStrikesView](docs/MaintenanceStrikesView.md)
  - [MemberView](docs/MemberView.md)
  - [MembershipDesiredView](docs/MembershipDesiredView.md)
  - [MembershipMemberView](docs/MembershipMemberView.md)

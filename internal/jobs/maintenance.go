@@ -170,22 +170,33 @@ func StartMaintenanceRun(
 		}
 
 		var hvs []tenant.Hypervisor
-		q := tx.Model(&tenant.Hypervisor{})
+		// LEAST RECENTLY MAINTAINED FIRST. With a node limit, ordering by name
+		// would have every window work the same first N machines and never reach
+		// the rest; this way the next window starts where the last one stopped.
+		// Never-maintained machines go first, and name breaks ties so the order is
+		// stable and readable.
+		q := tx.Model(&tenant.Hypervisor{}).Select("hypervisors.*").
+			Joins(`LEFT JOIN (SELECT hypervisor_id, max(finished_at) AS last_ok
+				FROM maintenance_run_nodes WHERE status = ? GROUP BY hypervisor_id) m
+				ON m.hypervisor_id = hypervisors.id`, tenant.MaintenanceNodeSucceeded)
 		if cur.HiveID != nil {
-			q = q.Where("hive_id = ?", *cur.HiveID)
+			q = q.Where("hypervisors.hive_id = ?", *cur.HiveID)
 		} else {
 			// The standalone pool is machines that are FINISHED arriving and in no
 			// cluster. One still being onboarded has no agent to hand work to.
-			q = q.Where("hive_id IS NULL AND provisioning_state = ?", "provisioned")
+			q = q.Where("hypervisors.hive_id IS NULL AND hypervisors.provisioning_state = ?",
+				"provisioned")
 		}
-		if err := q.Order("coalesce(name, address), id").Find(&hvs).Error; err != nil {
+		if err := q.Order("m.last_ok ASC NULLS FIRST, coalesce(hypervisors.name, " +
+			"hypervisors.address), hypervisors.id").Find(&hvs).Error; err != nil {
 			return err
 		}
 
 		run = &tenant.MaintenanceRun{
 			ScheduleID: &cur.ID, HiveID: cur.HiveID, Standalone: cur.Standalone,
 			Status: tenant.MaintenanceRunRunning, Reboot: cur.Reboot,
-			WindowStart: open, WindowEnd: open.Add(cur.Duration()), StartedAt: now,
+			MaintenanceBudget: cur.MaintenanceBudget,
+			WindowStart:       open, WindowEnd: open.Add(cur.Duration()), StartedAt: now,
 		}
 		if err := tx.Create(run).Error; err != nil {
 			return err
@@ -214,6 +225,7 @@ func StartMaintenanceRun(
 	}
 	recordSystemAudit(ctx, db, run.ID, tenant.AuditMaintenanceStart, run.HiveID, map[string]any{
 		"run_id": run.ID.String(), "schedule_id": s.ID.String(), "nodes": len(run.Nodes),
+		"max_nodes_per_run": run.MaxNodesPerRun, "maintenance_pct": run.MaintenancePct,
 	})
 	return run, nil
 }
@@ -251,21 +263,29 @@ func advanceRun(ctx context.Context, db *gorm.DB, cfg MaintenanceConfig, runID u
 				continue
 			}
 			// ONE AT A TIME: while a node is in flight nothing else is started,
-			// whatever the window or a stop request says.
+			// whatever the window or a stop request says. A node that finishes
+			// failed is weighed against the budget below, before anything else.
 			done, err := d.checkInFlight(ctx, &nodes[i])
 			if err != nil || !done {
 				return err
 			}
-			if nodes[i].Status == tenant.MaintenanceNodeFailed {
-				return d.finish(nodes, tenant.MaintenanceRunFailed,
-					fmt.Sprintf("%s did not complete: %s", nodes[i].Name, nodes[i].Reason),
-					"the run stopped after "+nodes[i].Name+" failed")
-			}
 		}
 
+		// N, the planned size the budget is a share of. Fixed for the run: the
+		// snapshot does not change, and the limit was copied when it started.
+		planned := run.PlannedSize(len(nodes))
 		for i := range nodes {
 			if nodes[i].Status != tenant.MaintenanceNodePending {
 				continue
+			}
+			worked, failed, last := tally(nodes)
+			// THE BUDGET COMES FIRST. A run that has failed more than it may has
+			// failed, whatever else is true; a stop or a closing window must not
+			// relabel it.
+			if failed > 0 && run.Exceeded(failed, planned) {
+				return d.finish(nodes, tenant.MaintenanceRunFailed,
+					budgetError(run.MaintenanceBudget, failed, planned, last, false),
+					"the run stopped after "+last.Name+" failed")
 			}
 			switch {
 			case run.StopRequested:
@@ -277,22 +297,44 @@ func advanceRun(ctx context.Context, db *gorm.DB, cfg MaintenanceConfig, runID u
 				return d.finish(nodes, tenant.MaintenanceRunExpired,
 					"the window closed with nodes still to do",
 					"the window closed before its turn")
+			case worked >= planned:
+				return d.finishWorked(nodes, failed, planned, last, fmt.Sprintf(
+					"left for the next window: this run's limit of %d node(s) was reached", planned))
+			}
+			if failed > 0 && d.hive != nil {
+				// CARRYING ON PAST A FAILURE NEEDS A SPARE VOTE. The failed node may
+				// still be down, and the gate only asks that quorum survives one more
+				// loss. Before taking a further node down after a failure, there must
+				// be a vote left over for an unrelated failure during its reboot.
+				ok, down, members, err := repo.HiveKeepsASpareVote(ctx, tx, d.hive.ID,
+					nodes[i].HypervisorID, now)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					why := fmt.Sprintf("after %d failure(s), the cluster has no vote to spare: "+
+						"%d node(s), %d of the others not observed up", failed, members, len(down))
+					if len(down) > 0 {
+						why += " (" + strings.Join(down, ", ") + ")"
+					}
+					return d.finish(nodes, tenant.MaintenanceRunFailed,
+						budgetError(run.MaintenanceBudget, failed, planned, last, true)+"; "+why,
+						"not started: "+why)
+				}
 			}
 			started, err := d.startNode(ctx, &nodes[i])
 			if err != nil {
 				return err
 			}
-			if nodes[i].Status == tenant.MaintenanceNodeFailed {
-				return d.finish(nodes, tenant.MaintenanceRunFailed,
-					fmt.Sprintf("%s could not be upgraded: %s", nodes[i].Name, nodes[i].Reason),
-					"the run stopped after "+nodes[i].Name+" failed")
-			}
 			if started {
 				return nil
 			}
-			// Skipped: move straight on to the next node in this same tick.
+			// Skipped, or refused by the gate and so failed: either way nothing is
+			// in flight, so move on in this same tick. A refusal is weighed against
+			// the budget at the top of the next iteration.
 		}
-		return d.finish(nodes, tenant.MaintenanceRunSucceeded, "", "")
+		_, failed, last := tally(nodes)
+		return d.finishWorked(nodes, failed, planned, last, "")
 	})
 	if err != nil {
 		return err
@@ -358,6 +400,53 @@ func (d *runDriver) finish(nodes []tenant.MaintenanceRunNode, status, why, pendi
 	}).Error
 }
 
+// tally counts the nodes a run has worked — started, whatever came of it — and
+// those that failed, with the most recent failure.
+func tally(nodes []tenant.MaintenanceRunNode) (worked, failed int, last tenant.MaintenanceRunNode) {
+	for _, n := range nodes {
+		switch n.Status {
+		case tenant.MaintenanceNodeUpgrading, tenant.MaintenanceNodeSucceeded:
+			worked++
+		case tenant.MaintenanceNodeFailed:
+			worked++
+			failed++
+			if last.FinishedAt == nil || (n.FinishedAt != nil && !n.FinishedAt.Before(*last.FinishedAt)) {
+				last = n
+			}
+		}
+	}
+	return worked, failed, last
+}
+
+// budgetError says why a run with failures ended. A single failure under the
+// default budget reads as it always has: the node and what went wrong with it.
+func budgetError(b tenant.MaintenanceBudget, failed, planned int, last tenant.MaintenanceRunNode,
+	within bool) string {
+	if b.MaintenancePct == 0 && failed == 1 {
+		return fmt.Sprintf("%s did not complete: %s", last.Name, last.Reason)
+	}
+	verdict := fmt.Sprintf("more than the %d%% failure budget allows", b.MaintenancePct)
+	if within {
+		verdict = fmt.Sprintf("within the %d%% failure budget", b.MaintenancePct)
+	}
+	return fmt.Sprintf("%d of %d node(s) failed, %s; the last was %s: %s",
+		failed, planned, verdict, last.Name, last.Reason)
+}
+
+// finishWorked ends a run that ran out of nodes to work, or reached its node
+// limit. With any failure it is a FAILED run, even within the budget: the
+// budget decides whether the run carries on, not whether a failed node counts.
+// A run that rebooted a node which did not come back must not read as a success
+// on the page or the trail.
+func (d *runDriver) finishWorked(nodes []tenant.MaintenanceRunNode, failed, planned int,
+	last tenant.MaintenanceRunNode, pendingReason string) error {
+	if failed == 0 {
+		return d.finish(nodes, tenant.MaintenanceRunSucceeded, "", pendingReason)
+	}
+	return d.finish(nodes, tenant.MaintenanceRunFailed,
+		budgetError(d.run.MaintenanceBudget, failed, planned, last, true), pendingReason)
+}
+
 // startNode decides whether a node may have its turn and, if so, cordons it and
 // queues its upgrade. It reports whether an upgrade was queued; a node that was
 // skipped or failed is saved with its reason.
@@ -377,6 +466,19 @@ func (d *runDriver) startNode(ctx context.Context, n *tenant.MaintenanceRunNode)
 	if reason := d.ineligible(ctx, hv); reason != "" {
 		return skip(reason)
 	}
+	// TWO STRIKES AND IT WAITS FOR A PERSON. A node that has failed its upgrade in
+	// consecutive runs will most likely fail it again, and each try is another
+	// reboot. Skipped, not failed: it does not stop the run or spend its budget,
+	// and the reason is on the node every run so it never goes quiet.
+	strikes, err := repo.LoadMaintenanceStrikes(ctx, d.tx, hv.ID)
+	if err != nil {
+		return false, err
+	}
+	if s := strikes[hv.ID]; s.Flagged() {
+		return skip(fmt.Sprintf("it failed its upgrade in %d maintenance runs in a row, most "+
+			"recently: %s. An admin must acknowledge it before maintenance tries it again",
+			s.Count, s.LatestReason))
+	}
 
 	spec, _ := json.Marshal(map[string]any{
 		// The schedule is the grant. See the package comment in
@@ -391,7 +493,7 @@ func (d *runDriver) startNode(ctx context.Context, n *tenant.MaintenanceRunNode)
 	var queued *tenant.FleetTask
 	var refusals []tenant.DepartureRefusal
 	cordonedAt := n.CordonedAt
-	err := d.tx.Transaction(func(tx *gorm.DB) error {
+	err = d.tx.Transaction(func(tx *gorm.DB) error {
 		if hv.Schedulable {
 			if err := tx.Model(&tenant.Hypervisor{}).Where("id = ?", hv.ID).
 				Update("schedulable", false).Error; err != nil {

@@ -129,6 +129,7 @@ const (
 	AuditMaintenanceScheduleUpdate = "maintenance.schedule_update"
 	AuditMaintenanceScheduleDelete = "maintenance.schedule_delete"
 	AuditMaintenanceRunStop        = "maintenance.run_stop"
+	AuditMaintenanceAcknowledge    = "maintenance.acknowledge"
 	// Written by the run itself, as the system.
 	AuditMaintenanceStart  = "maintenance.run_start"
 	AuditMaintenanceNode   = "maintenance.node_upgrade"
