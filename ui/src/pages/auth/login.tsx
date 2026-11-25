@@ -191,6 +191,10 @@ export const Login = () => {
             }))
           : undefined,
         userVerification: rawPK.userVerification as UserVerificationRequirement | undefined,
+        // Not forwarded: the server requests no extensions, and the binary ones
+        // (largeBlob, credBlob, hmacGetSecret, prf) arrive base64url-encoded where
+        // the browser needs BufferSource. Decode them here before requesting any.
+        extensions: undefined,
       } satisfies PublicKeyCredentialRequestOptions;
 
       const assertion = (await navigator.credentials.get({

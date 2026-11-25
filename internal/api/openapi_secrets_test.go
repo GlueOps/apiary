@@ -127,6 +127,22 @@ var allowedSecretShapedProperties = map[string]bool{
 	// user has to type it into an authenticator. There is no way to enrol
 	// without disclosing it to the enrolling user.
 	"TOTPSetupResponseBody.secret": true,
+
+	// NOT SECRET MATERIAL: WebAuthn extension INPUTS, in the options the server
+	// hands the browser at passkey register/login begin (go-webauthn 0.18 added
+	// them to protocol.AuthenticationExtensions). They tell the authenticator
+	// what to do and carry nothing it holds:
+	//
+	//   - hmacCreateSecret is a boolean asking the authenticator to provision a
+	//     CTAP hmac-secret ON ITSELF. The secret never leaves the authenticator.
+	//   - hmacGetSecret carries salt1/salt2, which the relying party chooses and
+	//     which are public by design. The HMAC computed over them comes back in
+	//     the client's extension OUTPUTS, which no response here returns.
+	//
+	// apiary sets neither, so both are always omitted on the wire. They trip
+	// the tripwire on the word "Secret" in the CTAP extension's name.
+	"AuthenticationExtensions.hmacCreateSecret": true,
+	"AuthenticationExtensions.hmacGetSecret":    true,
 }
 
 // refName returns the component schema a node points at, if it is a $ref.

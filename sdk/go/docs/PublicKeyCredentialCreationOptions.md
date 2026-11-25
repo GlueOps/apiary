@@ -9,7 +9,7 @@ Name | Type | Description | Notes
 **AuthenticatorSelection** | Pointer to [**AuthenticatorSelection**](AuthenticatorSelection.md) |  | [optional] 
 **Challenge** | **string** |  | 
 **ExcludeCredentials** | Pointer to [**[]CredentialDescriptor**](CredentialDescriptor.md) |  | [optional] 
-**Extensions** | Pointer to **map[string]interface{}** |  | [optional] 
+**Extensions** | Pointer to [**AuthenticationExtensions**](AuthenticationExtensions.md) |  | [optional] 
 **Hints** | Pointer to **[]string** |  | [optional] 
 **PubKeyCredParams** | Pointer to [**[]CredentialParameter**](CredentialParameter.md) |  | [optional] 
 **Rp** | [**RelyingPartyEntity**](RelyingPartyEntity.md) |  | 
@@ -177,20 +177,20 @@ HasExcludeCredentials returns a boolean if a field has been set.
 UnsetExcludeCredentials ensures that no value is present for ExcludeCredentials, not even an explicit nil
 ### GetExtensions
 
-`func (o *PublicKeyCredentialCreationOptions) GetExtensions() map[string]*interface{}`
+`func (o *PublicKeyCredentialCreationOptions) GetExtensions() AuthenticationExtensions`
 
 GetExtensions returns the Extensions field if non-nil, zero value otherwise.
 
 ### GetExtensionsOk
 
-`func (o *PublicKeyCredentialCreationOptions) GetExtensionsOk() (*map[string]*interface{}, bool)`
+`func (o *PublicKeyCredentialCreationOptions) GetExtensionsOk() (*AuthenticationExtensions, bool)`
 
 GetExtensionsOk returns a tuple with the Extensions field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetExtensions
 
-`func (o *PublicKeyCredentialCreationOptions) SetExtensions(v map[string]*interface{})`
+`func (o *PublicKeyCredentialCreationOptions) SetExtensions(v AuthenticationExtensions)`
 
 SetExtensions sets Extensions field to given value.
 

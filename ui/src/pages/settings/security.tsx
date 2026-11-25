@@ -229,6 +229,10 @@ export const Security = () => {
               transports: (c.transports ?? undefined) as AuthenticatorTransport[] | undefined,
             }))
           : undefined,
+        // Not forwarded: the server requests no extensions, and the binary ones
+        // (largeBlob, credBlob, hmacGetSecret, prf) arrive base64url-encoded where
+        // the browser needs BufferSource. Decode them here before requesting any.
+        extensions: undefined,
         authenticatorSelection: rawPK.authenticatorSelection
           ? {
               ...rawPK.authenticatorSelection,
