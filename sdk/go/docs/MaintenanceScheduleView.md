@@ -12,6 +12,8 @@ Name | Type | Description | Notes
 **Id** | **string** |  | 
 **Kind** | **string** |  | 
 **LastWindowAt** | Pointer to **time.Time** |  | [optional] 
+**MaintenancePct** | **int64** |  | 
+**MaxNodesPerRun** | **int64** | 0 is every node in scope. | 
 **Name** | **string** |  | 
 **NextOpenings** | **[]string** | The next three times the window opens, UTC. | 
 **OnceAt** | Pointer to **time.Time** |  | [optional] 
@@ -26,7 +28,7 @@ Name | Type | Description | Notes
 
 ### NewMaintenanceScheduleView
 
-`func NewMaintenanceScheduleView(durationMinutes int64, enabled bool, id string, kind string, name string, nextOpenings []string, openNow bool, reboot string, standalone bool, weekdays []int64, ) *MaintenanceScheduleView`
+`func NewMaintenanceScheduleView(durationMinutes int64, enabled bool, id string, kind string, maintenancePct int64, maxNodesPerRun int64, name string, nextOpenings []string, openNow bool, reboot string, standalone bool, weekdays []int64, ) *MaintenanceScheduleView`
 
 NewMaintenanceScheduleView instantiates a new MaintenanceScheduleView object
 This constructor will assign default values to properties that have it defined,
@@ -220,6 +222,46 @@ SetLastWindowAt sets LastWindowAt field to given value.
 `func (o *MaintenanceScheduleView) HasLastWindowAt() bool`
 
 HasLastWindowAt returns a boolean if a field has been set.
+
+### GetMaintenancePct
+
+`func (o *MaintenanceScheduleView) GetMaintenancePct() int64`
+
+GetMaintenancePct returns the MaintenancePct field if non-nil, zero value otherwise.
+
+### GetMaintenancePctOk
+
+`func (o *MaintenanceScheduleView) GetMaintenancePctOk() (*int64, bool)`
+
+GetMaintenancePctOk returns a tuple with the MaintenancePct field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMaintenancePct
+
+`func (o *MaintenanceScheduleView) SetMaintenancePct(v int64)`
+
+SetMaintenancePct sets MaintenancePct field to given value.
+
+
+### GetMaxNodesPerRun
+
+`func (o *MaintenanceScheduleView) GetMaxNodesPerRun() int64`
+
+GetMaxNodesPerRun returns the MaxNodesPerRun field if non-nil, zero value otherwise.
+
+### GetMaxNodesPerRunOk
+
+`func (o *MaintenanceScheduleView) GetMaxNodesPerRunOk() (*int64, bool)`
+
+GetMaxNodesPerRunOk returns a tuple with the MaxNodesPerRun field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMaxNodesPerRun
+
+`func (o *MaintenanceScheduleView) SetMaxNodesPerRun(v int64)`
+
+SetMaxNodesPerRun sets MaxNodesPerRun field to given value.
+
 
 ### GetName
 

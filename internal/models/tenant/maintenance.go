@@ -10,8 +10,8 @@ import (
 )
 
 // Scheduled maintenance: a window in which the control plane upgrades and
-// reboots the hypervisors of one scope, ONE AT A TIME, stopping at the first one
-// that does not come back.
+// reboots the hypervisors of one scope, ONE AT A TIME, stopping once more of
+// them have failed than the window's budget allows (by default, at the first).
 //
 // A SCOPE is either one cluster or the STANDALONE POOL — every hypervisor in no
 // cluster. The pool exists so that a machine outside a cluster is not a machine
@@ -56,6 +56,52 @@ const (
 	MaintenanceNodeSkipped   = "skipped"
 )
 
+// Bounds on the budget. A run of more than a thousand hypervisors is a typo,
+// and a budget that tolerates most of the run failing is no budget: by the time
+// half the nodes have failed on the same packages, the next one will too.
+const (
+	MaintenanceMaxNodesPerRun = 1000
+	MaintenanceMaxPct         = 50
+)
+
+// Strikes is how many maintenance runs in a row a node may fail before every
+// later run skips it until an admin acknowledges it.
+const MaintenanceStrikeLimit = 2
+
+// MaintenanceBudget is how much of a scope one run may work and how many of
+// those nodes may fail. The zero value is the original behaviour: every node,
+// stopping at the first failure.
+//
+// default:0 is safe here, and needed: GORM's Create drops a zero on a field
+// with a default: tag and stores the column default instead, which is harmless
+// only because the two are the same value. Without a default the migration
+// could not add these NOT NULL columns to tables that already have rows. Never
+// change the default to anything but zero.
+type MaintenanceBudget struct {
+	// MaxNodesPerRun is the most nodes one run works; 0 is all of them. The rest
+	// are left for the next window, which starts with them.
+	MaxNodesPerRun int `gorm:"not null;default:0;check:ck_maintenance_max_nodes,max_nodes_per_run BETWEEN 0 AND 1000" json:"max_nodes_per_run"`
+	// MaintenancePct is the failure budget, as a share of the run's planned size:
+	// no further node starts once failures exceed it.
+	MaintenancePct int `gorm:"not null;default:0;check:ck_maintenance_pct,maintenance_pct BETWEEN 0 AND 50" json:"maintenance_pct"`
+}
+
+// PlannedSize is N, the number of nodes the budget is a share of: the node
+// limit, capped at what is in scope.
+func (b MaintenanceBudget) PlannedSize(inScope int) int {
+	if b.MaxNodesPerRun > 0 && b.MaxNodesPerRun < inScope {
+		return b.MaxNodesPerRun
+	}
+	return inScope
+}
+
+// Exceeded reports whether `failures` is more than the budget allows of a run
+// of n. Integer arithmetic, so 30% of 12 (3.6) tolerates three failures and the
+// fourth exceeds it. At 0% the first failure does.
+func (b MaintenanceBudget) Exceeded(failures, n int) bool {
+	return failures*100 > b.MaintenancePct*n
+}
+
 // A MaintenanceSchedule is one window, recurring or once.
 type MaintenanceSchedule struct {
 	ID uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
@@ -87,6 +133,8 @@ type MaintenanceSchedule struct {
 	// Reboot is the policy handed to each node's dist-upgrade.
 	Reboot string `gorm:"type:varchar(16);not null" json:"reboot"`
 
+	MaintenanceBudget
+
 	// No default: tag, deliberately — GORM's Create drops a false on a field that
 	// has one and stores the column default instead.
 	Enabled bool `gorm:"not null" json:"enabled"`
@@ -116,6 +164,9 @@ type MaintenanceRun struct {
 
 	Status string `gorm:"type:varchar(16);not null;index" json:"status"`
 	Reboot string `gorm:"type:varchar(16);not null" json:"reboot"`
+	// The schedule's budget as it was when the run started, so changing a window
+	// mid-run does not change what the run in progress may do.
+	MaintenanceBudget
 	// Error says why a run stopped, when it did not finish.
 	Error string `gorm:"type:text;not null" json:"error,omitempty"`
 	// StopRequested is an operator asking the run to stop after the node in
@@ -253,6 +304,9 @@ var (
 	ErrMaintenanceClock    = errors.New("start_time must be HH:MM, 24-hour")
 	ErrMaintenanceWeekdays = errors.New("a recurring window needs at least one weekday")
 	ErrMaintenanceOnceAt   = errors.New("a one-off window needs once_at")
+	ErrMaintenanceMaxNodes = fmt.Errorf("max_nodes_per_run must be between 0 (all) and %d",
+		MaintenanceMaxNodesPerRun)
+	ErrMaintenancePct = fmt.Errorf("maintenance_pct must be between 0 and %d", MaintenanceMaxPct)
 )
 
 // ValidateMaintenanceSchedule returns the first thing wrong with a schedule.
@@ -271,6 +325,12 @@ func ValidateMaintenanceSchedule(s MaintenanceSchedule) error {
 	case RebootIfNeeded, RebootAlways, RebootNever:
 	default:
 		return ErrMaintenanceReboot
+	}
+	if s.MaxNodesPerRun < 0 || s.MaxNodesPerRun > MaintenanceMaxNodesPerRun {
+		return ErrMaintenanceMaxNodes
+	}
+	if s.MaintenancePct < 0 || s.MaintenancePct > MaintenanceMaxPct {
+		return ErrMaintenancePct
 	}
 	switch s.Kind {
 	case MaintenanceRecurring:

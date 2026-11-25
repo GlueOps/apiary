@@ -398,6 +398,20 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 
 	})
 
+	t.Run("Test FleetAPIService FleetMaintenanceAcknowledge", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		var id string
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetMaintenanceAcknowledge(context.Background(), id).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
 	t.Run("Test FleetAPIService FleetMaintenanceRunsList", func(t *testing.T) {
 
 		t.Skip("skip test")  // remove to run test
@@ -468,6 +482,18 @@ func Test_apiary_FleetAPIService(t *testing.T) {
 		var id string
 
 		resp, httpRes, err := apiClient.FleetAPI.FleetMaintenanceSchedulesUpdate(context.Background(), id).Execute()
+
+		require.Nil(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 200, httpRes.StatusCode)
+
+	})
+
+	t.Run("Test FleetAPIService FleetMaintenanceStrikesList", func(t *testing.T) {
+
+		t.Skip("skip test")  // remove to run test
+
+		resp, httpRes, err := apiClient.FleetAPI.FleetMaintenanceStrikesList(context.Background()).Execute()
 
 		require.Nil(t, err)
 		require.NotNil(t, resp)
