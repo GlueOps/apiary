@@ -3643,15 +3643,15 @@ __metadata:
   linkType: hard
 
 "lucide-react@npm:^1.33.0":
-  version: 1.63.0
-  resolution: "lucide-react@npm:1.63.0"
+  version: 1.82.0
+  resolution: "lucide-react@npm:1.82.0"
   peerDependencies:
     "@types/react": "*"
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10/8db9d62007c8458baa4215d21f787409ce0871ec6213d72107db84e7ba269ddc59bef7ca5b2bb197e0d5de9d3862bc73191a309336eab60d0a6afa75438a83ab
+  checksum: 10/603643e7de9f23d8a6a015c0b27b2303c8e1962f82fce325f64f59a86733a0d38252735538be8a2a2052c790431ae3ec7bcef70211a7f0be75b3ded6a484f3be
   languageName: node
   linkType: hard
 
